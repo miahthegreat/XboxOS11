@@ -40,6 +40,7 @@ jobs:
             'scripts/Validate-Image.ps1',
             'scripts/Dismount-Image.ps1',
             'scripts/Export-ISO.ps1',
+            'scripts/Test-DismCompatibility.ps1',
             'postinstall/Setup-Gaming.ps1',
             'postinstall/Setup-XboxMode.ps1',
             'postinstall/Install-Launchers.ps1',
@@ -47,6 +48,8 @@ jobs:
             'tests/Build.Tests.ps1',
             'tests/Manifest.Tests.ps1',
             'tests/Safety.Tests.ps1',
+            'tests/Syntax.Tests.ps1',
+            'tests/Pipeline.Tests.ps1',
             'README.md',
             'LICENSE'
           )
@@ -64,6 +67,36 @@ jobs:
           Get-ChildItem config -Filter *.json | ForEach-Object {
             Write-Host "Parsing $($_.FullName)"
             Get-Content $_.FullName -Raw | ConvertFrom-Json | Out-Null
+          }
+
+      - name: Validate PowerShell syntax (Parser::ParseFile)
+        shell: pwsh
+        run: |
+          $files = @(
+            Get-ChildItem -Recurse -Include *.ps1, *.psm1 -File |
+              Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' }
+          )
+          $totalErrors = 0
+          foreach ($file in $files) {
+            $parseErrors = $null
+            $tokens = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$parseErrors)
+            $count = @($parseErrors).Count
+            $totalErrors += $count
+            if ($count -gt 0) {
+              Write-Host ("FAIL {0} => {1} error(s)" -f $file.FullName, $count)
+              $parseErrors | ForEach-Object {
+                Write-Host ("  L{0}: {1}" -f $_.Extent.StartLineNumber, $_.Message)
+              }
+            }
+            else {
+              Write-Host ("OK   {0}" -f $file.FullName)
+            }
+          }
+          Write-Host ("ParsedFileCount={0}" -f $files.Count)
+          Write-Host ("PARSER_ERROR_COUNT={0}" -f $totalErrors)
+          if ($totalErrors -ne 0) {
+            throw ("PowerShell parser reported {0} error(s) across {1} file(s)." -f $totalErrors, $files.Count)
           }
 
       - name: Install PSScriptAnalyzer and Pester 5+

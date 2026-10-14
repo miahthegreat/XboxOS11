@@ -400,168 +400,183 @@ finally {
 
 # Write reports
 $success = ($errors.Count -eq 0 -and $cleanupOk -and $noMountsLeft -and $isoUnchanged -and $null -ne $exportMeta)
+$generatedUtc = (Get-Date).ToUniversalTime().ToString('o')
+$mountPathForReport = Join-Path $workRoot 'mount'
+$nl = [Environment]::NewLine
 
-$md = @()
-$md += '# XboxOS11 DISM Compatibility Report'
-$md += ''
-$md += "- Generated (UTC): $((Get-Date).ToUniversalTime().ToString('o'))"
-$md += "- Host elevated: True"
-$md += "- PowerShell: $($PSVersionTable.PSVersion)"
-$md += "- Source ISO: `$isoPath`"
-$md += "- Disposable WIM: ``$wimPath``"
-$md += "- Mount directory: ``$(Join-Path $workRoot 'mount')``"
-$md += "- Overall success: **$success**"
-$md += ''
-$md += '## Safety checklist'
-$md += ''
-$md += "| Check | Result |"
-$md += "|---|---|"
-$md += "| Original ISO unmodified | $isoUnchanged |"
-$md += "| Disposable WIM never committed (discard unmount) | $cleanupOk |"
-$md += "| No mounts remain for this test | $noMountsLeft |"
-$md += "| No AppX removal / feature disable / drivers / updates | True |"
-$md += "| No full Build-ISO production pipeline | True |"
-$md += "| No OneDrive WIM/mount paths | True |"
-$md += ''
-$md += '## DISM version'
-$md += ''
-$md += '```'
-$md += ($dismVersionOut -join "`n")
-$md += '```'
-$md += ''
-$md += '## Source image'
-$md += ''
-$md += "- Requested source index: $sourceIndex"
-$md += "- Resolved source index name: $index6Name"
-$md += ''
-$md += '## Exported disposable WIM'
-$md += ''
+$mdLines = New-Object System.Collections.Generic.List[string]
+$null = $mdLines.Add('# XboxOS11 DISM Compatibility Report')
+$null = $mdLines.Add('')
+$null = $mdLines.Add(('- Generated (UTC): {0}' -f $generatedUtc))
+$null = $mdLines.Add('- Host elevated: True')
+$null = $mdLines.Add(('- PowerShell: {0}' -f $PSVersionTable.PSVersion))
+$null = $mdLines.Add(('- Source ISO: `{0}`' -f $isoPath))
+$null = $mdLines.Add(('- Disposable WIM: `{0}`' -f $wimPath))
+$null = $mdLines.Add(('- Mount directory: `{0}`' -f $mountPathForReport))
+$null = $mdLines.Add(('- Overall success: **{0}**' -f $success))
+$null = $mdLines.Add('')
+$null = $mdLines.Add('## Safety checklist')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('| Check | Result |')
+$null = $mdLines.Add('|---|---|')
+$null = $mdLines.Add(('| Original ISO unmodified | {0} |' -f $isoUnchanged))
+$null = $mdLines.Add(('| Disposable WIM never committed (discard unmount) | {0} |' -f $cleanupOk))
+$null = $mdLines.Add(('| No mounts remain for this test | {0} |' -f $noMountsLeft))
+$null = $mdLines.Add('| No AppX removal / feature disable / drivers / updates | True |')
+$null = $mdLines.Add('| No full Build-ISO production pipeline | True |')
+$null = $mdLines.Add('| No OneDrive WIM/mount paths | True |')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('## DISM version')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('```')
+$null = $mdLines.Add((@($dismVersionOut) -join $nl))
+$null = $mdLines.Add('```')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('## Source image')
+$null = $mdLines.Add('')
+$null = $mdLines.Add(('- Requested source index: {0}' -f $sourceIndex))
+$null = $mdLines.Add(('- Resolved source index name: {0}' -f $index6Name))
+$null = $mdLines.Add('')
+$null = $mdLines.Add('## Exported disposable WIM')
+$null = $mdLines.Add('')
 if ($exportMeta) {
     foreach ($img in $exportMeta) {
-        $md += "- Index: $($img.Index)"
-        $md += "- Name: $($img.Name)"
-        $md += "- Description: $($img.Description)"
-        $md += "- Architecture: $($img.Architecture)"
-        $md += "- Size: $($img.Size)"
+        $null = $mdLines.Add(('- Index: {0}' -f $img.Index))
+        $null = $mdLines.Add(('- Name: {0}' -f $img.Name))
+        $null = $mdLines.Add(('- Description: {0}' -f $img.Description))
+        $null = $mdLines.Add(('- Architecture: {0}' -f $img.Architecture))
+        $null = $mdLines.Add(('- Size: {0}' -f $img.Size))
     }
 }
 else {
-    $md += '- Export metadata unavailable due to earlier failure.'
+    $null = $mdLines.Add('- Export metadata unavailable due to earlier failure.')
 }
-$md += ''
-$md += '## Mounted image inventory summary'
-$md += ''
-$md += "- Package identities counted: $packageCount"
-$md += "- Provisioned AppX packages counted: $appxCount"
-$md += "- Optional features counted: $featureCount"
-$md += "- Hive CurrentBuild/UBR: $buildNumber"
-$md += "- Hive DisplayVersion: $displayVersion"
-$md += "- Hive EditionID: $editionId"
-$md += "- Hive ProductName: $productName"
-$md += ''
-$md += '### Sample AppX packages (first 25)'
-$md += ''
-$md += '```'
-$md += (($appxSample | Select-Object -First 25) -join "`n")
-$md += '```'
-$md += ''
-$md += '### Sample features (first 25)'
-$md += ''
-$md += '```'
-$md += (($featuresSample | Select-Object -First 25) -join "`n")
-$md += '```'
-$md += ''
-$md += '### Sample packages (first 25)'
-$md += ''
-$md += '```'
-$md += (($packagesSample | Select-Object -First 25) -join "`n")
-$md += '```'
-$md += ''
-$md += '## Commands and exit codes'
-$md += ''
+$null = $mdLines.Add('')
+$null = $mdLines.Add('## Mounted image inventory summary')
+$null = $mdLines.Add('')
+$null = $mdLines.Add(('- Package identities counted: {0}' -f $packageCount))
+$null = $mdLines.Add(('- Provisioned AppX packages counted: {0}' -f $appxCount))
+$null = $mdLines.Add(('- Optional features counted: {0}' -f $featureCount))
+$null = $mdLines.Add(('- Hive CurrentBuild/UBR: {0}' -f $buildNumber))
+$null = $mdLines.Add(('- Hive DisplayVersion: {0}' -f $displayVersion))
+$null = $mdLines.Add(('- Hive EditionID: {0}' -f $editionId))
+$null = $mdLines.Add(('- Hive ProductName: {0}' -f $productName))
+$null = $mdLines.Add('')
+$null = $mdLines.Add('### Sample AppX packages (first 25)')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('```')
+$null = $mdLines.Add((@($appxSample | Select-Object -First 25) -join $nl))
+$null = $mdLines.Add('```')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('### Sample features (first 25)')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('```')
+$null = $mdLines.Add((@($featuresSample | Select-Object -First 25) -join $nl))
+$null = $mdLines.Add('```')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('### Sample packages (first 25)')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('```')
+$null = $mdLines.Add((@($packagesSample | Select-Object -First 25) -join $nl))
+$null = $mdLines.Add('```')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('## Commands and exit codes')
+$null = $mdLines.Add('')
 foreach ($cmd in $commandLog) {
-    $md += "### $($cmd.Step)"
-    $md += ''
-    $md += "- Command: ``$($cmd.Command)``"
-    $md += "- Exit code: **$($cmd.ExitCode)**"
-    $md += ''
+    $null = $mdLines.Add(('### {0}' -f $cmd.Step))
+    $null = $mdLines.Add('')
+    $null = $mdLines.Add(('- Command: `{0}`' -f $cmd.Command))
+    $null = $mdLines.Add(('- Exit code: **{0}**' -f $cmd.ExitCode))
+    $null = $mdLines.Add('')
 }
-$md += '## Warnings'
-$md += ''
-if ($warnings.Count -eq 0) { $md += '- None' } else { foreach ($w in $warnings) { $md += "- $w" } }
-$md += ''
-$md += '## Errors'
-$md += ''
-if ($errors.Count -eq 0) { $md += '- None' } else { foreach ($e in $errors) { $md += "- $e" } }
-$md += ''
-$md += '## Compatibility findings'
-$md += ''
-$md += '- DISM can export source index 6 into a disposable single-index WIM under C:\XboxOS\Work.'
-$md += '- Exported image index is 1 and name contains Pro, suitable as a writable-servicing candidate after this read-only validation.'
-$md += '- Read-only mount + Get-Packages / Get-ProvisionedAppxPackages / Get-Features completed as recorded above.'
-$md += '- ISO naming must use verified hive/DISM metadata (DisplayVersion / CurrentBuild) rather than assuming 25H2 from filename alone.'
-$md += '- Writable servicing should only proceed if cleanup succeeded and no mounts remain.'
-$md += ''
-$md += '## ISO integrity'
-$md += ''
-$md += "- SHA256 before: `$isoHashBefore`"
-$md += "- SHA256 after: `$isoHashAfter`"
-$md += "- Unchanged: $isoUnchanged"
-$md += ''
+$null = $mdLines.Add('## Warnings')
+$null = $mdLines.Add('')
+if ($warnings.Count -eq 0) {
+    $null = $mdLines.Add('- None')
+}
+else {
+    foreach ($warningItem in $warnings) {
+        $null = $mdLines.Add(('- {0}' -f $warningItem))
+    }
+}
+$null = $mdLines.Add('')
+$null = $mdLines.Add('## Errors')
+$null = $mdLines.Add('')
+if ($errors.Count -eq 0) {
+    $null = $mdLines.Add('- None')
+}
+else {
+    foreach ($errorItem in $errors) {
+        $null = $mdLines.Add(('- {0}' -f $errorItem))
+    }
+}
+$null = $mdLines.Add('')
+$null = $mdLines.Add('## Compatibility findings')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('- DISM can export source index 6 into a disposable single-index WIM under C:\XboxOS\Work.')
+$null = $mdLines.Add('- Exported image index is 1 and name contains Pro, suitable as a writable-servicing candidate after this read-only validation.')
+$null = $mdLines.Add('- Read-only mount + Get-Packages / Get-ProvisionedAppxPackages / Get-Features completed as recorded above.')
+$null = $mdLines.Add('- ISO naming must use verified hive/DISM metadata (DisplayVersion / CurrentBuild) rather than assuming 25H2 from filename alone.')
+$null = $mdLines.Add('- Writable servicing should only proceed if cleanup succeeded and no mounts remain.')
+$null = $mdLines.Add('')
+$null = $mdLines.Add('## ISO integrity')
+$null = $mdLines.Add('')
+$null = $mdLines.Add(('- SHA256 before: `{0}`' -f $isoHashBefore))
+$null = $mdLines.Add(('- SHA256 after: `{0}`' -f $isoHashAfter))
+$null = $mdLines.Add(('- Unchanged: {0}' -f $isoUnchanged))
+$null = $mdLines.Add('')
 
-# Fix markdown accidental variable interpolation for paths with backticks - rewrite critical lines cleanly
-$md = $md -replace '\$isoPath', $isoPath -replace '\$isoHashBefore', $isoHashBefore -replace '\$isoHashAfter', $isoHashAfter
-
-$md -join "`n" | Set-Content -LiteralPath $reportPath -Encoding UTF8
+($mdLines -join $nl) | Set-Content -LiteralPath $reportPath -Encoding UTF8
 
 $json = [ordered]@{
-    generatedUtc = (Get-Date).ToUniversalTime()
-    success = $success
-    dismVersion = $dismVersion
-    dismVersionRaw = $dismVersionOut
-    sourceIso = $isoPath
-    sourceIndex = $sourceIndex
-    sourceIndexName = $index6Name
-    disposableWim = $wimPath
-    mountDir = (Join-Path $workRoot 'mount')
-    exportMeta = $exportMeta
-    packageCount = $packageCount
-    appxCount = $appxCount
-    featureCount = $featureCount
-    buildNumber = $buildNumber
-    displayVersion = $displayVersion
-    editionId = $editionId
-    productName = $productName
-    appxSample = @($appxSample | Select-Object -First 50)
-    featureSample = @($featuresSample | Select-Object -First 50)
-    packageSample = @($packagesSample | Select-Object -First 50)
-    commands = $commandLog
-    warnings = @($warnings)
-    errors = @($errors)
-    cleanupOk = $cleanupOk
-    noMountsLeft = $noMountsLeft
-    isoUnchanged = $isoUnchanged
-    isoSha256Before = $isoHashBefore
-    isoSha256After = $isoHashAfter
+    generatedUtc     = (Get-Date).ToUniversalTime()
+    success          = $success
+    dismVersion      = $dismVersion
+    dismVersionRaw   = $dismVersionOut
+    sourceIso        = $isoPath
+    sourceIndex      = $sourceIndex
+    sourceIndexName  = $index6Name
+    disposableWim    = $wimPath
+    mountDir         = $mountPathForReport
+    exportMeta       = $exportMeta
+    packageCount     = $packageCount
+    appxCount        = $appxCount
+    featureCount     = $featureCount
+    buildNumber      = $buildNumber
+    displayVersion   = $displayVersion
+    editionId        = $editionId
+    productName      = $productName
+    appxSample       = @($appxSample | Select-Object -First 50)
+    featureSample    = @($featuresSample | Select-Object -First 50)
+    packageSample    = @($packagesSample | Select-Object -First 50)
+    commands         = $commandLog
+    warnings         = @($warnings)
+    errors           = @($errors)
+    cleanupOk        = $cleanupOk
+    noMountsLeft     = $noMountsLeft
+    isoUnchanged     = $isoUnchanged
+    isoSha256Before  = $isoHashBefore
+    isoSha256After   = $isoHashAfter
 }
 ($json | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $jsonReportPath -Encoding UTF8
 
-Write-Host ""
-Write-Host "Report written: $reportPath"
-Write-Host "JSON written:   $jsonReportPath"
-Write-Host "Success=$success CleanupOk=$cleanupOk NoMountsLeft=$noMountsLeft IsoUnchanged=$isoUnchanged"
+Write-Host ''
+Write-Host ('Report written: {0}' -f $reportPath)
+Write-Host ('JSON written:   {0}' -f $jsonReportPath)
+Write-Host ('Success={0} CleanupOk={1} NoMountsLeft={2} IsoUnchanged={3}' -f $success, $cleanupOk, $noMountsLeft, $isoUnchanged)
 
 $exitCode = if ($success) { 0 } else { 1 }
-@"
-success=$success
-exitCode=$exitCode
-cleanupOk=$cleanupOk
-noMountsLeft=$noMountsLeft
-isoUnchanged=$isoUnchanged
-report=$reportPath
-json=$jsonReportPath
-completedUtc=$((Get-Date).ToUniversalTime().ToString('o'))
-"@ | Set-Content -LiteralPath $sentinelPath -Encoding UTF8
+$sentinelBody = @(
+    ('success={0}' -f $success)
+    ('exitCode={0}' -f $exitCode)
+    ('cleanupOk={0}' -f $cleanupOk)
+    ('noMountsLeft={0}' -f $noMountsLeft)
+    ('isoUnchanged={0}' -f $isoUnchanged)
+    ('report={0}' -f $reportPath)
+    ('json={0}' -f $jsonReportPath)
+    ('completedUtc={0}' -f $generatedUtc)
+) -join $nl
+$sentinelBody | Set-Content -LiteralPath $sentinelPath -Encoding UTF8
 
-try { Stop-Transcript | Out-Null } catch { }
+try { Stop-Transcript | Out-Null } catch { Write-Verbose 'Stop-Transcript skipped.' }
 exit $exitCode
