@@ -26,8 +26,12 @@ Describe 'XboxOS11 pipeline regression' {
         }
 
         It 'rejects a workspace inside OneDrive / cloud sync' {
+            # This fixture must not depend on the checkout location: CI uses D:\a,
+            # while developer checkouts may or may not reside in OneDrive.
+            $cloudWorkspace = 'C:\Users\XboxOSTest\OneDrive\XboxOS11\Work'
+            Test-XboxOSCloudSynchronizedPath -Path $cloudWorkspace | Should -BeTrue
             {
-                Assert-XboxOSBuildSafety -WorkspaceRoot $script:RepoRoot -RepoRoot 'C:\XboxOS\FakeRepo'
+                Assert-XboxOSBuildSafety -WorkspaceRoot $cloudWorkspace -RepoRoot $script:RepoRoot
             } | Should -Throw -ExpectedMessage '*cloud-synchronized*'
         }
 
