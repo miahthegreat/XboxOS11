@@ -85,6 +85,8 @@ else {
 
     $edition = $null
     $build = $null
+    $displayVersion = $null
+    $productName = $null
     try {
         $info = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Image:' + $mount, '/Get-CurrentEdition')
         foreach ($line in $info.Output) {
@@ -105,6 +107,8 @@ else {
             $build = [string]$cv.CurrentBuild
             if ($cv.UBR) { $build = "$build.$($cv.UBR)" }
             if (-not $edition -and $cv.EditionID) { $edition = [string]$cv.EditionID }
+            if ($cv.DisplayVersion) { $displayVersion = [string]$cv.DisplayVersion }
+            if ($cv.ProductName) { $productName = [string]$cv.ProductName }
         }
         catch {
             Write-XboxOSLog -Level Warning -Message "Registry inventory read failed: $($_.Exception.Message)"
@@ -123,6 +127,8 @@ else {
         mountPath             = $mount
         edition               = $edition
         build                 = $build
+        displayVersion        = $displayVersion
+        productName           = $productName
         architecture          = $BuildContext.Configuration.Raw.target.architecture
         inventoryAvailability = 'Available'
         appxPackages          = $appx

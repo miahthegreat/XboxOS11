@@ -5,10 +5,12 @@
   "description": "Gaming-focused Windows 11 image customization for Xbox Full Screen Experience",
   "target": {
     "windowsVersion": "11",
-    "release": "25H2",
+    "release": "unverified",
+    "releaseNotes": "Do not assume 25H2 from ISO filenames such as 26300.9457. Set release only from verified image metadata (DisplayVersion / build) after inventory.",
     "edition": "Windows 11 Pro",
     "architecture": "amd64",
     "imageNamePattern": "*Pro*",
+    "sourceImageIndex": 6,
     "minimumBuild": 26100,
     "bootFirmware": "UEFI",
     "partitionStyle": "GPT"
@@ -33,7 +35,9 @@
   },
   "iso": {
     "label": "XboxOS11",
-    "fileName": "XboxOS11-Win11Pro-25H2.iso",
+    "fileNameTemplate": "XboxOS11-Win11Pro-{releaseTag}.iso",
+    "fileName": null,
+    "unverifiedReleaseFallback": "buildunknown",
     "uefiBoot": true,
     "splitWimThresholdBytes": 4294967295,
     "bootData": "-bootdata:2#p0,e,b{boot}\\etfsboot.com#pEF,e,b{efi}\\efisys.bin"

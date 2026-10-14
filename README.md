@@ -6,7 +6,7 @@ XboxOS11 is tooling and manifests only. It does **not** redistribute Microsoft W
 
 ## Purpose
 
-Produce a deterministic Windows 11 Pro (25H2 by default) installation image that:
+Produce a deterministic Windows 11 Pro installation image (release label taken only from verified image metadata — never assumed from ISO filenames such as `26300.9457`) that:
 
 - Removes selected consumer/promotional AppX packages
 - Disables a small set of optional legacy features (payloads retained by default)

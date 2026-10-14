@@ -524,6 +524,84 @@ function ConvertTo-XboxOSSafeFileName {
     return ($Name -replace "[$invalid]", '_')
 }
 
+function Get-XboxOSIsoReleaseTag {
+    <#
+    .SYNOPSIS
+        Derives an ISO release tag only from verified metadata.
+    .NOTES
+        Never infers 24H2/25H2 solely from an ISO filename such as 26300.9457.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$DisplayVersion,
+        [string]$BuildNumber,
+        [string]$ConfiguredRelease,
+        [string]$UnverifiedFallback = 'buildunknown'
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($DisplayVersion) -and $DisplayVersion -match '^\d{2}H\d$') {
+        return $DisplayVersion.ToUpperInvariant()
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($BuildNumber) -and $BuildNumber -match '^(\d+)(?:\.(\d+))?$') {
+        $tag = "build$($Matches[1])"
+        if ($Matches[2]) { $tag += ".$($Matches[2])" }
+        return $tag
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ConfiguredRelease) -and
+        $ConfiguredRelease -notmatch '(?i)^(unverified|unknown|tbd|todo)$' -and
+        $ConfiguredRelease -match '^\d{2}H\d$') {
+        return $ConfiguredRelease.ToUpperInvariant()
+    }
+
+    return $UnverifiedFallback
+}
+
+function Get-XboxOSIsoFileName {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Configuration,
+
+        [string]$DisplayVersion,
+        [string]$BuildNumber,
+        [string]$Edition
+    )
+
+    $iso = $Configuration.iso
+    if ($iso.PSObject.Properties.Name -contains 'fileName' -and -not [string]::IsNullOrWhiteSpace([string]$iso.fileName)) {
+        return ConvertTo-XboxOSSafeFileName -Name ([string]$iso.fileName)
+    }
+
+    $fallback = 'buildunknown'
+    if ($iso.PSObject.Properties.Name -contains 'unverifiedReleaseFallback' -and $iso.unverifiedReleaseFallback) {
+        $fallback = [string]$iso.unverifiedReleaseFallback
+    }
+
+    $configuredRelease = $null
+    if ($Configuration.PSObject.Properties.Name -contains 'target' -and
+        $Configuration.target.PSObject.Properties.Name -contains 'release') {
+        $configuredRelease = [string]$Configuration.target.release
+    }
+
+    $releaseTag = Get-XboxOSIsoReleaseTag -DisplayVersion $DisplayVersion -BuildNumber $BuildNumber -ConfiguredRelease $configuredRelease -UnverifiedFallback $fallback
+    $template = 'XboxOS11-Win11Pro-{releaseTag}.iso'
+    if ($iso.PSObject.Properties.Name -contains 'fileNameTemplate' -and $iso.fileNameTemplate) {
+        $template = [string]$iso.fileNameTemplate
+    }
+
+    $editionTag = 'Win11Pro'
+    if (-not [string]::IsNullOrWhiteSpace($Edition)) {
+        if ($Edition -match 'Pro') { $editionTag = 'Win11Pro' }
+        elseif ($Edition -match 'Home') { $editionTag = 'Win11Home' }
+        elseif ($Edition -match 'Enterprise') { $editionTag = 'Win11Enterprise' }
+    }
+
+    $name = $template.Replace('{releaseTag}', $releaseTag).Replace('{editionTag}', $editionTag)
+    return ConvertTo-XboxOSSafeFileName -Name $name
+}
+
 function Test-XboxOSArchitectureSupported {
     [CmdletBinding()]
     param(

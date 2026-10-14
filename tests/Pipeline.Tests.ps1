@@ -160,6 +160,25 @@ Describe 'XboxOS11 pipeline regression' {
         }
     }
 
+    Context 'ISO naming from verified metadata' {
+        It 'does not label build 26300.9457 as 25H2 without DisplayVersion' {
+            $tag = Get-XboxOSIsoReleaseTag -BuildNumber '26300.9457' -ConfiguredRelease 'unverified'
+            $tag | Should -Be 'build26300.9457'
+            $tag | Should -Not -Match '25H2'
+        }
+
+        It 'uses DisplayVersion when verified' {
+            Get-XboxOSIsoReleaseTag -DisplayVersion '25H2' -BuildNumber '26300.9457' | Should -Be '25H2'
+        }
+
+        It 'builds ISO file names from template without assumed 25H2' {
+            $config = (Get-XboxOSBuildConfiguration -Path $script:ConfigPath).Raw
+            $name = Get-XboxOSIsoFileName -Configuration $config -BuildNumber '26300.9457' -Edition 'Windows 11 Pro'
+            $name | Should -Be 'XboxOS11-Win11Pro-build26300.9457.iso'
+            $name | Should -Not -Match '25H2'
+        }
+    }
+
     Context 'Resolved configuration paths' {
         It 'resolves build workspace paths to C:\XboxOS regardless of working directory' {
             $config = Get-XboxOSBuildConfiguration -Path $script:ConfigPath

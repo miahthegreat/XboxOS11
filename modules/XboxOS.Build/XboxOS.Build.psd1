@@ -33,6 +33,8 @@
         'Invoke-XboxOSDism'
         'Get-XboxOSImageInfo'
         'ConvertTo-XboxOSSafeFileName'
+        'Get-XboxOSIsoReleaseTag'
+        'Get-XboxOSIsoFileName'
         'Test-XboxOSArchitectureSupported'
         'Get-XboxOSProtectedAppxPatterns'
         'Test-XboxOSPackageProtected'
