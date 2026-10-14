@@ -1,0 +1,25 @@
+
+Deployment Image Servicing and Management tool
+Version: 10.0.26100.1150
+
+Details for image : C:\fake\sources\install.wim
+
+Index : 1
+Name : Windows 11 Home
+Description : Windows 11 Home
+Size : 1 bytes
+Architecture : x64
+
+Index : 4
+Name : Windows 11 Pro
+Description : Windows 11 Pro
+Size : 1 bytes
+Architecture : x64
+
+Index : 6
+Name : windows 11 pro
+Description : Windows 11 Pro duplicate
+Size : 1 bytes
+Architecture : x64
+
+The operation completed successfully.

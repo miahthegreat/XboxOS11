@@ -4,6 +4,23 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+$modulePath = Join-Path $PSScriptRoot '..\modules\XboxOS.Build\XboxOS.Build.psd1'
+if (-not (Test-Path -LiteralPath $modulePath)) {
+    if ($env:XBOXOS11_ROOT) {
+        $modulePath = Join-Path $env:XBOXOS11_ROOT 'modules\XboxOS.Build\XboxOS.Build.psd1'
+    }
+}
+if (-not (Test-Path -LiteralPath $modulePath)) {
+    $fallbackRepo = 'C:\Users\schmi\OneDrive\WinDev Apps\XboxOS11\modules\XboxOS.Build\XboxOS.Build.psd1'
+    if (Test-Path -LiteralPath $fallbackRepo) {
+        $modulePath = $fallbackRepo
+    }
+}
+if (-not (Test-Path -LiteralPath $modulePath)) {
+    throw 'XboxOS.Build module not found. Run from repository scripts\ or set XBOXOS11_ROOT.'
+}
+Import-Module $modulePath -Force
+
 $transcriptPath = 'C:\XboxOS\Logs\DISM-Compatibility-20261014.transcript.log'
 $sentinelPath = 'C:\XboxOS\Logs\DISM-Compatibility-20261014.done'
 New-Item -ItemType Directory -Path 'C:\XboxOS\Logs' -Force | Out-Null
@@ -14,7 +31,8 @@ Start-Transcript -Path $transcriptPath -Force | Out-Null
 $isoPath = 'C:\XboxOS\Sources\Windows11_Client_x64_en-us_26300_9457.iso'
 $workRoot = 'C:\XboxOS\Work\dism-compat-20261014'
 $logsRoot = 'C:\XboxOS\Logs'
-$sourceIndex = 6
+$expectedEditionName = 'Windows 11 Pro'
+$sourceIndex = $null
 $reportPath = Join-Path $logsRoot 'DISM-Compatibility-20261014.md'
 $jsonReportPath = Join-Path $logsRoot 'DISM-Compatibility-20261014.json'
 
@@ -40,7 +58,11 @@ $isoHashBefore = $null
 $isoHashAfter = $null
 $isoLengthBefore = $null
 $isoLastWriteBefore = $null
-$index6Name = $null
+$sourceIndexName = $null
+$sourceImageCatalog = @()
+$sourceSelection = $null
+$sourceSelectionVerified = $false
+$exportVerified = $false
 $buildNumber = $null
 $displayVersion = $null
 $editionId = $null
@@ -148,23 +170,25 @@ try {
 
     Write-Step 'List source image indexes'
     $sourceInfo = Invoke-DismLogged -StepName 'Get-ImageInfo-Source' -ArgumentList @('/English', '/Get-ImageInfo', "/ImageFile:$sourceImage")
-    $index6Name = $null
-    $currentIndex = $null
-    foreach ($line in $sourceInfo) {
-        if ($line -match '^\s*Index\s*:\s*(\d+)') { $currentIndex = [int]$Matches[1] }
-        if ($currentIndex -eq $sourceIndex -and $line -match '^\s*Name\s*:\s*(.+)$') {
-            $index6Name = $Matches[1].Trim()
-        }
-    }
-    Write-Host "Source index $sourceIndex name: $index6Name"
-    if (-not $index6Name) {
-        throw "Could not resolve name for source index $sourceIndex."
-    }
-    if ($index6Name -notmatch 'Pro') {
-        $warnings.Add("Source index $sourceIndex name '$index6Name' does not clearly contain 'Pro'.") | Out-Null
+    $sourceImageCatalog = @(ConvertFrom-XboxOSDismImageInfoOutput -Output $sourceInfo)
+    foreach ($entry in $sourceImageCatalog) {
+        Write-Host ("Source catalog: Index={0} Name={1}" -f $entry.Index, $entry.Name)
     }
 
-    Write-Step "Export source index $sourceIndex to disposable WIM"
+    Write-Step ("Select exact edition '{0}'" -f $expectedEditionName)
+    $sourceSelection = Resolve-XboxOSExactImageIndex -Images $sourceImageCatalog -ExactName $expectedEditionName
+    $sourceIndex = [int]$sourceSelection.Index
+    $sourceIndexName = [string]$sourceSelection.Name
+    if ($sourceIndex -lt 1) {
+        throw "Selected source index '$sourceIndex' is invalid."
+    }
+    if (-not [string]::Equals($sourceIndexName.Trim(), $expectedEditionName, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw ("Selected source name '{0}' does not exactly match '{1}'." -f $sourceIndexName, $expectedEditionName)
+    }
+    $sourceSelectionVerified = $true
+    Write-Host ("Selected source index {0} ('{1}') after exact-name verification." -f $sourceIndex, $sourceIndexName)
+
+    Write-Step ("Export verified source index {0} to disposable WIM" -f $sourceIndex)
     if (Test-Path -LiteralPath $wimPath) {
         Remove-Item -LiteralPath $wimPath -Force
     }
@@ -185,32 +209,18 @@ try {
 
     Write-Step 'Verify exported WIM index/edition'
     $exportInfo = Invoke-DismLogged -StepName 'Get-ImageInfo-Export' -ArgumentList @('/English', '/Get-ImageInfo', "/ImageFile:$wimPath")
-    $exportIndexes = New-Object System.Collections.Generic.List[object]
-    $cur = $null
-    foreach ($line in $exportInfo) {
-        if ($line -match '^\s*Index\s*:\s*(\d+)') {
-            if ($cur) { $exportIndexes.Add([pscustomobject]$cur) | Out-Null }
-            $cur = [ordered]@{ Index = [int]$Matches[1]; Name = $null; Description = $null; Size = $null; Architecture = $null }
-        }
-        elseif ($cur) {
-            if ($line -match '^\s*Name\s*:\s*(.+)$') { $cur.Name = $Matches[1].Trim() }
-            elseif ($line -match '^\s*Description\s*:\s*(.+)$') { $cur.Description = $Matches[1].Trim() }
-            elseif ($line -match '^\s*Size\s*:\s*(.+)$') { $cur.Size = $Matches[1].Trim() }
-            elseif ($line -match '^\s*Architecture\s*:\s*(.+)$') { $cur.Architecture = $Matches[1].Trim() }
-        }
-    }
-    if ($cur) { $exportIndexes.Add([pscustomobject]$cur) | Out-Null }
-    $exportMeta = $exportIndexes.ToArray()
+    $exportMeta = @(ConvertFrom-XboxOSDismImageInfoOutput -Output $exportInfo)
     if ($exportMeta.Count -ne 1) {
         throw "Expected a single-index exported WIM, found $($exportMeta.Count) indexes."
     }
     if ($exportMeta[0].Index -ne 1) {
         throw "Expected exported image index 1, found $($exportMeta[0].Index)."
     }
-    if ($exportMeta[0].Name -notmatch 'Pro') {
-        throw "Exported image name '$($exportMeta[0].Name)' is not Windows 11 Pro."
+    if (-not [string]::Equals([string]$exportMeta[0].Name.Trim(), $expectedEditionName, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw ("Exported image name '{0}' does not exactly match '{1}'." -f $exportMeta[0].Name, $expectedEditionName)
     }
-    Write-Host "Confirmed: Index=$($exportMeta[0].Index) Name=$($exportMeta[0].Name)"
+    $exportVerified = $true
+    Write-Host ("Confirmed export: Index={0} Name={1}" -f $exportMeta[0].Index, $exportMeta[0].Name)
 
     Write-Step 'Mount disposable WIM read-only'
     Invoke-DismLogged -StepName 'Mount-Image-ReadOnly' -ArgumentList @(
@@ -399,7 +409,15 @@ finally {
 }
 
 # Write reports
-$success = ($errors.Count -eq 0 -and $cleanupOk -and $noMountsLeft -and $isoUnchanged -and $null -ne $exportMeta)
+$success = (
+    $errors.Count -eq 0 -and
+    $cleanupOk -and
+    $noMountsLeft -and
+    $isoUnchanged -and
+    $sourceSelectionVerified -and
+    $exportVerified -and
+    $null -ne $exportMeta
+)
 $generatedUtc = (Get-Date).ToUniversalTime().ToString('o')
 $mountPathForReport = Join-Path $workRoot 'mount'
 $nl = [Environment]::NewLine
@@ -425,6 +443,8 @@ $null = $mdLines.Add(('| No mounts remain for this test | {0} |' -f $noMountsLef
 $null = $mdLines.Add('| No AppX removal / feature disable / drivers / updates | True |')
 $null = $mdLines.Add('| No full Build-ISO production pipeline | True |')
 $null = $mdLines.Add('| No OneDrive WIM/mount paths | True |')
+$null = $mdLines.Add(('| Source edition selected by exact name (no index-6 fallback) | {0} |' -f $sourceSelectionVerified))
+$null = $mdLines.Add(('| Exported WIM index 1 is Windows 11 Pro | {0} |' -f $exportVerified))
 $null = $mdLines.Add('')
 $null = $mdLines.Add('## DISM version')
 $null = $mdLines.Add('')
@@ -432,12 +452,27 @@ $null = $mdLines.Add('```')
 $null = $mdLines.Add((@($dismVersionOut) -join $nl))
 $null = $mdLines.Add('```')
 $null = $mdLines.Add('')
-$null = $mdLines.Add('## Source image')
+$null = $mdLines.Add('## Source image selection')
 $null = $mdLines.Add('')
-$null = $mdLines.Add(('- Requested source index: {0}' -f $sourceIndex))
-$null = $mdLines.Add(('- Resolved source index name: {0}' -f $index6Name))
+$null = $mdLines.Add(('- Expected edition name: `{0}`' -f $expectedEditionName))
+$null = $mdLines.Add(('- Selected source index: {0}' -f $sourceIndex))
+$null = $mdLines.Add(('- Selected source image name: `{0}`' -f $sourceIndexName))
+$null = $mdLines.Add(('- Source selection verified before export: {0}' -f $sourceSelectionVerified))
+$null = $mdLines.Add('')
+$null = $mdLines.Add('### Source catalog')
+$null = $mdLines.Add('')
+if (@($sourceImageCatalog).Count -gt 0) {
+    foreach ($entry in $sourceImageCatalog) {
+        $null = $mdLines.Add(('- Index {0}: `{1}`' -f $entry.Index, $entry.Name))
+    }
+}
+else {
+    $null = $mdLines.Add('- Source catalog unavailable due to earlier failure.')
+}
 $null = $mdLines.Add('')
 $null = $mdLines.Add('## Exported disposable WIM')
+$null = $mdLines.Add('')
+$null = $mdLines.Add(('- Export verified (index 1 / exact Windows 11 Pro): {0}' -f $exportVerified))
 $null = $mdLines.Add('')
 if ($exportMeta) {
     foreach ($img in $exportMeta) {
@@ -513,8 +548,9 @@ else {
 $null = $mdLines.Add('')
 $null = $mdLines.Add('## Compatibility findings')
 $null = $mdLines.Add('')
-$null = $mdLines.Add('- DISM can export source index 6 into a disposable single-index WIM under C:\XboxOS\Work.')
-$null = $mdLines.Add('- Exported image index is 1 and name contains Pro, suitable as a writable-servicing candidate after this read-only validation.')
+$null = $mdLines.Add('- Source Windows 11 Pro index is discovered via DISM /Get-ImageInfo exact-name matching; index 6 is never assumed.')
+$null = $mdLines.Add('- DISM can export the verified Pro source index into a disposable single-index WIM under C:\XboxOS\Work.')
+$null = $mdLines.Add('- Exported image index is 1 and name exactly matches Windows 11 Pro, suitable as a writable-servicing candidate after this read-only validation.')
 $null = $mdLines.Add('- Read-only mount + Get-Packages / Get-ProvisionedAppxPackages / Get-Features completed as recorded above.')
 $null = $mdLines.Add('- ISO naming must use verified hive/DISM metadata (DisplayVersion / CurrentBuild) rather than assuming 25H2 from filename alone.')
 $null = $mdLines.Add('- Writable servicing should only proceed if cleanup succeeded and no mounts remain.')
@@ -529,34 +565,39 @@ $null = $mdLines.Add('')
 ($mdLines -join $nl) | Set-Content -LiteralPath $reportPath -Encoding UTF8
 
 $json = [ordered]@{
-    generatedUtc     = (Get-Date).ToUniversalTime()
-    success          = $success
-    dismVersion      = $dismVersion
-    dismVersionRaw   = $dismVersionOut
-    sourceIso        = $isoPath
-    sourceIndex      = $sourceIndex
-    sourceIndexName  = $index6Name
-    disposableWim    = $wimPath
-    mountDir         = $mountPathForReport
-    exportMeta       = $exportMeta
-    packageCount     = $packageCount
-    appxCount        = $appxCount
-    featureCount     = $featureCount
-    buildNumber      = $buildNumber
-    displayVersion   = $displayVersion
-    editionId        = $editionId
-    productName      = $productName
-    appxSample       = @($appxSample | Select-Object -First 50)
-    featureSample    = @($featuresSample | Select-Object -First 50)
-    packageSample    = @($packagesSample | Select-Object -First 50)
-    commands         = $commandLog
-    warnings         = @($warnings)
-    errors           = @($errors)
-    cleanupOk        = $cleanupOk
-    noMountsLeft     = $noMountsLeft
-    isoUnchanged     = $isoUnchanged
-    isoSha256Before  = $isoHashBefore
-    isoSha256After   = $isoHashAfter
+    generatedUtc              = (Get-Date).ToUniversalTime()
+    success                   = $success
+    dismVersion               = $dismVersion
+    dismVersionRaw            = $dismVersionOut
+    sourceIso                 = $isoPath
+    expectedEditionName       = $expectedEditionName
+    sourceIndex               = $sourceIndex
+    sourceIndexName           = $sourceIndexName
+    sourceSelectionVerified   = $sourceSelectionVerified
+    sourceImageCatalog        = @($sourceImageCatalog)
+    sourceSelection           = $sourceSelection
+    exportVerified            = $exportVerified
+    disposableWim             = $wimPath
+    mountDir                  = $mountPathForReport
+    exportMeta                = $exportMeta
+    packageCount              = $packageCount
+    appxCount                 = $appxCount
+    featureCount              = $featureCount
+    buildNumber               = $buildNumber
+    displayVersion            = $displayVersion
+    editionId                 = $editionId
+    productName               = $productName
+    appxSample                = @($appxSample | Select-Object -First 50)
+    featureSample             = @($featuresSample | Select-Object -First 50)
+    packageSample             = @($packagesSample | Select-Object -First 50)
+    commands                  = $commandLog
+    warnings                  = @($warnings)
+    errors                    = @($errors)
+    cleanupOk                 = $cleanupOk
+    noMountsLeft              = $noMountsLeft
+    isoUnchanged              = $isoUnchanged
+    isoSha256Before           = $isoHashBefore
+    isoSha256After            = $isoHashAfter
 }
 ($json | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $jsonReportPath -Encoding UTF8
 

@@ -31,6 +31,8 @@
         'Get-XboxOSFileHash'
         'Test-XboxOSWritablePath'
         'Invoke-XboxOSDism'
+        'ConvertFrom-XboxOSDismImageInfoOutput'
+        'Resolve-XboxOSExactImageIndex'
         'Get-XboxOSImageInfo'
         'ConvertTo-XboxOSSafeFileName'
         'Get-XboxOSIsoReleaseTag'

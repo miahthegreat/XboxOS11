@@ -1004,6 +1004,144 @@ function Invoke-XboxOSDism {
     }
 }
 
+function ConvertFrom-XboxOSDismImageInfoOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output
+    )
+
+    $images = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    $sawIndex = $false
+
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+        if ($text -match '^\s*Index\s*:\s*(\d+)\s*$') {
+            if ($current) {
+                if ([string]::IsNullOrWhiteSpace([string]$current.Name)) {
+                    throw 'DISM image metadata could not be reliably parsed: an Index entry is missing a Name.'
+                }
+                $images.Add([pscustomobject]$current) | Out-Null
+            }
+            $current = [ordered]@{
+                Index        = [int]$Matches[1]
+                Name         = $null
+                Description  = $null
+                Size         = $null
+                Architecture = $null
+            }
+            $sawIndex = $true
+            continue
+        }
+
+        if ($current) {
+            if ($text -match '^\s*Name\s*:\s*(.+)$') {
+                $current.Name = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Description\s*:\s*(.+)$') {
+                $current.Description = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Size\s*:\s*(.+)$') {
+                $current.Size = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Architecture\s*:\s*(.+)$') {
+                $current.Architecture = $Matches[1].Trim()
+            }
+        }
+    }
+
+    if ($current) {
+        if ([string]::IsNullOrWhiteSpace([string]$current.Name)) {
+            throw 'DISM image metadata could not be reliably parsed: an Index entry is missing a Name.'
+        }
+        $images.Add([pscustomobject]$current) | Out-Null
+    }
+
+    if (-not $sawIndex) {
+        throw 'DISM image metadata could not be reliably parsed: no Index entries were found.'
+    }
+
+    # Emit images to the pipeline so callers can safely recollect with @().
+    return $images.ToArray()
+}
+
+function Resolve-XboxOSExactImageIndex {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Images,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ExactName
+    )
+
+    $list = @($Images)
+    if ($list.Count -eq 0) {
+        throw "No Windows image indexes were available while resolving '$ExactName'."
+    }
+
+    foreach ($image in $list) {
+        if ($null -eq $image) {
+            throw 'DISM image metadata could not be reliably parsed: a null image entry was encountered.'
+        }
+        if ($null -eq $image.PSObject.Properties['Index'] -or $null -eq $image.Index) {
+            throw 'DISM image metadata could not be reliably parsed: an image entry is missing Index.'
+        }
+        if ($null -eq $image.PSObject.Properties['Name'] -or [string]::IsNullOrWhiteSpace([string]$image.Name)) {
+            throw 'DISM image metadata could not be reliably parsed: an image entry is missing Name.'
+        }
+    }
+
+    $matched = @(
+        $list | Where-Object {
+            [string]::Equals([string]$_.Name.Trim(), $ExactName.Trim(), [System.StringComparison]::OrdinalIgnoreCase)
+        }
+    )
+
+    if ($matched.Count -eq 0) {
+        $available = ($list | ForEach-Object { '{0}:{1}' -f $_.Index, $_.Name }) -join '; '
+        throw ("Exact image name '{0}' was not found among source indexes. Available: {1}" -f $ExactName, $available)
+    }
+
+    if ($matched.Count -gt 1) {
+        $dupes = ($matched | ForEach-Object { '{0}:{1}' -f $_.Index, $_.Name }) -join '; '
+        throw ("Exact image name '{0}' is ambiguous; matched {1} indexes: {2}" -f $ExactName, $matched.Count, $dupes)
+    }
+
+    $selected = $matched[0]
+    $description = $null
+    $size = $null
+    $architecture = $null
+    if ($null -ne $selected.PSObject.Properties['Description']) { $description = $selected.Description }
+    if ($null -ne $selected.PSObject.Properties['Size']) { $size = $selected.Size }
+    if ($null -ne $selected.PSObject.Properties['Architecture']) { $architecture = $selected.Architecture }
+
+    return [pscustomobject]@{
+        Index        = [int]$selected.Index
+        Name         = [string]$selected.Name
+        Description  = $description
+        Size         = $size
+        Architecture = $architecture
+        MatchCount   = 1
+        Available    = @(
+            $list | ForEach-Object {
+                [pscustomobject]@{
+                    Index = [int]$_.Index
+                    Name  = [string]$_.Name
+                }
+            }
+        )
+    }
+}
+
 function Get-XboxOSImageInfo {
     [CmdletBinding()]
     param(
@@ -1022,24 +1160,7 @@ function Get-XboxOSImageInfo {
     }
 
     $result = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Get-ImageInfo', "/ImageFile:$ImagePath")
-    $images = New-Object System.Collections.Generic.List[object]
-    $current = $null
-
-    foreach ($line in $result.Output) {
-        if ($line -match '^\s*Index\s*:\s*(\d+)') {
-            if ($current) { $images.Add([pscustomobject]$current) | Out-Null }
-            $current = [ordered]@{ Index = [int]$Matches[1]; Name = $null; Description = $null; Size = $null; Architecture = $null }
-        }
-        elseif ($current) {
-            if ($line -match '^\s*Name\s*:\s*(.+)$') { $current.Name = $Matches[1].Trim() }
-            elseif ($line -match '^\s*Description\s*:\s*(.+)$') { $current.Description = $Matches[1].Trim() }
-            elseif ($line -match '^\s*Size\s*:\s*(.+)$') { $current.Size = $Matches[1].Trim() }
-            elseif ($line -match '^\s*Architecture\s*:\s*(.+)$') { $current.Architecture = $Matches[1].Trim() }
-        }
-    }
-    if ($current) { $images.Add([pscustomobject]$current) | Out-Null }
-
-    return $images.ToArray()
+    return @(ConvertFrom-XboxOSDismImageInfoOutput -Output @($result.Output))
 }
 
 function Get-XboxOSProtectedAppxPatterns {
