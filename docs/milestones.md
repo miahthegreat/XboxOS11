@@ -17,14 +17,16 @@ Completed:
 
 Baseline documentation: [m1-compatibility-baseline.md](m1-compatibility-baseline.md).
 
-## M2: Design and safety validation (next)
+## M2: Servicing plan engine and safety validation (in progress)
 
-Design the writable servicing engine and approval gates **without** immediately modifying Windows images.
+Deterministic, inventory-aware **plan-only** engine. No writable Windows image servicing.
 
-- Treat AlreadyDisabled features as no-ops; only Enabled unprotected candidates are actionable
-- Preserve ambiguity rejection and protected-component priority
-- Define explicit operator authorization for the first image-mutation attempt
-- Unattended Setup / edition selection design may proceed after the safety model is agreed
+- Contracts: [m2-servicing-plan-contracts.md](m2-servicing-plan-contracts.md)
+- Ordering / recovery: [m2-operation-ordering-and-recovery.md](m2-operation-ordering-and-recovery.md)
+- Implementation notes: [m2-implementation-notes.md](m2-implementation-notes.md)
+- CLI: `scripts/New-ServicingPlan.ps1` (dry-run reports under `C:\XboxOS\Logs`)
+- Statuses include Eligible, AlreadySatisfied, Absent, Protected, Ambiguous, Conflicting, Blocked, NotEvaluated
+- Writable DISM / `/Commit` remain unauthorized pending separate review and merge of this milestone
 
 ## M3: Xbox mode integration
 

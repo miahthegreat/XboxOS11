@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.1.1'
+    ModuleVersion     = '0.2.0'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -64,6 +64,13 @@
         'Test-XboxOSManifestSchema'
         'Clear-XboxOSWorkspace'
         'Invoke-XboxOSMountCleanup'
+        'Get-XboxOSServicingPlanEngineVersion'
+        'New-XboxOSInventorySnapshot'
+        'Import-XboxOSInventoryFromCompatReport'
+        'New-XboxOSServicingPlan'
+        'Save-XboxOSServicingPlanReport'
+        'Get-XboxOSCanonicalPlanPayload'
+        'Get-XboxOSPlanContentHash'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -73,7 +80,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 1: image build foundation.'
+            ReleaseNotes = 'Milestone 2: deterministic servicing plan engine (plan-only).'
         }
     }
 }
