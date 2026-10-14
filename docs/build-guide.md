@@ -14,23 +14,31 @@ XboxOS11 never downloads or redistributes Microsoft Windows binaries.
 
 ## Quick start
 
+Build artifacts default to local (non-cloud) paths:
+
+- `C:\XboxOS\Work`
+- `C:\XboxOS\Logs`
+- `C:\XboxOS\Output`
+
+The Git repository may live under OneDrive, but WIM mounts, logs, and servicing workspaces must not.
+
 ```powershell
 # From an elevated PowerShell session
 cd 'C:\path\to\XboxOS11'
 
 # Validate tools (does not install anything)
-.\scripts\Test-Prerequisites.ps1 -SourceISO 'C:\ISOs\Win11_25H2_English_x64.iso'
+.\scripts\Test-Prerequisites.ps1 -SourceISO 'C:\XboxOS\Sources\Win11.iso'
 
-# Non-destructive rehearsal
+# Non-destructive rehearsal (no ISO mount / no DISM servicing)
 .\scripts\Build-ISO.ps1 `
-  -SourceISO 'C:\ISOs\Win11_25H2_English_x64.iso' `
+  -SourceISO 'C:\XboxOS\Sources\Win11.iso' `
   -Configuration '.\config\build.json' `
   -OutputDirectory 'C:\XboxOS\Output' `
   -DryRun
 
 # Real build
 .\scripts\Build-ISO.ps1 `
-  -SourceISO 'C:\ISOs\Win11_25H2_English_x64.iso' `
+  -SourceISO 'C:\XboxOS\Sources\Win11.iso' `
   -Configuration '.\config\build.json' `
   -OutputDirectory 'C:\XboxOS\Output'
 ```

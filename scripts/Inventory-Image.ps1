@@ -6,7 +6,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [object]$Context,
+    [Alias('Context')]
+    [object]$BuildContext,
 
     [ValidateSet('Before', 'After', 'AdHoc')]
     [string]$Stage = 'AdHoc',
@@ -22,36 +23,48 @@ $modulePath = Join-Path $PSScriptRoot '..\modules\XboxOS.Build\XboxOS.Build.psd1
 Import-Module $modulePath -Force
 
 if (-not $DismPath) { $DismPath = Find-XboxOSDism }
-$mount = $Context.Paths.Mount
+$mount = $BuildContext.Paths.Mount
 
 function Get-DismListedNames {
-    param([string[]]$Output, [string]$Label)
+    param(
+        [AllowEmptyCollection()]
+        [string[]]$Output,
+        [string]$Label
+    )
     $names = New-Object System.Collections.Generic.List[string]
-    foreach ($line in $Output) {
+    foreach ($line in @($Output)) {
         if ($line -match ("^\s*{0}\s*:\s*(.+)$" -f [regex]::Escape($Label))) {
             $names.Add($Matches[1].Trim()) | Out-Null
         }
     }
-    return $names.ToArray()
+    return , [string[]]$names.ToArray()
 }
 
-if ($DryRun) {
+if ($DryRun -or -not $BuildContext.ImageMounted) {
     $inventory = [ordered]@{
-        stage          = $Stage
-        dryRun         = $true
-        mountPath      = $mount
-        edition        = $Context.SourceMeta.Edition
-        architecture   = $Context.Configuration.Raw.target.architecture
-        appxPackages   = @()
-        features       = @()
-        packages       = @()
-        drivers        = @()
-        capabilities   = @()
-        servicingState = 'DryRun'
-        capturedUtc    = (Get-Date).ToUniversalTime()
+        stage                 = $Stage
+        dryRun                = [bool]$DryRun
+        mountPath             = $mount
+        edition               = $(if ($BuildContext.SourceMeta) { $BuildContext.SourceMeta.Edition } else { $null })
+        architecture          = $BuildContext.Configuration.Raw.target.architecture
+        inventoryAvailability = 'Unknown'
+        appxPackages          = $null
+        features              = $null
+        packages              = $null
+        drivers               = $null
+        capabilities          = $null
+        servicingState        = 'NotCaptured'
+        capturedUtc           = (Get-Date).ToUniversalTime()
+        notes                 = 'Dry-run / unmounted image: inventories are unknown, not empty.'
     }
+
+    $BuildContext.AppxInventoryState = 'Unknown'
+    $BuildContext.FeatureInventoryState = 'Unknown'
+    $BuildContext.AppxInventory = $null
+    $BuildContext.FeatureInventory = $null
 }
 else {
+    $null = Assert-XboxOSServicingPathSafety -Path $mount -RepoRoot $BuildContext.Configuration.RepoRoot -Purpose 'image inventory'
     if (-not (Test-Path -LiteralPath $mount)) {
         throw "Mount path not found: $mount"
     }
@@ -86,7 +99,8 @@ else {
     if (Test-Path -LiteralPath $hive) {
         $tempHive = 'HKLM\XboxOSInventory'
         try {
-            reg.exe load $tempHive $hive | Out-Null
+            $regLoad = & reg.exe load $tempHive $hive 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "reg load failed ($LASTEXITCODE): $($regLoad -join ' ')" }
             $cv = Get-ItemProperty -Path 'HKLM:\XboxOSInventory\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop
             $build = [string]$cv.CurrentBuild
             if ($cv.UBR) { $build = "$build.$($cv.UBR)" }
@@ -96,33 +110,42 @@ else {
             Write-XboxOSLog -Level Warning -Message "Registry inventory read failed: $($_.Exception.Message)"
         }
         finally {
-            reg.exe unload $tempHive 2>$null | Out-Null
+            & reg.exe unload $tempHive 2>$null | Out-Null
         }
     }
 
+    $appx = @(Get-DismListedNames -Output $appxOut.Output -Label 'PackageName')
+    $features = @(Get-DismListedNames -Output $featOut.Output -Label 'Feature Name')
+
     $inventory = [ordered]@{
-        stage          = $Stage
-        dryRun         = $false
-        mountPath      = $mount
-        edition        = $edition
-        build          = $build
-        architecture   = $Context.Configuration.Raw.target.architecture
-        appxPackages   = @(Get-DismListedNames -Output $appxOut.Output -Label 'PackageName')
-        features       = @(Get-DismListedNames -Output $featOut.Output -Label 'Feature Name')
-        packages       = @(Get-DismListedNames -Output $pkgOut.Output -Label 'Package Identity')
-        drivers        = @(Get-DismListedNames -Output $drvOut.Output -Label 'Published Name')
-        capabilities   = $(if ($capOut) { @(Get-DismListedNames -Output $capOut.Output -Label 'Capability Identity') } else { @() })
-        servicingState = 'Captured'
-        capturedUtc    = (Get-Date).ToUniversalTime()
+        stage                 = $Stage
+        dryRun                = $false
+        mountPath             = $mount
+        edition               = $edition
+        build                 = $build
+        architecture          = $BuildContext.Configuration.Raw.target.architecture
+        inventoryAvailability = 'Available'
+        appxPackages          = $appx
+        features              = $features
+        packages              = @(Get-DismListedNames -Output $pkgOut.Output -Label 'Package Identity')
+        drivers               = @(Get-DismListedNames -Output $drvOut.Output -Label 'Published Name')
+        capabilities          = $(if ($capOut) { @(Get-DismListedNames -Output $capOut.Output -Label 'Capability Identity') } else { @() })
+        servicingState        = 'Captured'
+        capturedUtc           = (Get-Date).ToUniversalTime()
     }
+
+    $BuildContext.AppxInventory = $appx
+    $BuildContext.FeatureInventory = $features
+    $BuildContext.AppxInventoryState = if ($appx.Count -eq 0) { 'Empty' } else { 'Available' }
+    $BuildContext.FeatureInventoryState = if ($features.Count -eq 0) { 'Empty' } else { 'Available' }
 }
 
 $fileName = "Inventory-$Stage.json"
-$outPath = Join-Path $Context.Paths.Reports $fileName
+$outPath = Join-Path $BuildContext.Paths.Reports $fileName
 ($inventory | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $outPath -Encoding UTF8
 
-if ($Stage -eq 'Before') { $Context.InventoryBefore = $outPath }
-elseif ($Stage -eq 'After') { $Context.InventoryAfter = $outPath }
+if ($Stage -eq 'Before') { $BuildContext.InventoryBefore = $outPath }
+elseif ($Stage -eq 'After') { $BuildContext.InventoryAfter = $outPath }
 
-Write-XboxOSLog -Level Information -Message "Inventory written: $outPath"
+Write-XboxOSLog -Level Information -Message "Inventory written: $outPath (availability=$($inventory.inventoryAvailability))"
 return [pscustomobject]$inventory

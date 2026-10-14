@@ -34,6 +34,93 @@ function Get-XboxOSRepoRoot {
     }
 }
 
+function Get-XboxOSCanonicalPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        throw 'Path cannot be empty.'
+    }
+
+    $full = [System.IO.Path]::GetFullPath($Path)
+    return $full.TrimEnd('\', '/')
+}
+
+function Test-XboxOSPathEqualsOrUnder {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$ParentPath
+    )
+
+    $child = Get-XboxOSCanonicalPath -Path $Path
+    $parent = Get-XboxOSCanonicalPath -Path $ParentPath
+
+    if ($child.Equals($parent, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    $prefix = $parent + [System.IO.Path]::DirectorySeparatorChar
+    return $child.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-XboxOSCloudSynchronizedPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $canonical = Get-XboxOSCanonicalPath -Path $Path
+    $cloudRoots = New-Object System.Collections.Generic.List[string]
+
+    foreach ($envName in @('OneDrive', 'OneDriveConsumer', 'OneDriveCommercial')) {
+        $value = [Environment]::GetEnvironmentVariable($envName)
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            try {
+                $cloudRoots.Add((Get-XboxOSCanonicalPath -Path $value)) | Out-Null
+            }
+            catch {
+                Write-Verbose "Ignoring invalid cloud root from $envName : $($_.Exception.Message)"
+            }
+        }
+    }
+
+    foreach ($root in ($cloudRoots | Select-Object -Unique)) {
+        if (Test-XboxOSPathEqualsOrUnder -Path $canonical -ParentPath $root) {
+            return $true
+        }
+    }
+
+    # Path-segment heuristics for common sync roots when env vars are absent.
+    $segments = $canonical -split '[\\/]'
+    $cloudSegmentNames = @(
+        'OneDrive'
+        'Dropbox'
+        'Google Drive'
+        'GoogleDrive'
+        'iCloudDrive'
+        'Box'
+        'Box Sync'
+    )
+    foreach ($segment in $segments) {
+        foreach ($name in $cloudSegmentNames) {
+            if ($segment.Equals($name, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $segment.StartsWith('OneDrive - ', [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
 function Resolve-XboxOSPath {
     [CmdletBinding()]
     param(
@@ -47,11 +134,12 @@ function Resolve-XboxOSPath {
         $BasePath = Get-XboxOSRepoRoot
     }
 
+    # Absolute paths are independent of the process working directory.
     if ([System.IO.Path]::IsPathRooted($Path)) {
-        return [System.IO.Path]::GetFullPath($Path)
+        return Get-XboxOSCanonicalPath -Path $Path
     }
 
-    return [System.IO.Path]::GetFullPath((Join-Path $BasePath $Path))
+    return Get-XboxOSCanonicalPath -Path (Join-Path $BasePath $Path)
 }
 
 function New-XboxOSDirectory {
@@ -476,33 +564,151 @@ function Assert-XboxOSBuildSafety {
         [string]$WorkspaceRoot,
 
         [Parameter(Mandatory)]
-        [string]$RepoRoot
+        [string]$RepoRoot,
+
+        [string[]]$AdditionalPaths = @(),
+
+        [switch]$AllowCloudSynchronizedPaths,
+
+        [switch]$AllowRepositoryPaths
     )
 
-    $workspaceFull = [System.IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
-    $repoFull = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\')
-    $systemRoot = [System.IO.Path]::GetFullPath($env:SystemRoot).TrimEnd('\')
+    $repoFull = Get-XboxOSCanonicalPath -Path $RepoRoot
+    $systemRoot = Get-XboxOSCanonicalPath -Path $env:SystemRoot
+    $pathsToValidate = @($WorkspaceRoot) + @($AdditionalPaths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
-    if ($workspaceFull -eq $systemRoot -or $workspaceFull.StartsWith("$systemRoot\", [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to use Windows system directory as workspace: $workspaceFull"
-    }
+    $exactForbidden = @(
+        (Get-XboxOSCanonicalPath -Path ($env:SystemDrive + '\'))
+        (Get-XboxOSCanonicalPath -Path (Join-Path $env:SystemDrive 'Windows'))
+        (Get-XboxOSCanonicalPath -Path (Join-Path $env:SystemDrive 'Program Files'))
+        (Get-XboxOSCanonicalPath -Path (Join-Path $env:SystemDrive 'Program Files (x86)'))
+        (Get-XboxOSCanonicalPath -Path (Join-Path $env:SystemDrive 'Users'))
+    )
 
-    $forbidden = @(
-        $env:SystemDrive + '\'
-        Join-Path $env:SystemDrive 'Windows'
-        Join-Path $env:SystemDrive 'Program Files'
-        Join-Path $env:SystemDrive 'Program Files (x86)'
-        Join-Path $env:SystemDrive 'Users'
-    ) | ForEach-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\') }
+    foreach ($candidate in $pathsToValidate) {
+        $full = Get-XboxOSCanonicalPath -Path $candidate
 
-    foreach ($path in $forbidden) {
-        if ($workspaceFull -eq $path) {
-            throw "Refusing unsafe workspace root: $workspaceFull"
+        if (Test-XboxOSPathEqualsOrUnder -Path $full -ParentPath $systemRoot) {
+            throw "Refusing to use Windows system directory for build artifacts: $full"
+        }
+
+        foreach ($forbidden in $exactForbidden) {
+            if ($full.Equals($forbidden, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Refusing unsafe build path root: $full"
+            }
+        }
+
+        if (-not $AllowRepositoryPaths -and (Test-XboxOSPathEqualsOrUnder -Path $full -ParentPath $repoFull)) {
+            throw "Refusing build path inside the Git repository ('$repoFull'): $full. Use an external workspace such as C:\XboxOS\Work."
+        }
+
+        if (-not $AllowCloudSynchronizedPaths -and (Test-XboxOSCloudSynchronizedPath -Path $full)) {
+            throw "Refusing build path inside a cloud-synchronized folder (OneDrive/Dropbox/etc.): $full. Use a local non-synced path such as C:\XboxOS\Work."
         }
     }
 
-    if ($workspaceFull -eq $repoFull) {
-        throw 'Workspace root must not be the repository root. Use artifacts/workspace or another isolated directory.'
+    return $true
+}
+
+function Assert-XboxOSServicingPathSafety {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$RepoRoot,
+
+        [string]$Purpose = 'image servicing'
+    )
+
+    $full = Get-XboxOSCanonicalPath -Path $Path
+    if (Test-XboxOSPathEqualsOrUnder -Path $full -ParentPath $RepoRoot) {
+        throw "Refusing $Purpose inside the Git repository: $full"
+    }
+    if (Test-XboxOSCloudSynchronizedPath -Path $full) {
+        throw "Refusing $Purpose inside a cloud-synchronized folder: $full"
+    }
+
+    return $true
+}
+
+function Get-XboxOSInventoryAvailability {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Unknown', 'Empty', 'Available')]
+        [string]$State,
+
+        [AllowEmptyCollection()]
+        [string[]]$Items = @()
+    )
+
+    switch ($State) {
+        'Unknown' {
+            return [pscustomobject]@{
+                State       = 'Unknown'
+                Items       = @()
+                IsKnown     = $false
+                CanEvaluate = $false
+            }
+        }
+        'Empty' {
+            return [pscustomobject]@{
+                State       = 'Empty'
+                Items       = @()
+                IsKnown     = $true
+                CanEvaluate = $true
+            }
+        }
+        default {
+            return [pscustomobject]@{
+                State       = 'Available'
+                Items       = @($Items)
+                IsKnown     = $true
+                CanEvaluate = $true
+            }
+        }
+    }
+}
+
+function Assert-XboxOSPhaseOutcome {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowNull()]
+        [object]$Result,
+
+        [Parameter(Mandatory)]
+        [string]$PhaseName
+    )
+
+    if ($null -eq $Result) {
+        return $true
+    }
+
+    $failed = @()
+    if ($Result.PSObject.Properties.Name -contains 'Results' -and $null -ne $Result.Results) {
+        $failed = @($Result.Results | Where-Object { $_.Status -eq 'Failed' })
+    }
+    elseif ($Result -is [System.Collections.IEnumerable] -and -not ($Result -is [string])) {
+        $failed = @($Result | Where-Object { $_ -and ($_.PSObject.Properties.Name -contains 'Status') -and $_.Status -eq 'Failed' })
+    }
+
+    if ($failed.Count -gt 0) {
+        $details = ($failed | ForEach-Object {
+                $target = if ($_.PSObject.Properties.Name -contains 'Package' -and $_.Package) { $_.Package }
+                elseif ($_.PSObject.Properties.Name -contains 'Feature' -and $_.Feature) { $_.Feature }
+                elseif ($_.PSObject.Properties.Name -contains 'Candidate' -and $_.Candidate) { $_.Candidate }
+                else { 'item' }
+                "$target => $($_.Message)"
+            }) -join '; '
+        throw "Phase '$PhaseName' reported $($failed.Count) failed operation(s): $details"
+    }
+
+    if ($Result.PSObject.Properties.Name -contains 'Success' -and $Result.Success -eq $false) {
+        $message = if ($Result.PSObject.Properties.Name -contains 'Message') { $Result.Message } else { 'Success=false' }
+        throw "Phase '$PhaseName' reported failure: $message"
     }
 
     return $true
@@ -547,16 +753,25 @@ function New-XboxOSBuildContext {
         $outputRoot = Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.output) -BasePath $config.RepoRoot
     }
 
-    $null = Assert-XboxOSBuildSafety -WorkspaceRoot $workspaceRoot -RepoRoot $config.RepoRoot
+    $logsRoot = Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.logs) -BasePath $config.RepoRoot
+    $cacheRoot = Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.cache) -BasePath $config.RepoRoot
+    $tempRoot = Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.temp) -BasePath $config.RepoRoot
+
+    $null = Assert-XboxOSBuildSafety -WorkspaceRoot $workspaceRoot -RepoRoot $config.RepoRoot -AdditionalPaths @(
+        $logsRoot
+        $cacheRoot
+        $tempRoot
+        $outputRoot
+    )
 
     $paths = [ordered]@{
         Workspace      = New-XboxOSDirectory -Path (Join-Path $workspaceRoot $buildId)
         SourceCopy     = $null
         Mount          = $null
         WorkingWim     = $null
-        Logs           = New-XboxOSDirectory -Path (Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.logs) -BasePath $config.RepoRoot)
-        Cache          = New-XboxOSDirectory -Path (Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.cache) -BasePath $config.RepoRoot)
-        Temp           = New-XboxOSDirectory -Path (Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.temp) -BasePath $config.RepoRoot)
+        Logs           = New-XboxOSDirectory -Path $logsRoot
+        Cache          = New-XboxOSDirectory -Path $cacheRoot
+        Temp           = New-XboxOSDirectory -Path $tempRoot
         Output         = New-XboxOSDirectory -Path $outputRoot
         Reports        = $null
     }
@@ -566,25 +781,33 @@ function New-XboxOSBuildContext {
     $paths.WorkingWim = Join-Path $paths.Workspace 'install.wim'
     $paths.Reports = New-XboxOSDirectory -Path (Join-Path $paths.Workspace 'reports')
 
+    $null = Assert-XboxOSServicingPathSafety -Path $paths.Mount -RepoRoot $config.RepoRoot -Purpose 'WIM mount directory'
+    $null = Assert-XboxOSServicingPathSafety -Path $paths.WorkingWim -RepoRoot $config.RepoRoot -Purpose 'working WIM path'
+
     $logFile = New-XboxOSLogger -LogDirectory $paths.Logs -BuildId $buildId -Level ([string]$config.Raw.logging.level)
 
     $context = [pscustomobject]@{
-        BuildId           = $buildId
-        DryRun            = [bool]$DryRun
-        Configuration     = $config
-        SourceISO         = (Resolve-XboxOSPath -Path $SourceISO)
-        Paths             = [pscustomobject]$paths
-        LogFile           = $logFile
-        SourceMeta        = $null
-        MountedImagePath  = $null
-        MountedIsoPath    = $null
-        InventoryBefore   = $null
-        InventoryAfter    = $null
-        Validation        = $null
-        PhaseResults      = New-Object System.Collections.ArrayList
-        StartedUtc        = (Get-Date).ToUniversalTime()
-        CompletedUtc      = $null
-        Success           = $false
+        BuildId               = $buildId
+        DryRun                = [bool]$DryRun
+        Configuration         = $config
+        SourceISO             = (Resolve-XboxOSPath -Path $SourceISO)
+        Paths                 = [pscustomobject]$paths
+        LogFile               = $logFile
+        SourceMeta            = $null
+        MountedImagePath      = $null
+        ImageMounted          = $false
+        MountedIsoPath        = $null
+        InventoryBefore       = $null
+        InventoryAfter        = $null
+        AppxInventoryState    = 'Unknown'
+        FeatureInventoryState = 'Unknown'
+        AppxInventory         = $null
+        FeatureInventory      = $null
+        Validation            = $null
+        PhaseResults          = New-Object System.Collections.ArrayList
+        StartedUtc            = (Get-Date).ToUniversalTime()
+        CompletedUtc          = $null
+        Success               = $false
     }
 
     Write-XboxOSLog -Level Information -Message "Build context created" -Data @{
@@ -678,6 +901,7 @@ function Invoke-XboxOSDism {
         }
     }
 
+    # Capture native exit code immediately; never treat a missing/nonzero code as success.
     $output = & $DismPath @ArgumentList 2>&1
     $exitCode = $LASTEXITCODE
     $text = @($output | ForEach-Object { "$_" })
@@ -686,12 +910,16 @@ function Invoke-XboxOSDism {
         Write-XboxOSLog -Level Debug -Message $line
     }
 
-    if ($exitCode -ne 0) {
+    if ($null -eq $exitCode) {
+        throw "DISM did not return an exit code. Command: $display`n$($text -join "`n")"
+    }
+
+    if ([int]$exitCode -ne 0) {
         throw "DISM failed with exit code $exitCode. Command: $display`n$($text -join "`n")"
     }
 
     return [pscustomobject]@{
-        ExitCode = $exitCode
+        ExitCode = [int]$exitCode
         Output   = $text
         Command  = $display
         DryRun   = $false
@@ -769,9 +997,11 @@ function Resolve-XboxOSPackageMatches {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]]$Patterns,
 
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]]$AvailablePackages,
 
         [switch]$RejectAmbiguous
@@ -800,9 +1030,11 @@ function Resolve-XboxOSFeatureMatches {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]]$FeatureNames,
 
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]]$AvailableFeatures
     )
 
@@ -866,7 +1098,7 @@ function Find-XboxOSDriverPackages {
     )
 
     if (-not (Test-Path -LiteralPath $DriverDirectory)) {
-        return @()
+        return [object[]]@()
     }
 
     $recurse = $Recursive -or ($DriversManifest -and $DriversManifest.recursive)
@@ -904,7 +1136,7 @@ function Find-XboxOSDriverPackages {
         }) | Out-Null
     }
 
-    return $packages.ToArray()
+    return [object[]]$packages.ToArray()
 }
 
 function Find-XboxOSUpdatePackages {
@@ -915,11 +1147,11 @@ function Find-XboxOSUpdatePackages {
     )
 
     if (-not (Test-Path -LiteralPath $UpdateDirectory)) {
-        return @()
+        return [object[]]@()
     }
 
-    $files = Get-ChildItem -LiteralPath $UpdateDirectory -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in @('.cab', '.msu') }
+    $files = @(Get-ChildItem -LiteralPath $UpdateDirectory -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in @('.cab', '.msu') })
 
     $packages = foreach ($file in $files) {
         $kind = if ($file.Name -match 'SSU|ServicingStack') { 'ServicingStack'
@@ -937,15 +1169,21 @@ function Find-XboxOSUpdatePackages {
         }
     }
 
-    return @($packages)
+    return [object[]]@($packages)
 }
 
 function Get-XboxOSOrderedUpdatePackages {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowNull()]
         [object[]]$Packages
     )
+
+    if ($null -eq $Packages -or @($Packages).Count -eq 0) {
+        return [object[]]@()
+    }
 
     $rank = @{
         ServicingStack = 0
@@ -993,6 +1231,7 @@ function Clear-XboxOSWorkspace {
         return
     }
 
+    # Cleanup may target an already-validated external workspace; still reject repo/cloud paths.
     Assert-XboxOSBuildSafety -WorkspaceRoot $WorkspacePath -RepoRoot (Get-XboxOSRepoRoot)
 
     if ($PreserveReports) {
@@ -1023,16 +1262,16 @@ function Invoke-XboxOSMountCleanup {
         return
     }
 
-    $args = @('/Unmount-Image', "/MountDir:$MountPath")
+    $dismArgs = @('/Unmount-Image', "/MountDir:$MountPath")
     if ($Discard) {
-        $args += '/Discard'
+        $dismArgs += '/Discard'
     }
     else {
-        $args += '/Commit'
+        $dismArgs += '/Commit'
     }
 
     try {
-        Invoke-XboxOSDism -DismPath $DismPath -ArgumentList $args -DryRun:$DryRun | Out-Null
+        Invoke-XboxOSDism -DismPath $DismPath -ArgumentList $dismArgs -DryRun:$DryRun | Out-Null
     }
     catch {
         Write-XboxOSLog -Level Warning -Message "Mount cleanup failed: $($_.Exception.Message)"

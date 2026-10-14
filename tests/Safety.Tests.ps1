@@ -46,9 +46,13 @@ Describe 'XboxOS11 safety controls' {
         } | Should -Throw
     }
 
-    It 'accepts isolated artifact workspace' {
-        $ws = Join-Path $script:RepoRoot 'artifacts\workspace\test-safety'
-        Assert-XboxOSBuildSafety -WorkspaceRoot $ws -RepoRoot $script:RepoRoot | Should -BeTrue
+    It 'rejects repository artifact workspace and accepts external XboxOS workspace' {
+        $repoWs = Join-Path $script:RepoRoot 'artifacts\workspace\test-safety'
+        {
+            Assert-XboxOSBuildSafety -WorkspaceRoot $repoWs -RepoRoot $script:RepoRoot
+        } | Should -Throw -ExpectedMessage '*Git repository*'
+
+        Assert-XboxOSBuildSafety -WorkspaceRoot 'C:\XboxOS\Work' -RepoRoot $script:RepoRoot | Should -BeTrue
     }
 
     It 'rejects invalid driver INF fixtures' {

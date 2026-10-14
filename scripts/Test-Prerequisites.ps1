@@ -80,6 +80,11 @@ Add-Check -Name 'Oscdimg' -Passed ([bool]$adk.Oscdimg) `
     -Message $(if ($adk.Oscdimg) { "oscdimg found: $($adk.Oscdimg)" } else { 'oscdimg.exe was not found under ADK Deployment Tools.' }) `
     -Remediation 'Install Windows ADK with the Deployment Tools feature enabled. Oscdimg is required to produce bootable ISOs.'
 
+$logsPath = Resolve-XboxOSPath -Path ([string]$config.workspace.logs) -BasePath $configWrapper.RepoRoot
+$cachePath = Resolve-XboxOSPath -Path ([string]$config.workspace.cache) -BasePath $configWrapper.RepoRoot
+$tempPath = Resolve-XboxOSPath -Path ([string]$config.workspace.temp) -BasePath $configWrapper.RepoRoot
+$outputPath = Resolve-XboxOSPath -Path ([string]$config.workspace.output) -BasePath $configWrapper.RepoRoot
+
 # Disk space
 $workspaceParent = Split-Path -Parent $Workspace
 if (-not (Test-Path -LiteralPath $workspaceParent)) {
@@ -99,12 +104,18 @@ Add-Check -Name 'WritableWorkspace' -Passed $writable `
     -Remediation 'Choose a writable directory and ensure NTFS permissions allow create/write/delete.'
 
 try {
-    Assert-XboxOSBuildSafety -WorkspaceRoot $Workspace -RepoRoot $configWrapper.RepoRoot | Out-Null
-    Add-Check -Name 'WorkspaceSafety' -Passed $true -Message "Workspace isolation OK: $Workspace"
+    Assert-XboxOSBuildSafety -WorkspaceRoot $Workspace -RepoRoot $configWrapper.RepoRoot -AdditionalPaths @(
+        $logsPath
+        $cachePath
+        $tempPath
+        $outputPath
+    ) | Out-Null
+    Add-Check -Name 'WorkspaceSafety' -Passed $true `
+        -Message "Workspace isolation OK: Work=$Workspace; Logs=$logsPath; Output=$outputPath"
 }
 catch {
     Add-Check -Name 'WorkspaceSafety' -Passed $false -Message $_.Exception.Message `
-        -Remediation 'Point workspace at ./artifacts/workspace or another isolated non-system directory.'
+        -Remediation 'Set workspace.root/logs/temp/output to local non-synced paths such as C:\XboxOS\Work, C:\XboxOS\Logs, and C:\XboxOS\Output.'
 }
 
 # Architecture
@@ -127,13 +138,17 @@ else {
         -Message 'Source ISO not supplied to prerequisite check (skipped). Provide -SourceISO for a full validation.'
 }
 
-# Filesystem permissions probe on logs/output
-foreach ($name in @('logs', 'output', 'temp')) {
-    $path = Resolve-XboxOSPath -Path ([string]$config.workspace.$name) -BasePath $configWrapper.RepoRoot
-    $ok = Test-XboxOSWritablePath -Path $path
-    Add-Check -Name ("Writable_$name") -Passed $ok `
-        -Message $(if ($ok) { "$name path writable: $path" } else { "$name path not writable: $path" }) `
-        -Remediation "Ensure write permission for $path"
+# Filesystem permissions probe on logs/output/temp/cache
+foreach ($pair in @(
+        @{ Name = 'logs'; Path = $logsPath }
+        @{ Name = 'output'; Path = $outputPath }
+        @{ Name = 'temp'; Path = $tempPath }
+        @{ Name = 'cache'; Path = $cachePath }
+    )) {
+    $ok = Test-XboxOSWritablePath -Path $pair.Path
+    Add-Check -Name ("Writable_$($pair.Name)") -Passed $ok `
+        -Message $(if ($ok) { "$($pair.Name) path writable: $($pair.Path)" } else { "$($pair.Name) path not writable: $($pair.Path)" }) `
+        -Remediation "Ensure write permission for $($pair.Path)"
 }
 
 $failed = @($checks | Where-Object { -not $_.Passed })

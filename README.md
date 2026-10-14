@@ -87,9 +87,11 @@ Real ISO build:
 
 ## Safety considerations
 
-- Builds use an isolated workspace under `artifacts/workspace/`.
+- Builds use an isolated external workspace under `C:\XboxOS\Work` (not the Git repo, not OneDrive).
+- Logs go to `C:\XboxOS\Logs`; ISO output to `C:\XboxOS\Output`.
 - Failed modification phases **discard** mounted image changes (no commit-on-failure).
-- Ambiguous AppX matches are rejected.
+- Dry-run does not fabricate empty inventories; inventory-dependent actions are `NotEvaluated` until a real mount exists.
+- Ambiguous AppX matches are rejected and fail the phase.
 - Store / Xbox / gaming / security dependencies are protected.
 - TPM, Secure Boot, Defender, and VBS are not disabled for benchmarks.
 - A smaller ISO does **not** mean better gaming performance.

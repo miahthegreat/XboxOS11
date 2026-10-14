@@ -1,7 +1,7 @@
 {
   "$schema": "./schemas/build.schema.json",
   "project": "XboxOS11",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Gaming-focused Windows 11 image customization for Xbox Full Screen Experience",
   "target": {
     "windowsVersion": "11",
@@ -19,11 +19,11 @@
     "notes": "Chipset and Radeon Adrenalin software should be installed after Windows Setup; do not inject the full Adrenalin installer into the offline image."
   },
   "workspace": {
-    "root": "./artifacts/workspace",
-    "cache": "./artifacts/cache",
-    "logs": "./artifacts/logs",
-    "temp": "./artifacts/temp",
-    "output": "./artifacts/output",
+    "root": "C:\\XboxOS\\Work",
+    "cache": "C:\\XboxOS\\Work\\cache",
+    "logs": "C:\\XboxOS\\Logs",
+    "temp": "C:\\XboxOS\\Work\\temp",
+    "output": "C:\\XboxOS\\Output",
     "minimumFreeGb": 40
   },
   "source": {
@@ -55,8 +55,8 @@
     "servicesManifest": "./config/services.json",
     "driversManifest": "./config/drivers.json",
     "compatibilityManifest": "./config/compatibility.json",
-    "driverDirectory": "./drivers",
-    "updateDirectory": "./updates"
+    "driverDirectory": "C:\\XboxOS\\Drivers",
+    "updateDirectory": "C:\\XboxOS\\Updates"
   },
   "safety": {
     "requireAdministrator": true,
@@ -64,7 +64,9 @@
     "commitOnFailure": false,
     "dryRunDefault": false,
     "rejectAmbiguousPackageMatches": true,
-    "neverRemoveProtectedPackages": true
+    "neverRemoveProtectedPackages": true,
+    "rejectCloudSynchronizedBuildPaths": true,
+    "rejectRepositoryBuildPaths": true
   },
   "logging": {
     "level": "Information",

@@ -82,17 +82,27 @@ Describe 'XboxOS11 build helpers' {
         }
     }
 
-    It 'Remove-Apps dry logic plans weather removal and never stages protected packages' {
+    It 'Remove-Apps dry logic plans weather removal and never stages protected packages when inventory is known' {
         $iso = Join-Path $script:RepoRoot 'tests\Fixtures\missing-source.iso'
         $ctx = New-XboxOSBuildContext -ConfigurationPath $script:ConfigPath -SourceISO $iso -DryRun
         $packages = Get-Content (Join-Path $script:RepoRoot 'tests\Fixtures\sample-appx-packages.txt')
-        $result = & (Join-Path $script:RepoRoot 'scripts\Remove-Apps.ps1') -BuildContext $ctx -AvailablePackages $packages -DryRun
+        $result = & (Join-Path $script:RepoRoot 'scripts\Remove-Apps.ps1') -BuildContext $ctx -AvailablePackages $packages -InventoryState Available -DryRun
         $planned = @($result.Results | Where-Object { $_.Status -eq 'DryRun' } | ForEach-Object { $_.Package })
         ($planned | Where-Object { $_ -like 'Microsoft.BingWeather*' }).Count | Should -BeGreaterThan 0
         ($planned | Where-Object { $_ -like 'Microsoft.WindowsStore*' }).Count | Should -Be 0
         ($planned | Where-Object { $_ -like 'Microsoft.Xbox*' }).Count | Should -Be 0
         ($planned | Where-Object { $_ -like 'Microsoft.GamingApp*' }).Count | Should -Be 0
         (@($result.Results | ForEach-Object { $_.Status }) -contains 'Removed') | Should -BeFalse
+        $result.Success | Should -BeTrue
+    }
+
+    It 'build context stores logs and workspace under C:\XboxOS' {
+        $iso = Join-Path $script:RepoRoot 'tests\Fixtures\missing-source.iso'
+        $ctx = New-XboxOSBuildContext -ConfigurationPath $script:ConfigPath -SourceISO $iso -OutputDirectory 'C:\XboxOS\Output' -DryRun
+        $ctx.Paths.Workspace.StartsWith('C:\XboxOS\Work', [System.StringComparison]::OrdinalIgnoreCase) | Should -BeTrue
+        $ctx.Paths.Logs.StartsWith('C:\XboxOS\Logs', [System.StringComparison]::OrdinalIgnoreCase) | Should -BeTrue
+        $ctx.Paths.Output.StartsWith('C:\XboxOS\Output', [System.StringComparison]::OrdinalIgnoreCase) | Should -BeTrue
+        Test-XboxOSPathEqualsOrUnder -Path $ctx.Paths.Workspace -ParentPath $script:RepoRoot | Should -BeFalse
     }
 
     It 'logs structured JSON lines' {

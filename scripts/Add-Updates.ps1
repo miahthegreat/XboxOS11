@@ -29,11 +29,11 @@ if (-not $UpdateDirectory) {
 $UpdateDirectory = Resolve-XboxOSPath -Path $UpdateDirectory -BasePath $config.RepoRoot
 $mount = $Context.Paths.Mount
 
-$found = Find-XboxOSUpdatePackages -UpdateDirectory $UpdateDirectory
-$ordered = Get-XboxOSOrderedUpdatePackages -Packages $found
+$found = @(Find-XboxOSUpdatePackages -UpdateDirectory $UpdateDirectory)
+$ordered = @(Get-XboxOSOrderedUpdatePackages -Packages $found)
 $results = New-Object System.Collections.Generic.List[object]
 
-if ($ordered.Count -eq 0) {
+if (@($ordered).Count -eq 0) {
     Write-XboxOSLog -Level Information -Message "No .cab/.msu updates found under $UpdateDirectory"
 }
 
@@ -95,7 +95,10 @@ $payload = [ordered]@{
 }
 ($payload | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $reportPath -Encoding UTF8
 
-return [pscustomobject]@{
+$outcome = [pscustomobject]@{
     Results = $results
     Report  = $reportPath
+    Success = -not (@($results | Where-Object Status -eq 'Failed').Count -gt 0)
 }
+Assert-XboxOSPhaseOutcome -Result $outcome -PhaseName 'AddUpdates' | Out-Null
+return $outcome
