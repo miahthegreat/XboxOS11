@@ -1004,6 +1004,108 @@ function Invoke-XboxOSDism {
     }
 }
 
+function Get-XboxOSDismVersionFromOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output,
+
+        [Parameter(Mandatory)]
+        [int]$ExitCode
+    )
+
+    if ($ExitCode -ne 0) {
+        throw ("DISM version probe failed with exit code {0}." -f $ExitCode)
+    }
+
+    $versions = New-Object System.Collections.Generic.List[string]
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ($text -match '^\s*Version\s*:\s*(\d+(?:\.\d+)+)\s*$') {
+            $versions.Add($Matches[1]) | Out-Null
+        }
+    }
+
+    if ($versions.Count -eq 0) {
+        throw 'DISM version could not be reliably determined from command output.'
+    }
+
+    $unique = @($versions | Select-Object -Unique)
+    if ($unique.Count -gt 1) {
+        throw ("DISM version output is ambiguous; found multiple Version values: {0}" -f ($unique -join ', '))
+    }
+
+    return [string]$unique[0]
+}
+
+function Write-XboxOSCompatTestStatusMarker {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$StatusPath,
+
+        [Parameter(Mandatory)]
+        [bool]$Success,
+
+        [Parameter(Mandatory)]
+        [int]$ExitCode,
+
+        [hashtable]$Fields
+    )
+
+    $directory = Split-Path -Parent $StatusPath
+    if (-not [string]::IsNullOrWhiteSpace($directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($StatusPath)
+    $parent = if ([string]::IsNullOrWhiteSpace($directory)) { (Get-Location).Path } else { $directory }
+    $succeededPath = Join-Path $parent ($baseName + '.succeeded')
+    $failedPath = Join-Path $parent ($baseName + '.failed')
+    $legacyDonePath = Join-Path $parent ($baseName + '.done')
+
+    # Never leave a success-implying .done marker from prior runs of this status stem.
+    if (Test-Path -LiteralPath $legacyDonePath) {
+        Remove-Item -LiteralPath $legacyDonePath -Force
+    }
+    if (Test-Path -LiteralPath $succeededPath) {
+        Remove-Item -LiteralPath $succeededPath -Force
+    }
+    if (Test-Path -LiteralPath $failedPath) {
+        Remove-Item -LiteralPath $failedPath -Force
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $null = $lines.Add(('success={0}' -f $(if ($Success) { 'True' } else { 'False' })))
+    $null = $lines.Add(('exitCode={0}' -f $ExitCode))
+    $null = $lines.Add(('outcome={0}' -f $(if ($Success) { 'Succeeded' } else { 'Failed' })))
+    if ($Fields) {
+        foreach ($key in ($Fields.Keys | Sort-Object)) {
+            $null = $lines.Add(('{0}={1}' -f $key, $Fields[$key]))
+        }
+    }
+
+    ($lines -join [Environment]::NewLine) | Set-Content -LiteralPath $StatusPath -Encoding UTF8
+
+    $outcomePath = if ($Success) { $succeededPath } else { $failedPath }
+    @(
+        ('success={0}' -f $(if ($Success) { 'True' } else { 'False' }))
+        ('exitCode={0}' -f $ExitCode)
+        ('statusFile={0}' -f $StatusPath)
+    ) -join [Environment]::NewLine | Set-Content -LiteralPath $outcomePath -Encoding UTF8
+
+    return [pscustomobject]@{
+        StatusPath     = $StatusPath
+        OutcomePath    = $outcomePath
+        Success        = $Success
+        ExitCode       = $ExitCode
+        LegacyDonePath = $legacyDonePath
+    }
+}
+
 function ConvertFrom-XboxOSDismImageInfoOutput {
     [CmdletBinding()]
     param(

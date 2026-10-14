@@ -21,20 +21,21 @@ if (-not (Test-Path -LiteralPath $modulePath)) {
 }
 Import-Module $modulePath -Force
 
-$transcriptPath = 'C:\XboxOS\Logs\DISM-Compatibility-20261014.transcript.log'
-$sentinelPath = 'C:\XboxOS\Logs\DISM-Compatibility-20261014.done'
+# Use a distinct run id so prior failed evidence under *-20261014.* is preserved.
+$compatRunId = '20261014-2'
+$transcriptPath = "C:\XboxOS\Logs\DISM-Compatibility-$compatRunId.transcript.log"
+$statusPath = "C:\XboxOS\Logs\DISM-Compatibility-$compatRunId.status"
 New-Item -ItemType Directory -Path 'C:\XboxOS\Logs' -Force | Out-Null
-if (Test-Path -LiteralPath $sentinelPath) { Remove-Item -LiteralPath $sentinelPath -Force }
 try { Stop-Transcript | Out-Null } catch { }
 Start-Transcript -Path $transcriptPath -Force | Out-Null
 
 $isoPath = 'C:\XboxOS\Sources\Windows11_Client_x64_en-us_26300_9457.iso'
-$workRoot = 'C:\XboxOS\Work\dism-compat-20261014'
+$workRoot = "C:\XboxOS\Work\dism-compat-$compatRunId"
 $logsRoot = 'C:\XboxOS\Logs'
 $expectedEditionName = 'Windows 11 Pro'
 $sourceIndex = $null
-$reportPath = Join-Path $logsRoot 'DISM-Compatibility-20261014.md'
-$jsonReportPath = Join-Path $logsRoot 'DISM-Compatibility-20261014.json'
+$reportPath = Join-Path $logsRoot "DISM-Compatibility-$compatRunId.md"
+$jsonReportPath = Join-Path $logsRoot "DISM-Compatibility-$compatRunId.json"
 
 $commandLog = New-Object System.Collections.Generic.List[object]
 $warnings = New-Object System.Collections.Generic.List[string]
@@ -144,10 +145,11 @@ try {
     Write-Host "SHA256: $isoHashBefore"
 
     Write-Step 'DISM version'
-    $dismVersionOut = Invoke-DismLogged -StepName 'Get-DismVersion' -ArgumentList @('/English', '/Get-DismVersion')
-    foreach ($line in $dismVersionOut) {
-        if ($line -match 'DISM Version|Version') { $dismVersion = $line.Trim() }
-    }
+    # Unsupported "get version" switches return exit 87 on current DISM. Use /? banner instead.
+    $dismVersionOut = Invoke-DismLogged -StepName 'Get-DismHelpVersion' -ArgumentList @('/English', '/?')
+    # Invoke-DismLogged throws on nonzero exit; pass 0 only after a successful probe.
+    $dismVersion = Get-XboxOSDismVersionFromOutput -Output $dismVersionOut -ExitCode 0
+    Write-Host ("Parsed DISM Version: {0}" -f $dismVersion)
 
     Write-Step 'Mount source ISO read-only'
     $diskImage = Mount-DiskImage -ImagePath $isoPath -StorageType ISO -PassThru
@@ -448,6 +450,9 @@ $null = $mdLines.Add(('| Exported WIM index 1 is Windows 11 Pro | {0} |' -f $exp
 $null = $mdLines.Add('')
 $null = $mdLines.Add('## DISM version')
 $null = $mdLines.Add('')
+$null = $mdLines.Add(('- Parsed version: `{0}`' -f $dismVersion))
+$null = $mdLines.Add('- Probe command: `dism.exe /English /?`')
+$null = $mdLines.Add('')
 $null = $mdLines.Add('```')
 $null = $mdLines.Add((@($dismVersionOut) -join $nl))
 $null = $mdLines.Add('```')
@@ -607,17 +612,20 @@ Write-Host ('JSON written:   {0}' -f $jsonReportPath)
 Write-Host ('Success={0} CleanupOk={1} NoMountsLeft={2} IsoUnchanged={3}' -f $success, $cleanupOk, $noMountsLeft, $isoUnchanged)
 
 $exitCode = if ($success) { 0 } else { 1 }
-$sentinelBody = @(
-    ('success={0}' -f $success)
-    ('exitCode={0}' -f $exitCode)
-    ('cleanupOk={0}' -f $cleanupOk)
-    ('noMountsLeft={0}' -f $noMountsLeft)
-    ('isoUnchanged={0}' -f $isoUnchanged)
-    ('report={0}' -f $reportPath)
-    ('json={0}' -f $jsonReportPath)
-    ('completedUtc={0}' -f $generatedUtc)
-) -join $nl
-$sentinelBody | Set-Content -LiteralPath $sentinelPath -Encoding UTF8
+$statusMarker = Write-XboxOSCompatTestStatusMarker -StatusPath $statusPath -Success:$success -ExitCode $exitCode -Fields @{
+    cleanupOk      = $cleanupOk
+    noMountsLeft   = $noMountsLeft
+    isoUnchanged   = $isoUnchanged
+    dismVersion    = $dismVersion
+    report         = $reportPath
+    json           = $jsonReportPath
+    transcript     = $transcriptPath
+    completedUtc   = $generatedUtc
+    runId          = $compatRunId
+}
+
+Write-Host ('Status written:  {0}' -f $statusMarker.StatusPath)
+Write-Host ('Outcome marker:  {0}' -f $statusMarker.OutcomePath)
 
 try { Stop-Transcript | Out-Null } catch { Write-Verbose 'Stop-Transcript skipped.' }
 exit $exitCode

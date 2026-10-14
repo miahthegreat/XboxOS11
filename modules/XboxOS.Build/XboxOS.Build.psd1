@@ -31,6 +31,8 @@
         'Get-XboxOSFileHash'
         'Test-XboxOSWritablePath'
         'Invoke-XboxOSDism'
+        'Get-XboxOSDismVersionFromOutput'
+        'Write-XboxOSCompatTestStatusMarker'
         'ConvertFrom-XboxOSDismImageInfoOutput'
         'Resolve-XboxOSExactImageIndex'
         'Get-XboxOSImageInfo'

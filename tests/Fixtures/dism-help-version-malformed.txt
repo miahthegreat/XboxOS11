@@ -1,0 +1,7 @@
+Deployment Image Servicing and Management tool
+
+DISM.exe [dism_options] {Imaging_command} [<Imaging_arguments>]
+
+DESCRIPTION:
+
+  This fixture intentionally omits a parseable Version line.
