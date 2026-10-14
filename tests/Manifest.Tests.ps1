@@ -27,6 +27,29 @@ Describe 'XboxOS11 manifests' {
         $schema = Test-XboxOSManifestSchema -Configuration $manifest -ManifestType 'disable-features'
         $schema.Valid | Should -BeTrue
         $manifest.removePayload | Should -BeFalse
+        $consistency = Assert-XboxOSDisableFeaturesManifestConsistency -Configuration $manifest
+        $consistency.Valid | Should -BeTrue
+        @($manifest.candidates | Where-Object enabled | ForEach-Object { $_.featureNames } | Where-Object { $_ -eq 'SMB1Protocol-Deprecation' }).Count |
+            Should -Be 0
+        @($manifest.neverDisable) -contains 'SMB1Protocol-Deprecation' | Should -BeTrue
+    }
+
+    It 'rejects overlapping enabled disable candidates and neverDisable patterns' {
+        $bad = [pscustomobject]@{
+            candidates = @(
+                [pscustomobject]@{
+                    id           = 'Smb1'
+                    enabled      = $true
+                    featureNames = @('SMB1Protocol', 'SMB1Protocol-Deprecation')
+                }
+            )
+            neverDisable = @('SMB1Protocol-Deprecation', 'NetFx3')
+        }
+        $consistency = Assert-XboxOSDisableFeaturesManifestConsistency -Configuration $bad
+        $consistency.Valid | Should -BeFalse
+        ($consistency.Errors -join ' ') | Should -Match 'SMB1Protocol-Deprecation'
+        $schema = Test-XboxOSManifestSchema -Configuration $bad -ManifestType 'disable-features'
+        $schema.Valid | Should -BeFalse
     }
 
     It 'compatibility.json protects Store and Xbox patterns' {

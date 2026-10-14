@@ -25,21 +25,6 @@ Import-Module $modulePath -Force
 if (-not $DismPath) { $DismPath = Find-XboxOSDism }
 $mount = $BuildContext.Paths.Mount
 
-function Get-DismListedNames {
-    param(
-        [AllowEmptyCollection()]
-        [string[]]$Output,
-        [string]$Label
-    )
-    $names = New-Object System.Collections.Generic.List[string]
-    foreach ($line in @($Output)) {
-        if ($line -match ("^\s*{0}\s*:\s*(.+)$" -f [regex]::Escape($Label))) {
-            $names.Add($Matches[1].Trim()) | Out-Null
-        }
-    }
-    return , [string[]]$names.ToArray()
-}
-
 if ($DryRun -or -not $BuildContext.ImageMounted) {
     $inventory = [ordered]@{
         stage                 = $Stage
@@ -118,8 +103,18 @@ else {
         }
     }
 
-    $appx = @(Get-DismListedNames -Output $appxOut.Output -Label 'PackageName')
-    $features = @(Get-DismListedNames -Output $featOut.Output -Label 'Feature Name')
+    $appxRecords = @(ConvertFrom-XboxOSDismProvisionedAppxListOutput -Output @($appxOut.Output))
+    $featureRecords = @(ConvertFrom-XboxOSDismFeatureListOutput -Output @($featOut.Output))
+    $packageRecords = @(ConvertFrom-XboxOSDismPackageListOutput -Output @($pkgOut.Output))
+    $appx = [string[]]@($appxRecords | ForEach-Object { [string]$_.PackageName })
+    $features = [string[]]@($featureRecords | ForEach-Object { [string]$_.Name })
+    $packages = [string[]]@($packageRecords | ForEach-Object { [string]$_.Identity })
+    $drivers = [string[]]@(Get-XboxOSDismListedValues -Output @($drvOut.Output) -Label 'Published Name')
+    $capabilities = if ($capOut) {
+        [string[]]@(Get-XboxOSDismListedValues -Output @($capOut.Output) -Label 'Capability Identity')
+    } else {
+        @()
+    }
 
     $inventory = [ordered]@{
         stage                 = $Stage
@@ -132,10 +127,13 @@ else {
         architecture          = $BuildContext.Configuration.Raw.target.architecture
         inventoryAvailability = 'Available'
         appxPackages          = $appx
+        appxPackageRecords    = $appxRecords
         features              = $features
-        packages              = @(Get-DismListedNames -Output $pkgOut.Output -Label 'Package Identity')
-        drivers               = @(Get-DismListedNames -Output $drvOut.Output -Label 'Published Name')
-        capabilities          = $(if ($capOut) { @(Get-DismListedNames -Output $capOut.Output -Label 'Capability Identity') } else { @() })
+        featureRecords        = $featureRecords
+        packages              = $packages
+        packageRecords        = $packageRecords
+        drivers               = $drivers
+        capabilities          = $capabilities
         servicingState        = 'Captured'
         capturedUtc           = (Get-Date).ToUniversalTime()
     }

@@ -52,6 +52,8 @@ jobs:
             'tests/Pipeline.Tests.ps1',
             'tests/ImageIndex.Tests.ps1',
             'tests/DismCompat.Tests.ps1',
+            'tests/Inventory.Tests.ps1',
+            'scripts/Build-CompatibilityMatrix.ps1',
             'README.md',
             'LICENSE'
           )

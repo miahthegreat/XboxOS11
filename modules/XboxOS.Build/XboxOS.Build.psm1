@@ -232,6 +232,14 @@ function Test-XboxOSManifestSchema {
             if (-not $Configuration.candidates) {
                 $errors.Add('disable-features.json must include candidates[]') | Out-Null
             }
+            else {
+                $overlap = Assert-XboxOSDisableFeaturesManifestConsistency -Configuration $Configuration
+                if (-not $overlap.Valid) {
+                    foreach ($err in @($overlap.Errors)) {
+                        $errors.Add($err) | Out-Null
+                    }
+                }
+            }
         }
         'compatibility' {
             if (-not $Configuration.protectedAppxPatterns) {
@@ -1002,6 +1010,402 @@ function Invoke-XboxOSDism {
         Command  = $display
         DryRun   = $false
     }
+}
+
+function Assert-XboxOSDisableFeaturesManifestConsistency {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Configuration
+    )
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    $never = @()
+    if ($Configuration.PSObject.Properties['neverDisable'] -and $Configuration.neverDisable) {
+        $never = @($Configuration.neverDisable | ForEach-Object { [string]$_ })
+    }
+
+    foreach ($candidate in @($Configuration.candidates)) {
+        if (-not $candidate) { continue }
+        $enabled = $true
+        if ($candidate.PSObject.Properties['enabled']) {
+            $enabled = [bool]$candidate.enabled
+        }
+        if (-not $enabled) { continue }
+
+        foreach ($featureName in @($candidate.featureNames)) {
+            $name = [string]$featureName
+            if ([string]::IsNullOrWhiteSpace($name)) { continue }
+            foreach ($pattern in $never) {
+                if ($name -like $pattern) {
+                    $errors.Add(("Enabled disable candidate '{0}' includes feature '{1}' which is also covered by neverDisable pattern '{2}'." -f $candidate.id, $name, $pattern)) | Out-Null
+                }
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        Valid  = ($errors.Count -eq 0)
+        Errors = $errors.ToArray()
+    }
+}
+
+function ConvertFrom-XboxOSDismPackageListOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output
+    )
+
+    $packages = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+        if ($text -match '^\s*Package Identity\s*:\s*(.+)$') {
+            if ($current) { $packages.Add([pscustomobject]$current) | Out-Null }
+            $current = [ordered]@{
+                Identity    = $Matches[1].Trim()
+                State       = $null
+                ReleaseType = $null
+            }
+            continue
+        }
+
+        if ($current) {
+            if ($text -match '^\s*State\s*:\s*(.+)$') {
+                $current.State = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Release Type\s*:\s*(.+)$') {
+                $current.ReleaseType = $Matches[1].Trim()
+            }
+        }
+    }
+    if ($current) { $packages.Add([pscustomobject]$current) | Out-Null }
+
+    return $packages.ToArray()
+}
+
+function ConvertFrom-XboxOSDismFeatureListOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output
+    )
+
+    $features = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+        if ($text -match '^\s*Feature Name\s*:\s*(.+)$') {
+            if ($current) { $features.Add([pscustomobject]$current) | Out-Null }
+            $current = [ordered]@{
+                Name  = $Matches[1].Trim()
+                State = $null
+            }
+            continue
+        }
+
+        if ($current -and $text -match '^\s*State\s*:\s*(.+)$') {
+            $current.State = $Matches[1].Trim()
+        }
+    }
+    if ($current) { $features.Add([pscustomobject]$current) | Out-Null }
+
+    return $features.ToArray()
+}
+
+function ConvertFrom-XboxOSDismProvisionedAppxListOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output
+    )
+
+    $packages = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+        if ($text -match '^\s*DisplayName\s*:\s*(.+)$') {
+            if ($current -and -not [string]::IsNullOrWhiteSpace([string]$current.PackageName)) {
+                $packages.Add([pscustomobject]$current) | Out-Null
+            }
+            $current = [ordered]@{
+                DisplayName  = $Matches[1].Trim()
+                PackageName  = $null
+                Version      = $null
+                Architecture = $null
+            }
+            continue
+        }
+
+        if ($current) {
+            if ($text -match '^\s*PackageName\s*:\s*(.+)$') {
+                $current.PackageName = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Version\s*:\s*(.+)$') {
+                $current.Version = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Architecture\s*:\s*(.+)$') {
+                $current.Architecture = $Matches[1].Trim()
+            }
+        }
+    }
+    if ($current -and -not [string]::IsNullOrWhiteSpace([string]$current.PackageName)) {
+        $packages.Add([pscustomobject]$current) | Out-Null
+    }
+
+    return $packages.ToArray()
+}
+
+function Get-XboxOSDismListedValues {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Label
+    )
+
+    $values = New-Object System.Collections.Generic.List[string]
+    $pattern = '^\s*{0}\s*:\s*(.+)$' -f [regex]::Escape($Label)
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        if ("$line" -match $pattern) {
+            $values.Add($Matches[1].Trim()) | Out-Null
+        }
+    }
+
+    # Emit to pipeline so callers can recollect with @() without nested arrays.
+    return $values.ToArray()
+}
+
+function New-XboxOSCompatibilityMatrix {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]]$AppxPackages,
+
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Features,
+
+        [Parameter(Mandatory)]
+        [object]$RemoveAppsManifest,
+
+        [Parameter(Mandatory)]
+        [object]$DisableFeaturesManifest,
+
+        [Parameter(Mandatory)]
+        [object]$CompatibilityManifest
+    )
+
+    $protectedAppx = @(Get-XboxOSProtectedAppxPatterns -CompatibilityManifest $CompatibilityManifest)
+    $neverDisable = @()
+    if ($DisableFeaturesManifest.PSObject.Properties['neverDisable'] -and $DisableFeaturesManifest.neverDisable) {
+        $neverDisable = @($DisableFeaturesManifest.neverDisable | ForEach-Object { [string]$_ })
+    }
+    $protectedFeaturePatterns = @()
+    if ($CompatibilityManifest.PSObject.Properties['protectedFeatureNamePatterns'] -and $CompatibilityManifest.protectedFeatureNamePatterns) {
+        $protectedFeaturePatterns = @($CompatibilityManifest.protectedFeatureNamePatterns | ForEach-Object { [string]$_ })
+    }
+
+    $featureNames = @(
+        foreach ($feature in @($Features)) {
+            if ($null -eq $feature) { continue }
+            if ($feature -is [string]) { $feature }
+            elseif ($feature.PSObject.Properties['Name']) { [string]$feature.Name }
+        }
+    )
+
+    $appxRows = New-Object System.Collections.Generic.List[object]
+    foreach ($candidate in @($RemoveAppsManifest.candidates)) {
+        $enabled = $true
+        if ($candidate.PSObject.Properties['enabled']) { $enabled = [bool]$candidate.enabled }
+        $patterns = @($candidate.patterns | ForEach-Object { [string]$_ })
+
+        $matchError = $null
+        $matched = @()
+        try {
+            $matched = @(Resolve-XboxOSPackageMatches -Patterns $patterns -AvailablePackages @($AppxPackages) -RejectAmbiguous)
+        }
+        catch {
+            $matchError = $_.Exception.Message
+        }
+
+        $status = 'Absent'
+        $detail = 'No provisioned AppX identity matched the candidate patterns.'
+        if ($matchError) {
+            $status = 'Ambiguous'
+            $detail = $matchError
+        }
+        elseif ($matched.Count -gt 0) {
+            $protectedHits = @($matched | Where-Object { Test-XboxOSPackageProtected -PackageName $_ -ProtectedPatterns $protectedAppx })
+            if ($protectedHits.Count -gt 0) {
+                $status = 'Protected'
+                $detail = 'Matched identities are protected; removal is not authorized from package-name prefixes alone.'
+            }
+            elseif (-not $enabled) {
+                $status = 'Present'
+                $detail = 'Present in inventory but candidate is disabled in remove-apps manifest.'
+            }
+            else {
+                $status = 'Eligible'
+                $detail = 'Present, unprotected, and enabled for consideration after explicit review.'
+            }
+        }
+
+        $appxRows.Add([pscustomobject]@{
+            Kind       = 'AppX'
+            Candidate  = [string]$candidate.id
+            Enabled    = $enabled
+            Status     = $status
+            Patterns   = $patterns
+            Matches    = $matched
+            Detail     = $detail
+        }) | Out-Null
+    }
+
+    $featureRows = New-Object System.Collections.Generic.List[object]
+    $overlap = Assert-XboxOSDisableFeaturesManifestConsistency -Configuration $DisableFeaturesManifest
+    foreach ($err in @($overlap.Errors)) {
+        $featureRows.Add([pscustomobject]@{
+            Kind      = 'Feature'
+            Candidate = 'ManifestConsistency'
+            Enabled   = $true
+            Status    = 'Conflicting'
+            Feature   = $null
+            State     = $null
+            Detail    = $err
+        }) | Out-Null
+    }
+
+    foreach ($candidate in @($DisableFeaturesManifest.candidates)) {
+        $enabled = $true
+        if ($candidate.PSObject.Properties['enabled']) { $enabled = [bool]$candidate.enabled }
+        $resolved = @(Resolve-XboxOSFeatureMatches -FeatureNames @($candidate.featureNames) -AvailableFeatures $featureNames)
+
+        foreach ($item in $resolved) {
+            $state = $null
+            if ($item.Resolved) {
+                $hit = @($Features | Where-Object {
+                        if ($_ -is [string]) { $_ -eq $item.Resolved }
+                        else { $_.Name -eq $item.Resolved }
+                    } | Select-Object -First 1)
+                if ($hit.Count -eq 1 -and $hit[0] -isnot [string] -and $hit[0].PSObject.Properties['State']) {
+                    $state = [string]$hit[0].State
+                }
+            }
+
+            $status = 'Absent'
+            $detail = 'Feature not present in inventory.'
+            if ($item.Status -eq 'Exact' -and $item.Resolved) {
+                $isNever = Test-XboxOSFeatureProtected -FeatureName $item.Resolved -NeverDisable $neverDisable
+                $isCompatProtected = $false
+                foreach ($pattern in $protectedFeaturePatterns) {
+                    if ($item.Resolved -like $pattern) { $isCompatProtected = $true; break }
+                }
+
+                if ($isNever -or $isCompatProtected) {
+                    if ($enabled) {
+                        $status = 'Conflicting'
+                        $detail = 'Present and listed as an enabled disable candidate while also protected/neverDisable.'
+                    }
+                    else {
+                        $status = 'Protected'
+                        $detail = 'Present and protected by neverDisable / compatibility policy.'
+                    }
+                }
+                elseif (-not $enabled) {
+                    $status = 'Present'
+                    $detail = 'Present in inventory but candidate is disabled in disable-features manifest.'
+                }
+                else {
+                    $status = 'Eligible'
+                    $detail = 'Present, unprotected, and enabled for consideration after explicit review.'
+                }
+            }
+
+            $featureRows.Add([pscustomobject]@{
+                Kind      = 'Feature'
+                Candidate = [string]$candidate.id
+                Enabled   = $enabled
+                Status    = $status
+                Feature   = $(if ($item.Resolved) { $item.Resolved } else { $item.Requested })
+                State     = $state
+                Detail    = $detail
+            }) | Out-Null
+        }
+    }
+
+    $rows = @($appxRows.ToArray() + $featureRows.ToArray())
+    $summary = [ordered]@{
+        present     = @($rows | Where-Object Status -eq 'Present').Count
+        absent      = @($rows | Where-Object Status -eq 'Absent').Count
+        protected   = @($rows | Where-Object Status -eq 'Protected').Count
+        eligible    = @($rows | Where-Object Status -eq 'Eligible').Count
+        ambiguous   = @($rows | Where-Object Status -eq 'Ambiguous').Count
+        conflicting = @($rows | Where-Object Status -eq 'Conflicting').Count
+    }
+
+    return [pscustomobject]@{
+        generatedUtc = (Get-Date).ToUniversalTime()
+        summary      = [pscustomobject]$summary
+        rows         = $rows
+    }
+}
+
+function Format-XboxOSInventorySampleLines {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Items,
+
+        [int]$Take = 25
+    )
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($item in @($Items | Select-Object -First $Take)) {
+        if ($null -eq $item) { continue }
+        if ($item -is [string]) {
+            $lines.Add($item) | Out-Null
+        }
+        elseif ($item.PSObject.Properties['PackageName']) {
+            $lines.Add([string]$item.PackageName) | Out-Null
+        }
+        elseif ($item.PSObject.Properties['Identity']) {
+            $state = if ($item.PSObject.Properties['State'] -and $item.State) { " ($($item.State))" } else { '' }
+            $lines.Add(('{0}{1}' -f $item.Identity, $state)) | Out-Null
+        }
+        elseif ($item.PSObject.Properties['Name']) {
+            $state = if ($item.PSObject.Properties['State'] -and $item.State) { " ($($item.State))" } else { '' }
+            $lines.Add(('{0}{1}' -f $item.Name, $state)) | Out-Null
+        }
+        else {
+            $lines.Add([string]$item) | Out-Null
+        }
+    }
+    return [string[]]$lines.ToArray()
 }
 
 function Get-XboxOSDismVersionFromOutput {

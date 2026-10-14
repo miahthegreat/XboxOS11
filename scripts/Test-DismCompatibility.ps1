@@ -21,8 +21,8 @@ if (-not (Test-Path -LiteralPath $modulePath)) {
 }
 Import-Module $modulePath -Force
 
-# Use a distinct run id so prior failed evidence under *-20261014.* is preserved.
-$compatRunId = '20261014-2'
+# Distinct run id so prior evidence (including successful 20261014-2) is never overwritten.
+$compatRunId = '20261014-3'
 $transcriptPath = "C:\XboxOS\Logs\DISM-Compatibility-$compatRunId.transcript.log"
 $statusPath = "C:\XboxOS\Logs\DISM-Compatibility-$compatRunId.status"
 New-Item -ItemType Directory -Path 'C:\XboxOS\Logs' -Force | Out-Null
@@ -46,12 +46,20 @@ $dismVersion = $null
 $dismVersionOut = @()
 $exportMeta = $null
 $imageInfoMounted = $null
+$packages = @()
+$appxPackages = @()
+$features = @()
 $packagesSample = @()
 $appxSample = @()
 $featuresSample = @()
 $packageCount = 0
 $appxCount = 0
 $featureCount = 0
+$packagesInstalledCount = 0
+$packagesStagedCount = 0
+$featuresEnabledCount = 0
+$featuresDisabledCount = 0
+$compatibilityMatrix = $null
 $cleanupOk = $false
 $noMountsLeft = $false
 $isoUnchanged = $false
@@ -105,17 +113,6 @@ function Invoke-DismLogged {
         throw "DISM failed ($StepName) with exit code $exit"
     }
     return $text
-}
-
-function Get-DismListedValues {
-    param([string[]]$Output, [string]$Label)
-    $values = New-Object System.Collections.Generic.List[string]
-    foreach ($line in $Output) {
-        if ($line -match ("^\s*{0}\s*:\s*(.+)$" -f [regex]::Escape($Label))) {
-            $values.Add($Matches[1].Trim()) | Out-Null
-        }
-    }
-    return , [string[]]$values.ToArray()
 }
 
 try {
@@ -242,8 +239,11 @@ try {
     Write-Step 'Query packages / AppX / features (read-only)'
     try {
         $pkgOut = Invoke-DismLogged -StepName 'Get-Packages' -ArgumentList @('/English', "/Image:$mountDir", '/Get-Packages')
-        $packagesSample = @(Get-DismListedValues -Output $pkgOut -Label 'Package Identity')
-        $packageCount = $packagesSample.Count
+        $packages = @(ConvertFrom-XboxOSDismPackageListOutput -Output $pkgOut)
+        $packageCount = $packages.Count
+        $packagesInstalledCount = @($packages | Where-Object { $_.State -eq 'Installed' }).Count
+        $packagesStagedCount = @($packages | Where-Object { $_.State -eq 'Staged' }).Count
+        $packagesSample = @($packages | Select-Object -First 50 | ForEach-Object { [string]$_.Identity })
     }
     catch {
         $errors.Add("Get-Packages failed: $($_.Exception.Message)") | Out-Null
@@ -252,8 +252,9 @@ try {
 
     try {
         $appxOut = Invoke-DismLogged -StepName 'Get-ProvisionedAppxPackages' -ArgumentList @('/English', "/Image:$mountDir", '/Get-ProvisionedAppxPackages')
-        $appxSample = @(Get-DismListedValues -Output $appxOut -Label 'PackageName')
-        $appxCount = $appxSample.Count
+        $appxPackages = @(ConvertFrom-XboxOSDismProvisionedAppxListOutput -Output $appxOut)
+        $appxCount = $appxPackages.Count
+        $appxSample = @($appxPackages | Select-Object -First 50 | ForEach-Object { [string]$_.PackageName })
     }
     catch {
         $errors.Add("Get-ProvisionedAppxPackages failed: $($_.Exception.Message)") | Out-Null
@@ -262,12 +263,33 @@ try {
 
     try {
         $featOut = Invoke-DismLogged -StepName 'Get-Features' -ArgumentList @('/English', "/Image:$mountDir", '/Get-Features')
-        $featuresSample = @(Get-DismListedValues -Output $featOut -Label 'Feature Name')
-        $featureCount = $featuresSample.Count
+        $features = @(ConvertFrom-XboxOSDismFeatureListOutput -Output $featOut)
+        $featureCount = $features.Count
+        $featuresEnabledCount = @($features | Where-Object { $_.State -eq 'Enabled' }).Count
+        $featuresDisabledCount = @($features | Where-Object { $_.State -eq 'Disabled' }).Count
+        $featuresSample = @(
+            $features | Select-Object -First 50 | ForEach-Object {
+                if ($_.State) { '{0} ({1})' -f $_.Name, $_.State } else { [string]$_.Name }
+            }
+        )
     }
     catch {
         $errors.Add("Get-Features failed: $($_.Exception.Message)") | Out-Null
         $warnings.Add('Feature inventory failed; continuing to mandatory discard.') | Out-Null
+    }
+
+    if ($appxCount -gt 0 -or $featureCount -gt 0) {
+        Write-Step 'Build read-only compatibility matrix against manifests'
+        $repoRootForManifests = Get-XboxOSRepoRoot
+        $removeAppsManifest = Import-XboxOSManifest -Path (Join-Path $repoRootForManifests 'config\remove-apps.json')
+        $disableFeaturesManifest = Import-XboxOSManifest -Path (Join-Path $repoRootForManifests 'config\disable-features.json')
+        $compatibilityManifest = Import-XboxOSManifest -Path (Join-Path $repoRootForManifests 'config\compatibility.json')
+        $compatibilityMatrix = New-XboxOSCompatibilityMatrix `
+            -AppxPackages @($appxPackages | ForEach-Object { [string]$_.PackageName }) `
+            -Features $features `
+            -RemoveAppsManifest $removeAppsManifest `
+            -DisableFeaturesManifest $disableFeaturesManifest `
+            -CompatibilityManifest $compatibilityManifest
     }
 
     # Optional build metadata from mounted hive (read-only mount still allows hive load in many cases)
@@ -494,9 +516,9 @@ else {
 $null = $mdLines.Add('')
 $null = $mdLines.Add('## Mounted image inventory summary')
 $null = $mdLines.Add('')
-$null = $mdLines.Add(('- Package identities counted: {0}' -f $packageCount))
+$null = $mdLines.Add(('- Package identities counted: {0} (Installed={1}, Staged={2})' -f $packageCount, $packagesInstalledCount, $packagesStagedCount))
 $null = $mdLines.Add(('- Provisioned AppX packages counted: {0}' -f $appxCount))
-$null = $mdLines.Add(('- Optional features counted: {0}' -f $featureCount))
+$null = $mdLines.Add(('- Optional features counted: {0} (Enabled={1}, Disabled={2})' -f $featureCount, $featuresEnabledCount, $featuresDisabledCount))
 $null = $mdLines.Add(('- Hive CurrentBuild/UBR: {0}' -f $buildNumber))
 $null = $mdLines.Add(('- Hive DisplayVersion: {0}' -f $displayVersion))
 $null = $mdLines.Add(('- Hive EditionID: {0}' -f $editionId))
@@ -505,21 +527,43 @@ $null = $mdLines.Add('')
 $null = $mdLines.Add('### Sample AppX packages (first 25)')
 $null = $mdLines.Add('')
 $null = $mdLines.Add('```')
-$null = $mdLines.Add((@($appxSample | Select-Object -First 25) -join $nl))
+$null = $mdLines.Add((@(Format-XboxOSInventorySampleLines -Items $appxSample -Take 25) -join $nl))
 $null = $mdLines.Add('```')
 $null = $mdLines.Add('')
 $null = $mdLines.Add('### Sample features (first 25)')
 $null = $mdLines.Add('')
 $null = $mdLines.Add('```')
-$null = $mdLines.Add((@($featuresSample | Select-Object -First 25) -join $nl))
+$null = $mdLines.Add((@(Format-XboxOSInventorySampleLines -Items $featuresSample -Take 25) -join $nl))
 $null = $mdLines.Add('```')
 $null = $mdLines.Add('')
 $null = $mdLines.Add('### Sample packages (first 25)')
 $null = $mdLines.Add('')
 $null = $mdLines.Add('```')
-$null = $mdLines.Add((@($packagesSample | Select-Object -First 25) -join $nl))
+$null = $mdLines.Add((@(Format-XboxOSInventorySampleLines -Items $packagesSample -Take 25) -join $nl))
 $null = $mdLines.Add('```')
 $null = $mdLines.Add('')
+if ($compatibilityMatrix) {
+    $null = $mdLines.Add('## Compatibility matrix (read-only)')
+    $null = $mdLines.Add('')
+    $null = $mdLines.Add(('Summary: present={0}, absent={1}, protected={2}, eligible={3}, ambiguous={4}, conflicting={5}' -f `
+        $compatibilityMatrix.summary.present, `
+        $compatibilityMatrix.summary.absent, `
+        $compatibilityMatrix.summary.protected, `
+        $compatibilityMatrix.summary.eligible, `
+        $compatibilityMatrix.summary.ambiguous, `
+        $compatibilityMatrix.summary.conflicting))
+    $null = $mdLines.Add('')
+    $null = $mdLines.Add('| Kind | Candidate | Status | Feature/Matches | State | Detail |')
+    $null = $mdLines.Add('|---|---|---|---|---|---|')
+    foreach ($row in @($compatibilityMatrix.rows)) {
+        $matchText = if ($row.Kind -eq 'AppX') { (@($row.Matches) -join '; ') } else { [string]$row.Feature }
+        if ([string]::IsNullOrWhiteSpace($matchText)) { $matchText = '-' }
+        $stateText = if ($row.PSObject.Properties['State'] -and $row.State) { [string]$row.State } else { '-' }
+        $null = $mdLines.Add(('| {0} | {1} | {2} | {3} | {4} | {5} |' -f `
+            $row.Kind, $row.Candidate, $row.Status, ($matchText -replace '\|', '/'), $stateText, ($row.Detail -replace '\|', '/')))
+    }
+    $null = $mdLines.Add('')
+}
 $null = $mdLines.Add('## Commands and exit codes')
 $null = $mdLines.Add('')
 foreach ($cmd in $commandLog) {
@@ -586,15 +630,23 @@ $json = [ordered]@{
     mountDir                  = $mountPathForReport
     exportMeta                = $exportMeta
     packageCount              = $packageCount
+    packagesInstalledCount    = $packagesInstalledCount
+    packagesStagedCount       = $packagesStagedCount
     appxCount                 = $appxCount
     featureCount              = $featureCount
+    featuresEnabledCount      = $featuresEnabledCount
+    featuresDisabledCount     = $featuresDisabledCount
     buildNumber               = $buildNumber
     displayVersion            = $displayVersion
     editionId                 = $editionId
     productName               = $productName
-    appxSample                = @($appxSample | Select-Object -First 50)
-    featureSample             = @($featuresSample | Select-Object -First 50)
-    packageSample             = @($packagesSample | Select-Object -First 50)
+    packages                  = @($packages)
+    appxPackages              = @($appxPackages)
+    features                  = @($features)
+    appxSample                = [string[]]@($appxSample)
+    featureSample             = [string[]]@($featuresSample)
+    packageSample             = [string[]]@($packagesSample)
+    compatibilityMatrix       = $compatibilityMatrix
     commands                  = $commandLog
     warnings                  = @($warnings)
     errors                    = @($errors)
