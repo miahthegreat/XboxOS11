@@ -31,12 +31,20 @@ Describe 'XboxOS11 DISM inventory parsing and reports' {
         (@($names) | ConvertTo-Json -Compress) | Should -Not -Match '\[\['
     }
 
-    It 'parses complete feature inventory with Enabled/Disabled states' {
+    It 'parses complete feature inventory and accounts for every DISM state' {
         $lines = Get-Content -LiteralPath (Join-Path $script:Fixtures 'dism-get-features-26300.9457.txt')
         $features = @(ConvertFrom-XboxOSDismFeatureListOutput -Output $lines)
         $features.Count | Should -Be 136
-        @($features | Where-Object State -eq 'Enabled').Count | Should -BeGreaterThan 0
-        @($features | Where-Object State -eq 'Disabled').Count | Should -BeGreaterThan 0
+        $summary = Get-XboxOSFeatureStateSummary -Features $features
+        $summary.Complete | Should -BeTrue
+        $summary.Accounted | Should -Be 136
+        $summary.ByState.Enabled | Should -Be 13
+        $summary.ByState.Disabled | Should -Be 122
+        $summary.ByState.'Disabled with Payload Removed' | Should -Be 1
+        (([int]$summary.ByState.Enabled) + ([int]$summary.ByState.Disabled) + ([int]$summary.ByState.'Disabled with Payload Removed')) |
+            Should -Be 136
+        @($features | Where-Object { $_.Name -eq 'NetFx3' -and $_.State -eq 'Disabled with Payload Removed' }).Count |
+            Should -Be 1
         $sample = [string[]]@(
             $features | Select-Object -First 25 | ForEach-Object { '{0} ({1})' -f $_.Name, $_.State }
         )
@@ -78,8 +86,17 @@ Describe 'XboxOS11 DISM inventory parsing and reports' {
             -CompatibilityManifest (Import-XboxOSManifest -Path (Join-Path $script:RepoRoot 'config\compatibility.json'))
 
         $matrix.summary.conflicting | Should -Be 0
+        $matrix.summary.alreadyDisabled | Should -Be 4
+        @($matrix.rows | Where-Object { $_.Kind -eq 'Feature' -and $_.Status -eq 'Eligible' }).Count |
+            Should -Be 1
+        @($matrix.rows | Where-Object { $_.Feature -eq 'WorkFolders-Client' -and $_.Status -eq 'Eligible' }).Count |
+            Should -Be 1
+        @($matrix.rows | Where-Object { $_.Feature -eq 'Printing-XPSServices-Features' -and $_.Status -eq 'AlreadyDisabled' }).Count |
+            Should -Be 1
+        @($matrix.rows | Where-Object { $_.Feature -like 'SMB1Protocol*' -and $_.Status -eq 'AlreadyDisabled' }).Count |
+            Should -Be 3
         @($matrix.rows | Where-Object { $_.Candidate -eq 'XboxTCUI' -and $_.Status -eq 'Protected' }).Count | Should -BeGreaterThan 0
-        @($matrix.rows | Where-Object { $_.Status -in @('Present', 'Absent', 'Protected', 'Eligible', 'Ambiguous', 'Conflicting') }).Count |
-            Should -Be $matrix.rows.Count
+        $allowed = @('Present', 'Absent', 'Protected', 'Eligible', 'AlreadyDisabled', 'Ambiguous', 'Conflicting')
+        @($matrix.rows | Where-Object { $_.Status -in $allowed }).Count | Should -Be $matrix.rows.Count
     }
 }

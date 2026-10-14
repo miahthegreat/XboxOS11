@@ -59,6 +59,8 @@ $packagesInstalledCount = 0
 $packagesStagedCount = 0
 $featuresEnabledCount = 0
 $featuresDisabledCount = 0
+$featuresDisabledWithPayloadRemovedCount = 0
+$featureStateSummary = $null
 $compatibilityMatrix = $null
 $cleanupOk = $false
 $noMountsLeft = $false
@@ -265,8 +267,22 @@ try {
         $featOut = Invoke-DismLogged -StepName 'Get-Features' -ArgumentList @('/English', "/Image:$mountDir", '/Get-Features')
         $features = @(ConvertFrom-XboxOSDismFeatureListOutput -Output $featOut)
         $featureCount = $features.Count
-        $featuresEnabledCount = @($features | Where-Object { $_.State -eq 'Enabled' }).Count
-        $featuresDisabledCount = @($features | Where-Object { $_.State -eq 'Disabled' }).Count
+        $featureStateSummary = Get-XboxOSFeatureStateSummary -Features $features
+        if (-not $featureStateSummary.Complete) {
+            throw ("Feature state accounting incomplete: accounted {0} of {1}." -f $featureStateSummary.Accounted, $featureStateSummary.Total)
+        }
+        $featuresEnabledCount = 0
+        $featuresDisabledCount = 0
+        $featuresDisabledWithPayloadRemovedCount = 0
+        if ($featureStateSummary.ByState.PSObject.Properties['Enabled']) {
+            $featuresEnabledCount = [int]$featureStateSummary.ByState.Enabled
+        }
+        if ($featureStateSummary.ByState.PSObject.Properties['Disabled']) {
+            $featuresDisabledCount = [int]$featureStateSummary.ByState.Disabled
+        }
+        if ($featureStateSummary.ByState.PSObject.Properties['Disabled with Payload Removed']) {
+            $featuresDisabledWithPayloadRemovedCount = [int]$featureStateSummary.ByState.'Disabled with Payload Removed'
+        }
         $featuresSample = @(
             $features | Select-Object -First 50 | ForEach-Object {
                 if ($_.State) { '{0} ({1})' -f $_.Name, $_.State } else { [string]$_.Name }
@@ -518,7 +534,16 @@ $null = $mdLines.Add('## Mounted image inventory summary')
 $null = $mdLines.Add('')
 $null = $mdLines.Add(('- Package identities counted: {0} (Installed={1}, Staged={2})' -f $packageCount, $packagesInstalledCount, $packagesStagedCount))
 $null = $mdLines.Add(('- Provisioned AppX packages counted: {0}' -f $appxCount))
-$null = $mdLines.Add(('- Optional features counted: {0} (Enabled={1}, Disabled={2})' -f $featureCount, $featuresEnabledCount, $featuresDisabledCount))
+$featureStateParts = @()
+if ($featureStateSummary -and $featureStateSummary.ByState) {
+    foreach ($prop in $featureStateSummary.ByState.PSObject.Properties) {
+        $featureStateParts += ('{0}={1}' -f $prop.Name, $prop.Value)
+    }
+}
+$featureStateText = if ($featureStateParts.Count -gt 0) { ($featureStateParts -join ', ') } else {
+    ('Enabled={0}, Disabled={1}, Disabled with Payload Removed={2}' -f $featuresEnabledCount, $featuresDisabledCount, $featuresDisabledWithPayloadRemovedCount)
+}
+$null = $mdLines.Add(('- Optional features counted: {0} ({1}; accounted={2})' -f $featureCount, $featureStateText, $(if ($featureStateSummary) { $featureStateSummary.Accounted } else { 0 })))
 $null = $mdLines.Add(('- Hive CurrentBuild/UBR: {0}' -f $buildNumber))
 $null = $mdLines.Add(('- Hive DisplayVersion: {0}' -f $displayVersion))
 $null = $mdLines.Add(('- Hive EditionID: {0}' -f $editionId))
@@ -545,11 +570,12 @@ $null = $mdLines.Add('')
 if ($compatibilityMatrix) {
     $null = $mdLines.Add('## Compatibility matrix (read-only)')
     $null = $mdLines.Add('')
-    $null = $mdLines.Add(('Summary: present={0}, absent={1}, protected={2}, eligible={3}, ambiguous={4}, conflicting={5}' -f `
+    $null = $mdLines.Add(('Summary: present={0}, absent={1}, protected={2}, eligible={3}, alreadyDisabled={4}, ambiguous={5}, conflicting={6}' -f `
         $compatibilityMatrix.summary.present, `
         $compatibilityMatrix.summary.absent, `
         $compatibilityMatrix.summary.protected, `
         $compatibilityMatrix.summary.eligible, `
+        $compatibilityMatrix.summary.alreadyDisabled, `
         $compatibilityMatrix.summary.ambiguous, `
         $compatibilityMatrix.summary.conflicting))
     $null = $mdLines.Add('')
@@ -636,6 +662,8 @@ $json = [ordered]@{
     featureCount              = $featureCount
     featuresEnabledCount      = $featuresEnabledCount
     featuresDisabledCount     = $featuresDisabledCount
+    featuresDisabledWithPayloadRemovedCount = $featuresDisabledWithPayloadRemovedCount
+    featureStateSummary       = $featureStateSummary
     buildNumber               = $buildNumber
     displayVersion            = $displayVersion
     editionId                 = $editionId

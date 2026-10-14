@@ -73,7 +73,8 @@ $payload = [ordered]@{
     rows         = $matrix.rows
     notes        = @(
         'Read-only analysis only. No package removal or feature disable is authorized by this matrix.'
-        'Eligible means present + unprotected + enabled in manifest; still requires explicit Milestone-2 review.'
+        'Eligible (features) means present, currently Enabled, unprotected, and enabled in the manifest — actionable later.'
+        'AlreadyDisabled means the disable candidate is already satisfied (Disabled / Disabled with Payload Removed); skip in future servicing.'
         'Ambiguous prefix matches are rejected and never treated as authorized removals.'
     )
 }
@@ -91,7 +92,7 @@ $null = $md.Add('## Summary')
 $null = $md.Add('')
 $null = $md.Add(('| Status | Count |'))
 $null = $md.Add('|---|---|')
-foreach ($key in @('present', 'absent', 'protected', 'eligible', 'ambiguous', 'conflicting')) {
+foreach ($key in @('present', 'absent', 'protected', 'eligible', 'alreadyDisabled', 'ambiguous', 'conflicting')) {
     $null = $md.Add(('| {0} | {1} |' -f $key, $matrix.summary.$key))
 }
 $null = $md.Add('')

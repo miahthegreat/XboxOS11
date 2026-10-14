@@ -38,6 +38,8 @@
         'ConvertFrom-XboxOSDismFeatureListOutput'
         'ConvertFrom-XboxOSDismProvisionedAppxListOutput'
         'Get-XboxOSDismListedValues'
+        'Test-XboxOSFeatureStateDisabled'
+        'Get-XboxOSFeatureStateSummary'
         'New-XboxOSCompatibilityMatrix'
         'Format-XboxOSInventorySampleLines'
         'ConvertFrom-XboxOSDismImageInfoOutput'

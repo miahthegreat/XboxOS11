@@ -54,6 +54,8 @@ jobs:
             'tests/DismCompat.Tests.ps1',
             'tests/Inventory.Tests.ps1',
             'scripts/Build-CompatibilityMatrix.ps1',
+            'docs/m1-compatibility-baseline.md',
+            'docs/XboxOS11-compatibility-matrix-26300.9457.md',
             'README.md',
             'LICENSE'
           )

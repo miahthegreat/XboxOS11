@@ -1198,6 +1198,60 @@ function Get-XboxOSDismListedValues {
     return $values.ToArray()
 }
 
+function Test-XboxOSFeatureStateDisabled {
+    [CmdletBinding()]
+    param(
+        [string]$State
+    )
+
+    if ([string]::IsNullOrWhiteSpace($State)) {
+        return $false
+    }
+
+    # DISM uses "Disabled" and variants such as "Disabled with Payload Removed".
+    return ($State -eq 'Disabled') -or ($State -like 'Disabled *')
+}
+
+function Get-XboxOSFeatureStateSummary {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Features
+    )
+
+    $list = @($Features)
+    $byState = [ordered]@{}
+    $accounted = 0
+    foreach ($feature in $list) {
+        if ($null -eq $feature) { continue }
+        $state = $null
+        if ($feature -is [string]) {
+            $state = '(name-only)'
+        }
+        elseif ($feature.PSObject.Properties['State']) {
+            $state = [string]$feature.State
+        }
+
+        if ([string]::IsNullOrWhiteSpace($state)) {
+            $state = '(unspecified)'
+        }
+
+        if (-not $byState.Contains($state)) {
+            $byState[$state] = 0
+        }
+        $byState[$state] = [int]$byState[$state] + 1
+        $accounted++
+    }
+
+    return [pscustomobject]@{
+        Total     = $list.Count
+        Accounted = $accounted
+        Complete  = ($accounted -eq $list.Count)
+        ByState   = [pscustomobject]$byState
+    }
+}
+
 function New-XboxOSCompatibilityMatrix {
     [CmdletBinding()]
     param(
@@ -1339,9 +1393,17 @@ function New-XboxOSCompatibilityMatrix {
                     $status = 'Present'
                     $detail = 'Present in inventory but candidate is disabled in disable-features manifest.'
                 }
-                else {
+                elseif (Test-XboxOSFeatureStateDisabled -State $state) {
+                    $status = 'AlreadyDisabled'
+                    $detail = 'Configured disable candidate is already satisfied; future servicing should skip this feature.'
+                }
+                elseif ($state -eq 'Enabled') {
                     $status = 'Eligible'
-                    $detail = 'Present, unprotected, and enabled for consideration after explicit review.'
+                    $detail = 'Present, enabled, unprotected, and actionable for a future disable operation after explicit review.'
+                }
+                else {
+                    $status = 'Present'
+                    $detail = ("Present with DISM state '{0}'; not classified as an actionable disable without review." -f $(if ($state) { $state } else { '(unspecified)' }))
                 }
             }
 
@@ -1359,12 +1421,13 @@ function New-XboxOSCompatibilityMatrix {
 
     $rows = @($appxRows.ToArray() + $featureRows.ToArray())
     $summary = [ordered]@{
-        present     = @($rows | Where-Object Status -eq 'Present').Count
-        absent      = @($rows | Where-Object Status -eq 'Absent').Count
-        protected   = @($rows | Where-Object Status -eq 'Protected').Count
-        eligible    = @($rows | Where-Object Status -eq 'Eligible').Count
-        ambiguous   = @($rows | Where-Object Status -eq 'Ambiguous').Count
-        conflicting = @($rows | Where-Object Status -eq 'Conflicting').Count
+        present          = @($rows | Where-Object Status -eq 'Present').Count
+        absent           = @($rows | Where-Object Status -eq 'Absent').Count
+        protected        = @($rows | Where-Object Status -eq 'Protected').Count
+        eligible         = @($rows | Where-Object Status -eq 'Eligible').Count
+        alreadyDisabled  = @($rows | Where-Object Status -eq 'AlreadyDisabled').Count
+        ambiguous        = @($rows | Where-Object Status -eq 'Ambiguous').Count
+        conflicting      = @($rows | Where-Object Status -eq 'Conflicting').Count
     }
 
     return [pscustomobject]@{

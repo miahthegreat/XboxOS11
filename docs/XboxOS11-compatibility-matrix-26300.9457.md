@@ -1,6 +1,6 @@
 # XboxOS11 Compatibility Matrix (26300.9457 / 26H2)
 
-Generated (UTC): 10/14/2026 10:29:10 PM
+Generated (UTC): 10/14/2026 10:39:25 PM
 Source: `C:\XboxOS\Logs\DISM-Compatibility-20261014-2.json`
 AppX identities: 47; Features: 136
 
@@ -11,7 +11,8 @@ AppX identities: 47; Features: 136
 | present | 1 |
 | absent | 4 |
 | protected | 1 |
-| eligible | 11 |
+| eligible | 7 |
+| alreadyDisabled | 4 |
 | ambiguous | 0 |
 | conflicting | 0 |
 
@@ -30,16 +31,17 @@ AppX identities: 47; Features: 136
 | AppX | Tips | Absent | - | - | No provisioned AppX identity matched the candidate patterns. |
 | AppX | XboxTCUI | Protected | Microsoft.Xbox.TCUI_1.23.28005.0_neutral_~_8wekyb3d8bbwe | - | Matched identities are protected; removal is not authorized from package-name prefixes alone. |
 | Feature | XpsViewer | Absent | Xps-Foundation-Xps-Viewer | - | Feature not present in inventory. |
-| Feature | PrintingXPS | Eligible | Printing-XPSServices-Features | Disabled | Present, unprotected, and enabled for consideration after explicit review. |
-| Feature | Smb1 | Eligible | SMB1Protocol | Disabled | Present, unprotected, and enabled for consideration after explicit review. |
-| Feature | Smb1 | Eligible | SMB1Protocol-Client | Disabled | Present, unprotected, and enabled for consideration after explicit review. |
-| Feature | Smb1 | Eligible | SMB1Protocol-Server | Disabled | Present, unprotected, and enabled for consideration after explicit review. |
-| Feature | WorkFolders | Eligible | WorkFolders-Client | Enabled | Present, unprotected, and enabled for consideration after explicit review. |
+| Feature | PrintingXPS | AlreadyDisabled | Printing-XPSServices-Features | Disabled | Configured disable candidate is already satisfied; future servicing should skip this feature. |
+| Feature | Smb1 | AlreadyDisabled | SMB1Protocol | Disabled | Configured disable candidate is already satisfied; future servicing should skip this feature. |
+| Feature | Smb1 | AlreadyDisabled | SMB1Protocol-Client | Disabled | Configured disable candidate is already satisfied; future servicing should skip this feature. |
+| Feature | Smb1 | AlreadyDisabled | SMB1Protocol-Server | Disabled | Configured disable candidate is already satisfied; future servicing should skip this feature. |
+| Feature | WorkFolders | Eligible | WorkFolders-Client | Enabled | Present, enabled, unprotected, and actionable for a future disable operation after explicit review. |
 | Feature | FaxAndScan | Absent | FaxServicesClientPackage | - | Feature not present in inventory. |
 
 ## Notes
 
 - Read-only analysis only. No package removal or feature disable is authorized by this matrix.
-- Eligible means present + unprotected + enabled in manifest; still requires explicit Milestone-2 review.
+- Eligible (features) means present, currently Enabled, unprotected, and enabled in the manifest — actionable later.
+- AlreadyDisabled means the disable candidate is already satisfied (Disabled / Disabled with Payload Removed); skip in future servicing.
 - Ambiguous prefix matches are rejected and never treated as authorized removals.
 

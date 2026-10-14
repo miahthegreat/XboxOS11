@@ -22,7 +22,7 @@ Target reference hardware: **AMD Ryzen 7 7800X3D** + **AMD Radeon RX 9070 XT** (
 |------|---------|
 | Build host | Windows 10/11 x64 |
 | Orchestration | PowerShell 7 recommended; Windows PowerShell 5.1 supported |
-| Target image | Windows 11 (configurable; Pro 25H2 initially) |
+| Target image | Windows 11 Pro (release from verified metadata; baseline capture 26H2 / 26300.9457) |
 | Boot | UEFI + GPT |
 
 ## Required tools
@@ -142,6 +142,8 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [Architecture](docs/architecture.md)
 - [Build guide](docs/build-guide.md)
 - [Compatibility](docs/compatibility.md)
+- [M1 read-only compatibility baseline](docs/m1-compatibility-baseline.md)
+- [Compatibility matrix (26300.9457 / 26H2)](docs/XboxOS11-compatibility-matrix-26300.9457.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
