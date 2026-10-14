@@ -1,12 +1,182 @@
 # Milestone 2 servicing plan engine (plan-only; no modifying DISM).
 # Dotted into XboxOS.Build.psm1.
 
-$script:XboxOSServicingPlanEngineVersion = '2.0.0'
+$script:XboxOSServicingPlanEngineVersion = '2.1.0'
+$script:XboxOSPlanHashSchemaVersion = 'plan-hash-v1'
+$script:XboxOSInventorySchemaVersion = '2.0'
+$script:XboxOSSupportedInventorySchemaVersions = @('2.0')
 
 function Get-XboxOSServicingPlanEngineVersion {
     [CmdletBinding()]
     param()
     return $script:XboxOSServicingPlanEngineVersion
+}
+
+function Get-XboxOSPlanHashSchemaVersion {
+    [CmdletBinding()]
+    param()
+    return $script:XboxOSPlanHashSchemaVersion
+}
+
+function Get-XboxOSUtf8Sha256Hex {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string]$Text
+    )
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = $sha.ComputeHash($bytes)
+    }
+    finally {
+        $sha.Dispose()
+    }
+    return ([System.BitConverter]::ToString($hash) -replace '-', '')
+}
+
+function ConvertTo-XboxOSCanonicalJson {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowNull()]
+        $Value
+    )
+
+    if ($null -eq $Value) {
+        return 'null'
+    }
+    if ($Value -is [bool]) {
+        if ($Value) { return 'true' } else { return 'false' }
+    }
+    if ($Value -is [int] -or $Value -is [long] -or $Value -is [double] -or $Value -is [decimal]) {
+        return "$Value"
+    }
+    if ($Value -is [string]) {
+        return (($Value | ConvertTo-Json -Compress))
+    }
+    if ($Value -is [System.Collections.IDictionary] -or $Value -is [ordered]) {
+        $parts = New-Object System.Collections.Generic.List[string]
+        foreach ($key in @($Value.Keys)) {
+            $parts.Add(('"{0}":{1}' -f ($key -replace '\\', '\\\\' -replace '"', '\"'), (ConvertTo-XboxOSCanonicalJson -Value $Value[$key]))) | Out-Null
+        }
+        return '{' + ($parts -join ',') + '}'
+    }
+    # PSCustomObject / ordered-like
+    if ($Value -is [pscustomobject] -or $Value.PSObject.TypeNames -contains 'System.Management.Automation.PSCustomObject') {
+        $parts = New-Object System.Collections.Generic.List[string]
+        foreach ($prop in @($Value.PSObject.Properties)) {
+            $parts.Add(('"{0}":{1}' -f ($prop.Name -replace '\\', '\\\\' -replace '"', '\"'), (ConvertTo-XboxOSCanonicalJson -Value $prop.Value))) | Out-Null
+        }
+        return '{' + ($parts -join ',') + '}'
+    }
+    if ($Value -is [System.Collections.IEnumerable]) {
+        $items = New-Object System.Collections.Generic.List[string]
+        foreach ($item in @($Value)) {
+            $items.Add((ConvertTo-XboxOSCanonicalJson -Value $item)) | Out-Null
+        }
+        return '[' + ($items -join ',') + ']'
+    }
+    return (($Value | ConvertTo-Json -Compress -Depth 20))
+}
+
+function Get-XboxOSManifestContentFingerprint {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Manifest
+    )
+
+    $canonical = ConvertTo-XboxOSCanonicalJson -Value $Manifest
+    return Get-XboxOSUtf8Sha256Hex -Text $canonical
+}
+
+function Get-XboxOSInventoryFingerprint {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Inventory
+    )
+
+    $appx = @($Inventory.appxPackages | ForEach-Object { [string]$_ } | Sort-Object)
+    $features = @(
+        $Inventory.features | ForEach-Object {
+            [ordered]@{
+                name  = [string]$_.Name
+                state = $(if ($null -ne $_.State) { [string]$_.State } else { '' })
+            }
+        } | Sort-Object { $_.name }
+    )
+    $doc = [ordered]@{
+        appxPackages = $appx
+        features     = @($features)
+    }
+    return Get-XboxOSUtf8Sha256Hex -Text (ConvertTo-XboxOSCanonicalJson -Value $doc)
+}
+
+function Assert-XboxOSInventorySnapshot {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Inventory
+    )
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    $appx = @($Inventory.appxPackages)
+    $features = @($Inventory.features)
+
+    $dupAppx = @($appx | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    if ($dupAppx.Count -gt 0) {
+        $errors.Add(('Duplicate AppX identities: {0}' -f ($dupAppx -join '; '))) | Out-Null
+    }
+
+    $dupFeat = @($features | ForEach-Object { [string]$_.Name } | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    if ($dupFeat.Count -gt 0) {
+        $errors.Add(('Duplicate feature identities: {0}' -f ($dupFeat -join '; '))) | Out-Null
+    }
+
+    if ($Inventory.appxAvailability -eq 'Available') {
+        if ($appx.Count -eq 0) {
+            $errors.Add('AppxAvailability=Available but no AppX identities were provided.') | Out-Null
+        }
+        foreach ($name in $appx) {
+            if ([string]::IsNullOrWhiteSpace($name) -or $name.Contains('*') -or $name.Contains('?')) {
+                $errors.Add("AppX identity is missing or not exact: '$name'") | Out-Null
+            }
+        }
+    }
+
+    if ($Inventory.featureAvailability -eq 'Available') {
+        if ($features.Count -eq 0) {
+            $errors.Add('FeatureAvailability=Available but no feature records were provided.') | Out-Null
+        }
+        foreach ($feature in $features) {
+            if ([string]::IsNullOrWhiteSpace([string]$feature.Name)) {
+                $errors.Add('Feature record is missing Name.') | Out-Null
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$feature.State)) {
+                $errors.Add(("Feature '{0}' is missing State." -f $feature.Name)) | Out-Null
+            }
+        }
+    }
+
+    if ($Inventory.PSObject.Properties['advertisedAppxCount'] -and $null -ne $Inventory.advertisedAppxCount) {
+        if ([int]$Inventory.advertisedAppxCount -ne $appx.Count -and -not [bool]$Inventory.legacyNestedCountIgnored) {
+            $errors.Add(("Advertised AppX count {0} does not match parsed count {1}." -f $Inventory.advertisedAppxCount, $appx.Count)) | Out-Null
+        }
+    }
+    if ($Inventory.PSObject.Properties['advertisedFeatureCount'] -and $null -ne $Inventory.advertisedFeatureCount) {
+        if ([int]$Inventory.advertisedFeatureCount -ne $features.Count -and -not [bool]$Inventory.legacyNestedCountIgnored) {
+            $errors.Add(("Advertised feature count {0} does not match parsed count {1}." -f $Inventory.advertisedFeatureCount, $features.Count)) | Out-Null
+        }
+    }
+
+    return [pscustomobject]@{
+        Valid  = ($errors.Count -eq 0)
+        Errors = $errors.ToArray()
+    }
 }
 
 function New-XboxOSInventorySnapshot {
@@ -31,11 +201,36 @@ function New-XboxOSInventorySnapshot {
 
         [string]$Source = 'inline',
 
-        [nullable[datetime]]$CapturedUtc = $null,
+        $CapturedUtc = $null,
 
         [AllowEmptyCollection()]
-        [string[]]$Notes = @()
+        [string[]]$Notes = @(),
+
+        [ValidateSet('Authoritative', 'Unverified', 'Blocked')]
+        [string]$VerificationStatus = 'Unverified',
+
+        [AllowEmptyCollection()]
+        [string[]]$VerificationErrors = @(),
+
+        [object]$SourceImage = $null,
+
+        [nullable[int]]$AdvertisedAppxCount = $null,
+
+        [nullable[int]]$AdvertisedFeatureCount = $null,
+
+        [nullable[int]]$AdvertisedPackageCount = $null,
+
+        [switch]$LegacyNestedCountIgnored,
+
+        [string]$InventorySchemaVersion = ''
     )
+
+    if (-not $InventorySchemaVersion) {
+        $InventorySchemaVersion = $script:XboxOSInventorySchemaVersion
+    }
+    if ($script:XboxOSSupportedInventorySchemaVersions -notcontains $InventorySchemaVersion) {
+        throw ("Unsupported inventory schema version '{0}'. Supported: {1}" -f $InventorySchemaVersion, ($script:XboxOSSupportedInventorySchemaVersions -join ', '))
+    }
 
     if ($AppxAvailability -eq 'Available' -and @($AppxPackages).Count -eq 0) {
         throw 'AppxAvailability=Available requires at least one AppX package identity, or use Empty.'
@@ -59,16 +254,42 @@ function New-XboxOSInventorySnapshot {
         }
     )
 
-    return [pscustomobject]@{
-        source               = $Source
-        capturedUtc          = $CapturedUtc
-        appxAvailability     = $AppxAvailability
-        featureAvailability  = $FeatureAvailability
-        appxPackages         = [string[]]@($AppxPackages | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-        features             = $normalizedFeatures
-        packages             = @($Packages)
-        notes                = @($Notes)
+    $snapshot = [pscustomobject]@{
+        inventorySchemaVersion     = $InventorySchemaVersion
+        source                     = $Source
+        capturedUtc                = $CapturedUtc
+        appxAvailability           = $AppxAvailability
+        featureAvailability        = $FeatureAvailability
+        appxPackages               = [string[]]@($AppxPackages | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        features                   = $normalizedFeatures
+        packages                   = @($Packages)
+        notes                      = @($Notes)
+        verificationStatus         = $VerificationStatus
+        verificationErrors         = @($VerificationErrors)
+        sourceImage                = $SourceImage
+        advertisedAppxCount        = $AdvertisedAppxCount
+        advertisedFeatureCount     = $AdvertisedFeatureCount
+        advertisedPackageCount     = $AdvertisedPackageCount
+        legacyNestedCountIgnored   = [bool]$LegacyNestedCountIgnored
+        inventoryFingerprint       = $null
     }
+
+    $assert = Assert-XboxOSInventorySnapshot -Inventory $snapshot
+    if (-not $assert.Valid) {
+        $snapshot.verificationStatus = 'Blocked'
+        $snapshot.verificationErrors = @($snapshot.verificationErrors + $assert.Errors | Select-Object -Unique)
+        $snapshot.appxAvailability = 'Unknown'
+        $snapshot.featureAvailability = 'Unknown'
+        $snapshot.notes = @($snapshot.notes + 'Inventory blocked by Assert-XboxOSInventorySnapshot; treated as Unknown for planning.')
+    }
+
+    if ($snapshot.verificationStatus -eq 'Authoritative' -and ($snapshot.appxAvailability -eq 'Unknown' -or $snapshot.featureAvailability -eq 'Unknown')) {
+        $snapshot.verificationStatus = 'Blocked'
+        $snapshot.verificationErrors = @($snapshot.verificationErrors + 'Authoritative inventory cannot have Unknown availability.')
+    }
+
+    $snapshot.inventoryFingerprint = Get-XboxOSInventoryFingerprint -Inventory $snapshot
+    return $snapshot
 }
 
 function Import-XboxOSInventoryFromCompatReport {
@@ -83,77 +304,124 @@ function Import-XboxOSInventoryFromCompatReport {
     }
 
     $report = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $notes = New-Object System.Collections.Generic.List[string]
+    $verificationErrors = New-Object System.Collections.Generic.List[string]
+    $legacyNestedCountIgnored = $false
+
+    if (-not ($report.PSObject.Properties['success']) -or -not [bool]$report.success) {
+        $verificationErrors.Add('Source compatibility report success is not True.') | Out-Null
+    }
+
+    $requiredSteps = @('Get-Packages', 'Get-ProvisionedAppxPackages', 'Get-Features')
+    $commands = @()
+    if ($report.PSObject.Properties['commands'] -and $report.commands) {
+        $commands = @($report.commands)
+    }
+    else {
+        $verificationErrors.Add('Compat report is missing commands[] required for inventory reconstruction.') | Out-Null
+    }
+
+    foreach ($step in $requiredSteps) {
+        $cmd = @($commands | Where-Object { $_.Step -eq $step } | Select-Object -First 1)
+        if ($cmd.Count -ne 1) {
+            $verificationErrors.Add("Missing required DISM command transcript step '$step'.") | Out-Null
+            continue
+        }
+        if ([int]$cmd[0].ExitCode -ne 0) {
+            $verificationErrors.Add(("DISM step '{0}' exit code {1} is nonzero." -f $step, $cmd[0].ExitCode)) | Out-Null
+        }
+        if (-not $cmd[0].Output -or @($cmd[0].Output).Count -lt 5) {
+            $verificationErrors.Add("DISM step '$step' output is missing or truncated.") | Out-Null
+        }
+    }
+
+    $appxCmd = @($commands | Where-Object { $_.Step -eq 'Get-ProvisionedAppxPackages' } | Select-Object -First 1)
+    $featCmd = @($commands | Where-Object { $_.Step -eq 'Get-Features' } | Select-Object -First 1)
+    $pkgCmd = @($commands | Where-Object { $_.Step -eq 'Get-Packages' } | Select-Object -First 1)
+
     $appxNames = @()
     $features = @()
     $packages = @()
-    $notes = New-Object System.Collections.Generic.List[string]
 
-    if ($report.PSObject.Properties['appxPackages'] -and $report.appxPackages) {
-        $raw = @($report.appxPackages)
-        if ($raw.Count -gt 0 -and $raw[0] -is [string]) {
-            $appxNames = [string[]]$raw
-        }
-        else {
-            $appxNames = [string[]]@($raw | ForEach-Object {
-                    if ($_ -is [string]) { $_ }
-                    elseif ($_.PSObject.Properties['PackageName']) { [string]$_.PackageName }
-                })
-        }
-    }
-
-    if ($appxNames.Count -eq 0) {
-        $appxCmd = @($report.commands | Where-Object { $_.Step -eq 'Get-ProvisionedAppxPackages' } | Select-Object -First 1)
-        if ($appxCmd.Count -eq 1) {
-            $appxNames = [string[]]@(
-                ConvertFrom-XboxOSDismProvisionedAppxListOutput -Output @($appxCmd[0].Output) |
-                    ForEach-Object { $_.PackageName }
-            )
-            $notes.Add('AppX inventory reconstructed from Get-ProvisionedAppxPackages command output.') | Out-Null
-        }
-    }
-
-    if ($report.PSObject.Properties['features'] -and $report.features) {
-        $features = @(
-            foreach ($feature in @($report.features)) {
-                if ($feature -is [string]) {
-                    [pscustomobject]@{ Name = $feature; State = $null }
-                }
-                else {
-                    [pscustomobject]@{
-                        Name  = [string]$feature.Name
-                        State = $(if ($feature.PSObject.Properties['State']) { [string]$feature.State } else { $null })
-                    }
-                }
-            }
+    if ($appxCmd.Count -eq 1 -and [int]$appxCmd[0].ExitCode -eq 0) {
+        $appxNames = [string[]]@(
+            ConvertFrom-XboxOSDismProvisionedAppxListOutput -Output @($appxCmd[0].Output) |
+                ForEach-Object { $_.PackageName }
         )
+        $notes.Add('AppX inventory reconstructed exclusively from Get-ProvisionedAppxPackages transcript.') | Out-Null
+    }
+    if ($featCmd.Count -eq 1 -and [int]$featCmd[0].ExitCode -eq 0) {
+        $features = @(ConvertFrom-XboxOSDismFeatureListOutput -Output @($featCmd[0].Output))
+        $notes.Add('Feature inventory reconstructed exclusively from Get-Features transcript.') | Out-Null
+    }
+    if ($pkgCmd.Count -eq 1 -and [int]$pkgCmd[0].ExitCode -eq 0) {
+        $packages = @(ConvertFrom-XboxOSDismPackageListOutput -Output @($pkgCmd[0].Output))
+        $notes.Add('Package inventory reconstructed exclusively from Get-Packages transcript.') | Out-Null
     }
 
-    $needsFeatureRebuild = ($features.Count -eq 0)
-    if (-not $needsFeatureRebuild) {
-        $withState = @($features | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.State) }).Count
-        if ($withState -eq 0) { $needsFeatureRebuild = $true }
+    $advertisedAppx = $null
+    $advertisedFeat = $null
+    $advertisedPkg = $null
+    if ($report.PSObject.Properties['appxCount']) { $advertisedAppx = [int]$report.appxCount }
+    if ($report.PSObject.Properties['featureCount']) { $advertisedFeat = [int]$report.featureCount }
+    if ($report.PSObject.Properties['packageCount']) { $advertisedPkg = [int]$report.packageCount }
+
+    # Milestone 1 early reports nested samples so counts collapsed to 1; ignore those advertised totals when transcripts are complete.
+    if (($advertisedAppx -eq 1 -or $advertisedFeat -eq 1 -or $advertisedPkg -eq 1) -and
+        $appxNames.Count -gt 1 -and $features.Count -gt 1 -and $packages.Count -gt 1) {
+        $legacyNestedCountIgnored = $true
+        $notes.Add('Ignored legacy nested sample counts (=1) because command transcripts produced complete inventories.') | Out-Null
+        $advertisedAppx = $appxNames.Count
+        $advertisedFeat = $features.Count
+        $advertisedPkg = $packages.Count
     }
-    if ($needsFeatureRebuild) {
-        $featCmd = @($report.commands | Where-Object { $_.Step -eq 'Get-Features' } | Select-Object -First 1)
-        if ($featCmd.Count -eq 1) {
-            $features = @(ConvertFrom-XboxOSDismFeatureListOutput -Output @($featCmd[0].Output))
-            $notes.Add('Feature inventory reconstructed from Get-Features command output.') | Out-Null
+    else {
+        if ($null -ne $advertisedAppx -and $advertisedAppx -ne $appxNames.Count) {
+            $verificationErrors.Add(("Advertised appxCount {0} != parsed {1}." -f $advertisedAppx, $appxNames.Count)) | Out-Null
+        }
+        if ($null -ne $advertisedFeat -and $advertisedFeat -ne $features.Count) {
+            $verificationErrors.Add(("Advertised featureCount {0} != parsed {1}." -f $advertisedFeat, $features.Count)) | Out-Null
+        }
+        if ($null -ne $advertisedPkg -and $advertisedPkg -ne $packages.Count) {
+            $verificationErrors.Add(("Advertised packageCount {0} != parsed {1}." -f $advertisedPkg, $packages.Count)) | Out-Null
         }
     }
 
-    $pkgCmd = @($report.commands | Where-Object { $_.Step -eq 'Get-Packages' } | Select-Object -First 1)
-    if ($pkgCmd.Count -eq 1) {
-        $packages = @(ConvertFrom-XboxOSDismPackageListOutput -Output @($pkgCmd[0].Output))
+    $sourceImage = [ordered]@{
+        editionName    = $(if ($report.PSObject.Properties['sourceIndexName']) { [string]$report.sourceIndexName } else { $null })
+        sourceIndex    = $(if ($report.PSObject.Properties['sourceIndex']) { [int]$report.sourceIndex } else { $null })
+        buildNumber    = $(if ($report.PSObject.Properties['buildNumber']) { [string]$report.buildNumber } else { $null })
+        displayVersion = $(if ($report.PSObject.Properties['displayVersion']) { [string]$report.displayVersion } else { $null })
+        isoSha256      = $(if ($report.PSObject.Properties['isoSha256Before']) { [string]$report.isoSha256Before } else { $null })
+        expectedEditionName = $(if ($report.PSObject.Properties['expectedEditionName']) { [string]$report.expectedEditionName } else { 'Windows 11 Pro' })
+    }
+
+    if ([string]::IsNullOrWhiteSpace([string]$sourceImage.editionName)) {
+        $verificationErrors.Add('Source image edition name is missing from compat report.') | Out-Null
+    }
+    elseif ($sourceImage.expectedEditionName -and -not [string]::Equals([string]$sourceImage.editionName, [string]$sourceImage.expectedEditionName, [StringComparison]::OrdinalIgnoreCase)) {
+        $verificationErrors.Add(("Source edition '{0}' does not match expected '{1}'." -f $sourceImage.editionName, $sourceImage.expectedEditionName)) | Out-Null
     }
 
     $appxAvailability = if ($appxNames.Count -gt 0) { 'Available' } else { 'Unknown' }
     $featureAvailability = if ($features.Count -gt 0) { 'Available' } else { 'Unknown' }
+    if ($appxAvailability -eq 'Unknown') { $verificationErrors.Add('AppX inventory could not be reconstructed from a successful transcript.') | Out-Null }
+    if ($featureAvailability -eq 'Unknown') { $verificationErrors.Add('Feature inventory could not be reconstructed from a successful transcript.') | Out-Null }
 
-    if ($appxAvailability -eq 'Unknown') {
-        $notes.Add('AppX inventory could not be reconstructed; plan will fail closed.') | Out-Null
+    $verificationStatus = if ($verificationErrors.Count -eq 0 -and $appxAvailability -eq 'Available' -and $featureAvailability -eq 'Available') {
+        'Authoritative'
     }
-    if ($featureAvailability -eq 'Unknown') {
-        $notes.Add('Feature inventory could not be reconstructed; plan will fail closed.') | Out-Null
+    elseif ($appxNames.Count -gt 0 -or $features.Count -gt 0) {
+        'Unverified'
+    }
+    else {
+        'Blocked'
+    }
+
+    if ($verificationStatus -ne 'Authoritative') {
+        $notes.Add('Inventory is not Authoritative; planning will fail closed (Blocked / NotEvaluated).') | Out-Null
+        $appxAvailability = 'Unknown'
+        $featureAvailability = 'Unknown'
     }
 
     $captured = $null
@@ -169,30 +437,24 @@ function Import-XboxOSInventoryFromCompatReport {
         -Packages $packages `
         -Source $Path `
         -CapturedUtc $captured `
-        -Notes $notes.ToArray()
+        -Notes $notes.ToArray() `
+        -VerificationStatus $verificationStatus `
+        -VerificationErrors $verificationErrors.ToArray() `
+        -SourceImage ([pscustomobject]$sourceImage) `
+        -AdvertisedAppxCount $advertisedAppx `
+        -AdvertisedFeatureCount $advertisedFeat `
+        -AdvertisedPackageCount $advertisedPkg `
+        -LegacyNestedCountIgnored:$legacyNestedCountIgnored
 }
 
 function Get-XboxOSCanonicalPlanPayload {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [object[]]$Operations
+        [object]$PlanDocument
     )
 
-    $rows = @(
-        $Operations | Sort-Object operationId | ForEach-Object {
-            [ordered]@{
-                operationId     = [string]$_.operationId
-                operationType   = [string]$_.operationType
-                targetIdentity  = [string]$_.targetIdentity
-                status          = [string]$_.status
-                proposedAction  = [string]$_.proposedAction
-                executionOrder  = [int]$_.executionOrder
-                approvalRequired = [bool]$_.approvalRequired
-            }
-        }
-    )
-    return ($rows | ConvertTo-Json -Compress -Depth 6)
+    return ConvertTo-XboxOSCanonicalJson -Value $PlanDocument
 }
 
 function Get-XboxOSPlanContentHash {
@@ -202,15 +464,78 @@ function Get-XboxOSPlanContentHash {
         [string]$CanonicalPayload
     )
 
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($CanonicalPayload)
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $hash = $sha.ComputeHash($bytes)
+    return Get-XboxOSUtf8Sha256Hex -Text $CanonicalPayload
+}
+
+function New-XboxOSCanonicalPlanDocument {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Inventory,
+        [Parameter(Mandatory)][hashtable]$ManifestFingerprints,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Operations,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Errors,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Warnings,
+        [Parameter(Mandatory)][string]$ApprovalGate
+    )
+
+    $ops = @(
+        $Operations | Sort-Object executionOrder, operationId | ForEach-Object {
+            [ordered]@{
+                operationId             = [string]$_.operationId
+                operationType           = [string]$_.operationType
+                targetKind              = [string]$_.targetKind
+                targetIdentity          = $(if ($null -ne $_.targetIdentity) { [string]$_.targetIdentity } else { '' })
+                manifestSource          = [string]$_.manifestSource
+                manifestRuleId          = [string]$_.manifestRuleId
+                matchPattern            = $(if ($null -ne $_.matchPattern) { [string]$_.matchPattern } else { '' })
+                currentState            = $(if ($null -ne $_.currentState) { [string]$_.currentState } else { '' })
+                proposedAction          = [string]$_.proposedAction
+                status                  = [string]$_.status
+                risk                    = [string]$_.risk
+                protectionEvaluation    = [string]$_.protectionEvaluation
+                dependencies            = @($_.dependencies | ForEach-Object { [string]$_ } | Sort-Object)
+                executionOrder          = [int]$_.executionOrder
+                expectedOutcome         = [string]$_.expectedOutcome
+                skipOrRejectionReason   = [string]$_.skipOrRejectionReason
+                approvalRequired        = [bool]$_.approvalRequired
+                dependencyCompleteness  = [string]$_.dependencyCompleteness
+            }
+        }
+    )
+
+    $sourceImage = [ordered]@{
+        editionName    = ''
+        sourceIndex    = $null
+        buildNumber    = ''
+        displayVersion = ''
+        isoSha256      = ''
     }
-    finally {
-        $sha.Dispose()
+    if ($Inventory.sourceImage) {
+        foreach ($key in @('editionName', 'sourceIndex', 'buildNumber', 'displayVersion', 'isoSha256')) {
+            if ($Inventory.sourceImage.PSObject.Properties[$key] -and $null -ne $Inventory.sourceImage.$key) {
+                $sourceImage[$key] = $Inventory.sourceImage.$key
+            }
+        }
     }
-    return ([System.BitConverter]::ToString($hash) -replace '-', '')
+
+    return [ordered]@{
+        hashSchemaVersion        = Get-XboxOSPlanHashSchemaVersion
+        engineVersion            = Get-XboxOSServicingPlanEngineVersion
+        sourceImage              = $sourceImage
+        inventoryFingerprint     = [string]$Inventory.inventoryFingerprint
+        inventoryVerification    = [string]$Inventory.verificationStatus
+        manifestFingerprints     = [ordered]@{
+            removeApps       = [string]$ManifestFingerprints.removeApps
+            disableFeatures  = [string]$ManifestFingerprints.disableFeatures
+            compatibility    = [string]$ManifestFingerprints.compatibility
+        }
+        operations               = $ops
+        errors                   = @($Errors | ForEach-Object { [string]$_ } | Sort-Object)
+        executionRelevantWarnings = @($Warnings | ForEach-Object { [string]$_ } | Sort-Object)
+        approvalGate             = [string]$ApprovalGate
+        executionAuthorized      = $false
+        modifyingCommandsInvoked = $false
+    }
 }
 
 function New-XboxOSServicingOperation {
@@ -234,8 +559,17 @@ function New-XboxOSServicingOperation {
         [string]$Risk,
         [string]$ExpectedOutcome = '',
         [string]$SkipOrRejectionReason = '',
-        [bool]$ApprovalRequired = $false
+        [bool]$ApprovalRequired = $false,
+        [ValidateSet('NotApplicable', 'Unverified', 'Established')]
+        [string]$DependencyCompleteness = 'NotApplicable'
     )
+
+    if ($Status -eq 'Eligible' -and $DependencyCompleteness -eq 'Established') {
+        throw 'Eligible operations cannot claim Established dependency completeness.'
+    }
+    if ($Status -eq 'Eligible' -and $DependencyCompleteness -eq 'NotApplicable') {
+        $DependencyCompleteness = 'Unverified'
+    }
 
     return [pscustomobject]@{
         operationId            = $OperationId
@@ -255,6 +589,7 @@ function New-XboxOSServicingOperation {
         expectedOutcome        = $ExpectedOutcome
         skipOrRejectionReason  = $SkipOrRejectionReason
         approvalRequired       = $ApprovalRequired
+        dependencyCompleteness = $DependencyCompleteness
     }
 }
 
@@ -279,6 +614,21 @@ function New-XboxOSServicingPlan {
     $errors = New-Object System.Collections.Generic.List[string]
     $warnings = New-Object System.Collections.Generic.List[string]
     $operations = New-Object System.Collections.Generic.List[object]
+
+    $manifestFingerprints = @{
+        removeApps      = Get-XboxOSManifestContentFingerprint -Manifest $RemoveAppsManifest
+        disableFeatures = Get-XboxOSManifestContentFingerprint -Manifest $DisableFeaturesManifest
+        compatibility   = Get-XboxOSManifestContentFingerprint -Manifest $CompatibilityManifest
+    }
+
+    if (-not $Inventory.PSObject.Properties['verificationStatus'] -or [string]::IsNullOrWhiteSpace([string]$Inventory.verificationStatus)) {
+        $errors.Add('Inventory is missing verificationStatus; fail closed.') | Out-Null
+        $Inventory = New-XboxOSInventorySnapshot -AppxAvailability Unknown -FeatureAvailability Unknown -Source 'invalid-inventory' -VerificationStatus Blocked -VerificationErrors @('Missing verificationStatus')
+    }
+    elseif ($Inventory.verificationStatus -ne 'Authoritative') {
+        foreach ($ve in @($Inventory.verificationErrors)) { $errors.Add("Inventory verification: $ve") | Out-Null }
+        $errors.Add(("Inventory verificationStatus '{0}' is not Authoritative; planning fails closed." -f $Inventory.verificationStatus)) | Out-Null
+    }
 
     $protectedAppx = @(Get-XboxOSProtectedAppxPatterns -CompatibilityManifest $CompatibilityManifest)
     $neverDisable = @()
@@ -317,14 +667,15 @@ function New-XboxOSServicingPlan {
 
     $appxState = [string]$Inventory.appxAvailability
     $featureState = [string]$Inventory.featureAvailability
-    $appxCanEvaluate = $appxState -in @('Empty', 'Available')
-    $featureCanEvaluate = $featureState -in @('Empty', 'Available')
+    $inventoryAuthoritative = ($Inventory.verificationStatus -eq 'Authoritative')
+    $appxCanEvaluate = $inventoryAuthoritative -and ($appxState -in @('Empty', 'Available'))
+    $featureCanEvaluate = $inventoryAuthoritative -and ($featureState -in @('Empty', 'Available'))
 
     if (-not $appxCanEvaluate) {
-        $errors.Add('AppX inventory availability is Unknown or incomplete; fail closed.') | Out-Null
+        $errors.Add('AppX inventory is not authoritative/complete; fail closed.') | Out-Null
     }
     if (-not $featureCanEvaluate) {
-        $errors.Add('Feature inventory availability is Unknown or incomplete; fail closed.') | Out-Null
+        $errors.Add('Feature inventory is not authoritative/complete; fail closed.') | Out-Null
     }
 
     $appxOrder = 100
@@ -486,7 +837,7 @@ function New-XboxOSServicingPlan {
                     continue
                 }
 
-                $depNote = 'Dependency completeness not proven by presence alone; operator must review Store/Xbox impact before approval.'
+                $depNote = 'Dependency completeness Unverified; presence alone does not establish Store/Xbox/runtime safety.'
                 $operations.Add((New-XboxOSServicingOperation `
                         -OperationId ("appx:{0}:{1}" -f $ruleId, $identity) `
                         -OperationType 'RemoveProvisionedAppx' `
@@ -502,10 +853,11 @@ function New-XboxOSServicingPlan {
                         -Dependencies @($depNote) `
                         -ExecutionOrder ($appxOrder++) `
                         -Risk 'High' `
-                        -ExpectedOutcome 'Provisioned AppX removed from disposable WIM after separate approval.' `
+                        -ExpectedOutcome 'Provisioned AppX removed from disposable WIM only after separate future executor verification.' `
                         -SkipOrRejectionReason '' `
-                        -ApprovalRequired:$true)) | Out-Null
-                $warnings.Add("Eligible AppX removal planned for exact identity '$identity' (candidate '$ruleId'); approval required; not authorized to execute.") | Out-Null
+                        -ApprovalRequired:$true `
+                        -DependencyCompleteness Unverified)) | Out-Null
+                $warnings.Add("Eligible AppX removal planned for exact identity '$identity' (candidate '$ruleId'); PendingOperatorApproval is not execution permission.") | Out-Null
             }
         }
     }
@@ -662,13 +1014,14 @@ function New-XboxOSServicingPlan {
                         -ProposedAction 'DisableOptionalFeature' `
                         -Status 'Eligible' `
                         -ProtectionEvaluation 'Unprotected; currently Enabled.' `
-                        -Dependencies @('Feature dependency graph not fully modeled; missing dependency info recorded explicitly.') `
+                        -Dependencies @('Feature dependency graph not fully modeled; dependencyCompleteness=Unverified.') `
                         -ExecutionOrder ($featureOrder++) `
                         -Risk 'Medium' `
-                        -ExpectedOutcome 'Feature disabled with payload retained (removePayload=false) after separate approval.' `
+                        -ExpectedOutcome 'Feature disabled with payload retained (removePayload=false) only after separate future executor verification.' `
                         -SkipOrRejectionReason '' `
-                        -ApprovalRequired:$true)) | Out-Null
-                $warnings.Add("Eligible feature disable planned for '$identity' (candidate '$ruleId'); approval required; not authorized to execute.") | Out-Null
+                        -ApprovalRequired:$true `
+                        -DependencyCompleteness Unverified)) | Out-Null
+                $warnings.Add("Eligible feature disable planned for '$identity' (candidate '$ruleId'); PendingOperatorApproval is not execution permission.") | Out-Null
                 continue
             }
 
@@ -741,7 +1094,15 @@ function New-XboxOSServicingPlan {
         Total            = $ordered.Count
     }
 
-    $hasBlocking = ($summary.Ambiguous -gt 0 -or $summary.Conflicting -gt 0 -or $summary.NotEvaluated -gt 0 -or $errors.Count -gt 0 -or -not $appxCanEvaluate -or -not $featureCanEvaluate)
+    $hasBlocking = (
+        $summary.Ambiguous -gt 0 -or
+        $summary.Conflicting -gt 0 -or
+        $summary.NotEvaluated -gt 0 -or
+        $errors.Count -gt 0 -or
+        -not $appxCanEvaluate -or
+        -not $featureCanEvaluate -or
+        -not $inventoryAuthoritative
+    )
     $hasEligible = $summary.Eligible -gt 0
     $approvalGate = if ($hasBlocking) {
         'Blocked'
@@ -753,34 +1114,93 @@ function New-XboxOSServicingPlan {
         'NoActionableChanges'
     }
 
-    $canonical = Get-XboxOSCanonicalPlanPayload -Operations $ordered
+    # Eligible cannot survive a blocked gate.
+    if ($hasBlocking -and $hasEligible) {
+        $errors.Add('Eligible operations were suppressed because the plan is Blocked (fail closed).') | Out-Null
+        foreach ($op in $ordered) {
+            if ($op.status -eq 'Eligible') {
+                $op.status = 'Blocked'
+                $op.approvalRequired = $false
+                $op.skipOrRejectionReason = 'Plan blocked; Eligible cannot remain executable metadata.'
+                $op.proposedAction = 'None'
+            }
+        }
+        $ordered = @($operations | Sort-Object executionOrder, operationId)
+        $summary = [ordered]@{
+            Eligible         = @($ordered | Where-Object status -eq 'Eligible').Count
+            AlreadySatisfied = @($ordered | Where-Object status -eq 'AlreadySatisfied').Count
+            Absent           = @($ordered | Where-Object status -eq 'Absent').Count
+            Protected        = @($ordered | Where-Object status -eq 'Protected').Count
+            Ambiguous        = @($ordered | Where-Object status -eq 'Ambiguous').Count
+            Conflicting      = @($ordered | Where-Object status -eq 'Conflicting').Count
+            Blocked          = @($ordered | Where-Object status -eq 'Blocked').Count
+            NotEvaluated     = @($ordered | Where-Object status -eq 'NotEvaluated').Count
+            Total            = $ordered.Count
+        }
+        $hasEligible = $false
+        $approvalGate = 'Blocked'
+    }
+
+    $errorList = @($errors | ForEach-Object { [string]$_ })
+    $warningList = @($warnings | ForEach-Object { [string]$_ })
+    $canonicalDocument = New-XboxOSCanonicalPlanDocument `
+        -Inventory $Inventory `
+        -ManifestFingerprints $manifestFingerprints `
+        -Operations @($ordered) `
+        -Errors $errorList `
+        -Warnings $warningList `
+        -ApprovalGate $approvalGate
+    $canonical = Get-XboxOSCanonicalPlanPayload -PlanDocument $canonicalDocument
     $contentHash = Get-XboxOSPlanContentHash -CanonicalPayload $canonical
     $generatedUtc = [datetime]::UtcNow
-    $planId = 'plan-{0}-{1}' -f $generatedUtc.ToString('yyyyMMddHHmmss'), $contentHash.Substring(0, 12).ToLowerInvariant()
+    $planId = 'plan-{0}-{1}' -f $generatedUtc.ToString('yyyyMMddHHmmssfff'), $contentHash.Substring(0, 12).ToLowerInvariant()
 
     return [pscustomobject]@{
         planId                     = $planId
         engineVersion              = Get-XboxOSServicingPlanEngineVersion
+        hashSchemaVersion          = Get-XboxOSPlanHashSchemaVersion
         generatedUtc               = $generatedUtc
         dryRun                     = $true
         modifyingCommandsInvoked   = $false
+        executionAuthorized        = $false
         inventorySource            = [string]$Inventory.source
+        inventoryFingerprint       = [string]$Inventory.inventoryFingerprint
+        inventoryVerification      = [string]$Inventory.verificationStatus
         inventoryAvailability      = [pscustomobject]@{
             appx     = $appxState
             features = $featureState
         }
+        sourceImage                = $Inventory.sourceImage
+        manifestFingerprints       = [pscustomobject]$manifestFingerprints
         approvalGate               = $approvalGate
+        approvalSemantics          = [pscustomobject]@{
+            eligibleMeansApproved              = $false
+            pendingOperatorApprovalIsExecutable = $false
+            planEngineExecutesOperations       = $false
+            approvalReusableAcrossDrift        = $false
+            futureExecutorMustReverify         = @(
+                'approval record for this contentHash'
+                'source image identity'
+                'inventory fingerprint'
+                'manifest fingerprints'
+                'protected-component evaluation'
+                'plan contentHash recomputation'
+            )
+        }
         summary                    = [pscustomobject]$summary
         operations                 = $ordered
         warnings                   = @($warnings)
         errors                     = @($errors)
         contentHash                = $contentHash
+        canonicalPlanDocument      = $canonicalDocument
         contractsDoc               = 'docs/m2-servicing-plan-contracts.md'
         recoveryDoc                = 'docs/m2-operation-ordering-and-recovery.md'
+        hashDoc                    = 'docs/m2-canonical-plan-hash.md'
         notes                      = @(
             'Plan generation never invokes modifying DISM commands.'
+            'Eligible and PendingOperatorApproval are planning metadata only; executionAuthorized is always false.'
             'Milestone 1 compatibility-matrix Eligible is not execution permission.'
-            'Writable servicing remains unauthorized until a future approval gate is satisfied.'
+            'A future executor must re-verify approval, image identity, inventory, manifests, protection, and contentHash before any mutation.'
         )
     }
 }
@@ -813,11 +1233,15 @@ function Save-XboxOSServicingPlanReport {
     $null = $md.Add('')
     $null = $md.Add(('- Plan ID: `{0}`' -f $Plan.planId))
     $null = $md.Add(('- Engine: `{0}`' -f $Plan.engineVersion))
+    $null = $md.Add(('- Hash schema: `{0}`' -f $Plan.hashSchemaVersion))
     $null = $md.Add(('- Generated (UTC): {0}' -f $Plan.generatedUtc))
     $null = $md.Add(('- Inventory source: `{0}`' -f $Plan.inventorySource))
+    $null = $md.Add(('- Inventory verification: `{0}`' -f $Plan.inventoryVerification))
+    $null = $md.Add(('- Inventory fingerprint: `{0}`' -f $Plan.inventoryFingerprint))
     $null = $md.Add(('- DryRun: {0}' -f $Plan.dryRun))
     $null = $md.Add(('- Modifying DISM commands invoked: **{0}**' -f $Plan.modifyingCommandsInvoked))
-    $null = $md.Add(('- Approval gate: **{0}**' -f $Plan.approvalGate))
+    $null = $md.Add(('- Execution authorized: **{0}**' -f $Plan.executionAuthorized))
+    $null = $md.Add(('- Approval gate: **{0}** (planning metadata only; not executable)' -f $Plan.approvalGate))
     $null = $md.Add(('- Content hash: `{0}`' -f $Plan.contentHash))
     $null = $md.Add('')
     $null = $md.Add('## Summary')

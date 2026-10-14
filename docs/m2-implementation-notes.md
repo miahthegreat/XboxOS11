@@ -4,11 +4,12 @@
 
 1. **Plan-only engine** lives in `modules/XboxOS.Build/ServicingPlan.ps1` and is dotted into `XboxOS.Build.psm1`.
 2. **Statuses** use `AlreadySatisfied` (not `AlreadyDisabled`) for cross-operation consistency; feature disables that are already disabled map here.
-3. **Approval gate** values: `Blocked` / `PendingOperatorApproval` / `NoActionableChanges`. Matrix `Eligible` never grants execution.
-4. **Determinism** is enforced via a canonical JSON payload hash over ordered operations (`contentHash`), independent of `planId` timestamps.
-5. **Inventory import** prefers structured report fields, then reconstructs from Milestone 1 DISM command transcripts.
+3. **Approval gate** values: `Blocked` / `PendingOperatorApproval` / `NoActionableChanges`. `executionAuthorized` is always `$false`.
+4. **Determinism** uses `plan-hash-v1` covering engine/schema versions, source image, inventory fingerprint, manifest fingerprints, full operation safety fields, errors, and execution-relevant warnings (see `docs/m2-canonical-plan-hash.md`).
+5. **Inventory import** reconstructs exclusively from successful DISM transcripts; legacy nested counts (=1) are ignored when transcripts are complete; non-Authoritative inventories fail closed.
 6. **Exact AppX identities** are mandatory for `Eligible` removals; wildcard identities are `Blocked`.
 7. **Duplicate Eligible** rows for the same `targetIdentity` are `Conflicting` (fail closed).
+8. **Eligible dependencyCompleteness** is always `Unverified` (never `Established`).
 
 ## Unresolved risks (carry to review / M3+)
 

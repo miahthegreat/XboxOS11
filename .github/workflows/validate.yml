@@ -59,6 +59,7 @@ jobs:
             'docs/m2-servicing-plan-contracts.md',
             'docs/m2-operation-ordering-and-recovery.md',
             'docs/m2-implementation-notes.md',
+            'docs/m2-canonical-plan-hash.md',
             'modules/XboxOS.Build/ServicingPlan.ps1',
             'scripts/New-ServicingPlan.ps1',
             'tests/ServicingPlan.Tests.ps1',

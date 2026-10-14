@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.2.0'
+    ModuleVersion     = '0.2.1'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -65,12 +65,19 @@
         'Clear-XboxOSWorkspace'
         'Invoke-XboxOSMountCleanup'
         'Get-XboxOSServicingPlanEngineVersion'
+        'Get-XboxOSPlanHashSchemaVersion'
         'New-XboxOSInventorySnapshot'
         'Import-XboxOSInventoryFromCompatReport'
+        'Assert-XboxOSInventorySnapshot'
+        'Get-XboxOSInventoryFingerprint'
+        'Get-XboxOSManifestContentFingerprint'
+        'New-XboxOSCanonicalPlanDocument'
         'New-XboxOSServicingPlan'
         'Save-XboxOSServicingPlanReport'
         'Get-XboxOSCanonicalPlanPayload'
         'Get-XboxOSPlanContentHash'
+        'Get-XboxOSUtf8Sha256Hex'
+        'ConvertTo-XboxOSCanonicalJson'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()

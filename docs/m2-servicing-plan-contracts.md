@@ -4,7 +4,8 @@
 
 Define deterministic, inventory-aware **planning** contracts for future Windows image servicing. Generating a plan never executes modifying DISM commands and never treats Milestone 1 matrix `Eligible` as execution permission.
 
-Engine version: `2.0.0`
+Engine version: `2.1.0`  
+Hash schema: `plan-hash-v1` (see [m2-canonical-plan-hash.md](m2-canonical-plan-hash.md))
 
 ## Inputs
 
@@ -91,13 +92,34 @@ Rules:
 | `Blocked` | Safety gate blocked the operation/plan |
 | `NotEvaluated` | Inventory unknown/incomplete; fail closed |
 
+## Approval semantics (non-executable)
+
+| Claim | Reality |
+|-------|---------|
+| `status=Eligible` | Planning metadata only — **not** approved |
+| `approvalGate=PendingOperatorApproval` | Operator review cue — **not** permission to mutate |
+| `executionAuthorized` | Always `false` in Milestone 2 |
+| `modifyingCommandsInvoked` | Always `false` in plan generation |
+| Approval reused after drift | Forbidden — fingerprint / `contentHash` must match live state |
+
+A future executor MUST independently re-verify, immediately before any image mutation:
+
+1. Approval record bound to this `contentHash`
+2. Source-image identity
+3. Inventory fingerprint and Authoritative verification
+4. Manifest fingerprints
+5. Protected-component evaluation
+6. Recomputed `plan-hash-v1` `contentHash`
+
 ## Compatibility with Milestone 1
 
 - Consumes M1 compat JSON command outputs or structured inventory fields.
 - Reuses `Resolve-XboxOSPackageMatches -RejectAmbiguous`, protection helpers, and feature-state classifiers.
 - Matrix `Eligible` is **not** an execution grant; the plan engine re-evaluates from inventory + manifests.
+- Legacy nested sample counts (=1) are ignored when DISM transcripts reconstruct complete inventories.
 
 ## Non-goals (Milestone 2)
 
 - No `/Remove-ProvisionedAppxPackage`, `/Disable-Feature`, `/Add-Driver`, `/Add-Package`
 - No read/write mounts, `/Commit`, ISO rebuild, or host mutation
+- No executable approval bypass
