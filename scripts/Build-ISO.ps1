@@ -3,9 +3,9 @@
 .SYNOPSIS
     XboxOS11 main entry point: builds a customized Windows 11 gaming installation ISO.
 .EXAMPLE
-    .\scripts\Build-ISO.ps1 -SourceISO 'C:\ISOs\Win11.iso' -Configuration '.\config\build.json' -OutputDirectory 'C:\XboxOS\Output' -DryRun
+    .\scripts\Build-ISO.ps1 -SourceISO 'C:\XboxOS\Sources\Win11.iso' -Configuration '.\config\build.json' -OutputDirectory 'C:\XboxOS\Output' -DryRun
 .EXAMPLE
-    .\scripts\Build-ISO.ps1 -SourceISO 'C:\ISOs\Win11.iso' -Configuration '.\config\build.json' -OutputDirectory 'C:\XboxOS\Output'
+    .\scripts\Build-ISO.ps1 -SourceISO 'C:\XboxOS\Sources\Win11.iso' -Configuration '.\config\build.json' -OutputDirectory 'C:\XboxOS\Output'
 #>
 [CmdletBinding()]
 param(
@@ -31,7 +31,7 @@ Import-Module $modulePath -Force
 
 function Invoke-Phase {
     param(
-        [Parameter(Mandatory)][object]$Context,
+        [Parameter(Mandatory)][object]$BuildContext,
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][scriptblock]$Script
     )
@@ -40,28 +40,38 @@ function Invoke-Phase {
     Write-Host "=== Phase: $Name ===" -ForegroundColor Cyan
     Write-XboxOSLog -Level Information -Message "Starting phase: $Name"
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $Error.Clear()
     try {
         $result = & $Script
+
+        # Surface nonterminating errors that some native/cmdlet paths may emit.
+        if ($Error.Count -gt 0) {
+            $messages = @($Error | ForEach-Object { $_.ToString() }) -join '; '
+            throw "Phase '$Name' produced nonterminating error(s): $messages"
+        }
+
+        Assert-XboxOSPhaseOutcome -Result $result -PhaseName $Name | Out-Null
+
         $sw.Stop()
-        $Context.PhaseResults.Add([pscustomobject]@{
+        $null = $BuildContext.PhaseResults.Add([pscustomobject]@{
             Name     = $Name
             Status   = 'Succeeded'
             Message  = "Completed in $([int]$sw.Elapsed.TotalSeconds)s"
             Duration = $sw.Elapsed
             Result   = $result
-        }) | Out-Null
+        })
         Write-XboxOSLog -Level Information -Message "Phase succeeded: $Name"
         return $result
     }
     catch {
         $sw.Stop()
-        $Context.PhaseResults.Add([pscustomobject]@{
+        $null = $BuildContext.PhaseResults.Add([pscustomobject]@{
             Name     = $Name
             Status   = 'Failed'
             Message  = $_.Exception.Message
             Duration = $sw.Elapsed
             Result   = $null
-        }) | Out-Null
+        })
         Write-XboxOSLog -Level Error -Message "Phase failed: $Name - $($_.Exception.Message)"
         throw
     }
@@ -69,8 +79,8 @@ function Invoke-Phase {
 
 $Context = $null
 $dismPath = $null
-$commitImage = $false
 $buildFailed = $false
+$imageCommitted = $false
 
 try {
     if (-not $SkipPrerequisites) {
@@ -78,13 +88,13 @@ try {
         if (-not $pre.Passed) {
             $blocking = @($pre.Failed | Where-Object {
                     -not (
-                        $DryRun -and $_.Name -in @('WindowsADK', 'Oscdimg', 'SourceISO')
+                        $DryRun -and $_.Name -in @('WindowsADK', 'Oscdimg', 'SourceISO', 'Administrator')
                     )
                 })
             if ($blocking.Count -gt 0) {
                 throw ("Prerequisite validation failed:`n - " + (($blocking | ForEach-Object { "$($_.Name): $($_.Message)" }) -join "`n - "))
             }
-            Write-Warning 'DryRun continuing despite missing ADK/Oscdimg/SourceISO. A real build still requires those tools.'
+            Write-Warning 'DryRun continuing despite soft prerequisite warnings. A real build still requires elevation, ADK/Oscdimg, and a source ISO.'
         }
     }
 
@@ -94,79 +104,73 @@ try {
 
     Write-Host "XboxOS11 build $($Context.BuildId) (DryRun=$DryRun)" -ForegroundColor Green
     Write-Host "Workspace: $($Context.Paths.Workspace)"
+    Write-Host "Logs:      $($Context.Paths.Logs)"
     Write-Host "Output:    $($Context.Paths.Output)"
-    Write-Host "Log:       $($Context.LogFile)"
+    Write-Host "Log file:  $($Context.LogFile)"
 
     if ($phases.importSource) {
-        Invoke-Phase -Context $Context -Name 'ImportSource' -Script {
+        Invoke-Phase -BuildContext $Context -Name 'ImportSource' -Script {
             & (Join-Path $PSScriptRoot 'Import-Source.ps1') -SourceISO $SourceISO -Context $Context -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
-    if (-not $DryRun) {
-        Invoke-Phase -Context $Context -Name 'MountImage' -Script {
-            & (Join-Path $PSScriptRoot 'Mount-Image.ps1') -Context $Context -DismPath $dismPath
-        } | Out-Null
-    }
-    else {
-        Invoke-Phase -Context $Context -Name 'MountImage' -Script {
-            & (Join-Path $PSScriptRoot 'Mount-Image.ps1') -Context $Context -DismPath $dismPath -DryRun
-        } | Out-Null
-    }
+    Invoke-Phase -BuildContext $Context -Name 'MountImage' -Script {
+        & (Join-Path $PSScriptRoot 'Mount-Image.ps1') -BuildContext $Context -DismPath $dismPath -DryRun:$DryRun
+    } | Out-Null
 
     if ($phases.inventoryBefore) {
-        Invoke-Phase -Context $Context -Name 'InventoryBefore' -Script {
-            & (Join-Path $PSScriptRoot 'Inventory-Image.ps1') -Context $Context -Stage Before -DismPath $dismPath -DryRun:$DryRun
+        Invoke-Phase -BuildContext $Context -Name 'InventoryBefore' -Script {
+            & (Join-Path $PSScriptRoot 'Inventory-Image.ps1') -BuildContext $Context -Stage Before -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
     if ($phases.removeApps) {
-        Invoke-Phase -Context $Context -Name 'RemoveApps' -Script {
-            & (Join-Path $PSScriptRoot 'Remove-Apps.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
+        Invoke-Phase -BuildContext $Context -Name 'RemoveApps' -Script {
+            & (Join-Path $PSScriptRoot 'Remove-Apps.ps1') -BuildContext $Context -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
     if ($phases.disableFeatures) {
-        Invoke-Phase -Context $Context -Name 'DisableFeatures' -Script {
-            & (Join-Path $PSScriptRoot 'Disable-Features.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
+        Invoke-Phase -BuildContext $Context -Name 'DisableFeatures' -Script {
+            & (Join-Path $PSScriptRoot 'Disable-Features.ps1') -BuildContext $Context -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
     if ($phases.addDrivers) {
-        Invoke-Phase -Context $Context -Name 'AddDrivers' -Script {
+        Invoke-Phase -BuildContext $Context -Name 'AddDrivers' -Script {
             & (Join-Path $PSScriptRoot 'Add-Drivers.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
     if ($phases.addUpdates) {
-        Invoke-Phase -Context $Context -Name 'AddUpdates' -Script {
+        Invoke-Phase -BuildContext $Context -Name 'AddUpdates' -Script {
             & (Join-Path $PSScriptRoot 'Add-Updates.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
     if ($phases.inventoryAfter) {
-        Invoke-Phase -Context $Context -Name 'InventoryAfter' -Script {
-            & (Join-Path $PSScriptRoot 'Inventory-Image.ps1') -Context $Context -Stage After -DismPath $dismPath -DryRun:$DryRun
+        Invoke-Phase -BuildContext $Context -Name 'InventoryAfter' -Script {
+            & (Join-Path $PSScriptRoot 'Inventory-Image.ps1') -BuildContext $Context -Stage After -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
-    # Commit only after successful modification phases.
-    $commitImage = -not $DryRun -and -not [bool]$Context.Configuration.Raw.safety.commitOnFailure
-    if (-not $DryRun) {
-        Invoke-Phase -Context $Context -Name 'DismountCommit' -Script {
+    if (-not $DryRun -and $Context.ImageMounted) {
+        Invoke-Phase -BuildContext $Context -Name 'DismountCommit' -Script {
             & (Join-Path $PSScriptRoot 'Dismount-Image.ps1') -Context $Context -DismPath $dismPath
         } | Out-Null
-        $commitImage = $false
+        $imageCommitted = $true
+        $Context.ImageMounted = $false
+        $Context.MountedImagePath = $null
     }
 
     if ($phases.validate) {
-        Invoke-Phase -Context $Context -Name 'Validate' -Script {
+        Invoke-Phase -BuildContext $Context -Name 'Validate' -Script {
             & (Join-Path $PSScriptRoot 'Validate-Image.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
     if ($phases.exportIso) {
-        Invoke-Phase -Context $Context -Name 'ExportIso' -Script {
+        Invoke-Phase -BuildContext $Context -Name 'ExportIso' -Script {
             & (Join-Path $PSScriptRoot 'Export-ISO.ps1') -Context $Context -DryRun:$DryRun
         } | Out-Null
     }
@@ -185,16 +189,19 @@ catch {
     $buildFailed = $true
     if ($Context) {
         $Context.Success = $false
-        try { Save-XboxOSBuildReport -Context $Context | Out-Null } catch { }
+        try { Save-XboxOSBuildReport -Context $Context | Out-Null } catch {
+            Write-Warning "Failed to save failure build report: $($_.Exception.Message)"
+        }
     }
     throw
 }
 finally {
-    if ($Context -and $Context.MountedImagePath -and -not $DryRun) {
-        Write-XboxOSLog -Level Warning -Message 'Ensuring mounted image is discarded after failure or incomplete commit.'
+    if ($Context -and -not $DryRun -and -not $imageCommitted -and ($Context.ImageMounted -or $Context.MountedImagePath)) {
+        Write-XboxOSLog -Level Warning -Message 'Discarding mounted image after failure or incomplete commit.'
         try {
-            # Never commit after a failed modification.
-            Invoke-XboxOSMountCleanup -MountPath $Context.Paths.Mount -DismPath $dismPath -Discard:(-not $Context.Success)
+            Invoke-XboxOSMountCleanup -MountPath $Context.Paths.Mount -DismPath $dismPath -Discard
+            $Context.ImageMounted = $false
+            $Context.MountedImagePath = $null
         }
         catch {
             Write-XboxOSLog -Level Warning -Message "Final mount cleanup error: $($_.Exception.Message)"
@@ -202,7 +209,9 @@ finally {
     }
 
     if ($Context -and $Context.MountedIsoPath) {
-        try { Dismount-DiskImage -ImagePath $Context.MountedIsoPath -ErrorAction SilentlyContinue | Out-Null } catch { }
+        try { Dismount-DiskImage -ImagePath $Context.MountedIsoPath -ErrorAction Stop | Out-Null } catch {
+            Write-XboxOSLog -Level Warning -Message "ISO dismount warning: $($_.Exception.Message)"
+        }
     }
 
     if ($buildFailed -and $Context) {

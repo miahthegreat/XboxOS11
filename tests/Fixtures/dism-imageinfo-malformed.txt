@@ -1,0 +1,10 @@
+
+Deployment Image Servicing and Management tool
+Version: 10.0.26100.1150
+
+Details for image : C:\fake\sources\install.wim
+
+This output has no Index or Name fields.
+Something went wrong while listing images.
+
+The operation completed successfully.

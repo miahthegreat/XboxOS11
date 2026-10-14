@@ -32,9 +32,13 @@ Write-XboxOSLog -Level Information -Message "Dismounting image ($action): $mount
 
 Invoke-XboxOSMountCleanup -MountPath $mount -DismPath $DismPath -Discard:$Discard -DryRun:$DryRun
 $Context.MountedImagePath = $null
+if ($Context.PSObject.Properties.Name -contains 'ImageMounted') {
+    $Context.ImageMounted = $false
+}
 
 return [pscustomobject]@{
     MountPath = $mount
     Action    = $action
     DryRun    = [bool]$DryRun
+    Discard   = [bool]$Discard
 }

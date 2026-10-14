@@ -50,19 +50,19 @@ foreach ($launcher in $Launchers) {
         continue
     }
 
-    $args = @('install', '--id', $pkg.Id, '-e', '--accept-package-agreements', '--accept-source-agreements')
+    $wingetArgs = @('install', '--id', $pkg.Id, '-e', '--accept-package-agreements', '--accept-source-agreements')
     if ($DryRun -or -not $PSCmdlet.ShouldProcess($pkg.Name, "Install via winget ($($pkg.Id))")) {
         $results.Add([pscustomobject]@{
             Launcher = $launcher
             Status   = 'DryRun'
-            Message  = "Would run: winget $($args -join ' ')"
+            Message  = "Would run: winget $($wingetArgs -join ' ')"
             PackageId = $pkg.Id
         }) | Out-Null
         continue
     }
 
     try {
-        & winget.exe @args
+        & winget.exe @wingetArgs
         if ($LASTEXITCODE -ne 0) { throw "winget exit code $LASTEXITCODE" }
         $results.Add([pscustomobject]@{ Launcher = $launcher; Status = 'Installed'; PackageId = $pkg.Id }) | Out-Null
     }

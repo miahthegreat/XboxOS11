@@ -40,11 +40,11 @@ if ($manifest.architecture -and $manifest.architecture -ne $arch -and -not ($arc
     throw "Driver manifest architecture '$($manifest.architecture)' does not match target '$arch'."
 }
 
-$packages = Find-XboxOSDriverPackages -DriverDirectory $DriverDirectory -DriversManifest $manifest -Recursive
+$packages = @(Find-XboxOSDriverPackages -DriverDirectory $DriverDirectory -DriversManifest $manifest -Recursive)
 $results = New-Object System.Collections.Generic.List[object]
 $mount = $Context.Paths.Mount
 
-if ($packages.Count -eq 0) {
+if (@($packages).Count -eq 0) {
     Write-XboxOSLog -Level Information -Message "No INF driver packages found under $DriverDirectory"
 }
 
@@ -95,8 +95,11 @@ foreach ($package in $packages) {
 $reportPath = Join-Path $Context.Paths.Reports 'AddDrivers.json'
 ($results | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $reportPath -Encoding UTF8
 
-return [pscustomobject]@{
+$outcome = [pscustomobject]@{
     Results = $results
     Report  = $reportPath
     Notes   = 'AMD Adrenalin full installer must be installed after Windows Setup; INF-only packages are supported offline.'
+    Success = -not (@($results | Where-Object Status -eq 'Failed').Count -gt 0)
 }
+Assert-XboxOSPhaseOutcome -Result $outcome -PhaseName 'AddDrivers' | Out-Null
+return $outcome

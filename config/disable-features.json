@@ -21,10 +21,9 @@
       "featureNames": [
         "SMB1Protocol",
         "SMB1Protocol-Client",
-        "SMB1Protocol-Server",
-        "SMB1Protocol-Deprecation"
+        "SMB1Protocol-Server"
       ],
-      "reason": "Legacy SMB 1.0 is insecure and unused by modern game launchers.",
+      "reason": "Legacy SMB 1.0 client/server components are insecure and unused by modern game launchers. SMB1Protocol-Deprecation remains protected under neverDisable.",
       "enabled": true
     },
     {

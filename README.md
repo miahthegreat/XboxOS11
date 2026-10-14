@@ -6,7 +6,7 @@ XboxOS11 is tooling and manifests only. It does **not** redistribute Microsoft W
 
 ## Purpose
 
-Produce a deterministic Windows 11 Pro (25H2 by default) installation image that:
+Produce a deterministic Windows 11 Pro installation image (release label taken only from verified image metadata — never assumed from ISO filenames such as `26300.9457`) that:
 
 - Removes selected consumer/promotional AppX packages
 - Disables a small set of optional legacy features (payloads retained by default)
@@ -22,7 +22,7 @@ Target reference hardware: **AMD Ryzen 7 7800X3D** + **AMD Radeon RX 9070 XT** (
 |------|---------|
 | Build host | Windows 10/11 x64 |
 | Orchestration | PowerShell 7 recommended; Windows PowerShell 5.1 supported |
-| Target image | Windows 11 (configurable; Pro 25H2 initially) |
+| Target image | Windows 11 Pro (release from verified metadata; baseline capture 26H2 / 26300.9457) |
 | Boot | UEFI + GPT |
 
 ## Required tools
@@ -87,9 +87,11 @@ Real ISO build:
 
 ## Safety considerations
 
-- Builds use an isolated workspace under `artifacts/workspace/`.
+- Builds use an isolated external workspace under `C:\XboxOS\Work` (not the Git repo, not OneDrive).
+- Logs go to `C:\XboxOS\Logs`; ISO output to `C:\XboxOS\Output`.
 - Failed modification phases **discard** mounted image changes (no commit-on-failure).
-- Ambiguous AppX matches are rejected.
+- Dry-run does not fabricate empty inventories; inventory-dependent actions are `NotEvaluated` until a real mount exists.
+- Ambiguous AppX matches are rejected and fail the phase.
 - Store / Xbox / gaming / security dependencies are protected.
 - TPM, Secure Boot, Defender, and VBS are not disabled for benchmarks.
 - A smaller ISO does **not** mean better gaming performance.
@@ -140,6 +142,8 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [Architecture](docs/architecture.md)
 - [Build guide](docs/build-guide.md)
 - [Compatibility](docs/compatibility.md)
+- [M1 read-only compatibility baseline](docs/m1-compatibility-baseline.md)
+- [Compatibility matrix (26300.9457 / 26H2)](docs/XboxOS11-compatibility-matrix-26300.9457.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 

@@ -31,7 +31,30 @@ Then re-run Test-Prerequisites.ps1.
 $config = $Context.Configuration.Raw
 $sourceTree = $Context.Paths.SourceCopy
 $workingWim = $Context.Paths.WorkingWim
-$isoName = ConvertTo-XboxOSSafeFileName -Name ([string]$config.iso.fileName)
+
+$displayVersion = $null
+$buildNumber = $null
+$editionName = $null
+if ($Context.SourceMeta) {
+    if ($Context.SourceMeta.PSObject.Properties.Name -contains 'Edition') { $editionName = [string]$Context.SourceMeta.Edition }
+    if ($Context.SourceMeta.PSObject.Properties.Name -contains 'BuildNumber') { $buildNumber = [string]$Context.SourceMeta.BuildNumber }
+    if ($Context.SourceMeta.PSObject.Properties.Name -contains 'DisplayVersion') { $displayVersion = [string]$Context.SourceMeta.DisplayVersion }
+}
+# Prefer verified inventory metadata over assumed config release labels (e.g. do not invent 25H2 from 26300.9457).
+if ($Context.InventoryAfter -and (Test-Path -LiteralPath $Context.InventoryAfter)) {
+    try {
+        $inv = Get-Content -LiteralPath $Context.InventoryAfter -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($inv.PSObject.Properties.Name -contains 'build' -and $inv.build) { $buildNumber = [string]$inv.build }
+        if ($inv.PSObject.Properties.Name -contains 'displayVersion' -and $inv.displayVersion) { $displayVersion = [string]$inv.displayVersion }
+        if ($inv.PSObject.Properties.Name -contains 'edition' -and $inv.edition) { $editionName = [string]$inv.edition }
+    }
+    catch {
+        Write-XboxOSLog -Level Warning -Message "Could not read inventory metadata for ISO naming: $($_.Exception.Message)"
+    }
+}
+
+$isoName = Get-XboxOSIsoFileName -Configuration $config -DisplayVersion $displayVersion -BuildNumber $buildNumber -Edition $editionName
+Write-XboxOSLog -Level Information -Message "Resolved ISO file name '$isoName' from verified metadata (DisplayVersion='$displayVersion', Build='$buildNumber', Edition='$editionName')."
 $isoPath = Join-Path $Context.Paths.Output $isoName
 $threshold = [int64]$config.iso.splitWimThresholdBytes
 if ($threshold -le 0) { $threshold = 4294967295 }

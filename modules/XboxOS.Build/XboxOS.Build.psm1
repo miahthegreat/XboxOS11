@@ -34,6 +34,93 @@ function Get-XboxOSRepoRoot {
     }
 }
 
+function Get-XboxOSCanonicalPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        throw 'Path cannot be empty.'
+    }
+
+    $full = [System.IO.Path]::GetFullPath($Path)
+    return $full.TrimEnd('\', '/')
+}
+
+function Test-XboxOSPathEqualsOrUnder {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$ParentPath
+    )
+
+    $child = Get-XboxOSCanonicalPath -Path $Path
+    $parent = Get-XboxOSCanonicalPath -Path $ParentPath
+
+    if ($child.Equals($parent, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    $prefix = $parent + [System.IO.Path]::DirectorySeparatorChar
+    return $child.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-XboxOSCloudSynchronizedPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $canonical = Get-XboxOSCanonicalPath -Path $Path
+    $cloudRoots = New-Object System.Collections.Generic.List[string]
+
+    foreach ($envName in @('OneDrive', 'OneDriveConsumer', 'OneDriveCommercial')) {
+        $value = [Environment]::GetEnvironmentVariable($envName)
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            try {
+                $cloudRoots.Add((Get-XboxOSCanonicalPath -Path $value)) | Out-Null
+            }
+            catch {
+                Write-Verbose "Ignoring invalid cloud root from $envName : $($_.Exception.Message)"
+            }
+        }
+    }
+
+    foreach ($root in ($cloudRoots | Select-Object -Unique)) {
+        if (Test-XboxOSPathEqualsOrUnder -Path $canonical -ParentPath $root) {
+            return $true
+        }
+    }
+
+    # Path-segment heuristics for common sync roots when env vars are absent.
+    $segments = $canonical -split '[\\/]'
+    $cloudSegmentNames = @(
+        'OneDrive'
+        'Dropbox'
+        'Google Drive'
+        'GoogleDrive'
+        'iCloudDrive'
+        'Box'
+        'Box Sync'
+    )
+    foreach ($segment in $segments) {
+        foreach ($name in $cloudSegmentNames) {
+            if ($segment.Equals($name, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $segment.StartsWith('OneDrive - ', [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
 function Resolve-XboxOSPath {
     [CmdletBinding()]
     param(
@@ -47,11 +134,12 @@ function Resolve-XboxOSPath {
         $BasePath = Get-XboxOSRepoRoot
     }
 
+    # Absolute paths are independent of the process working directory.
     if ([System.IO.Path]::IsPathRooted($Path)) {
-        return [System.IO.Path]::GetFullPath($Path)
+        return Get-XboxOSCanonicalPath -Path $Path
     }
 
-    return [System.IO.Path]::GetFullPath((Join-Path $BasePath $Path))
+    return Get-XboxOSCanonicalPath -Path (Join-Path $BasePath $Path)
 }
 
 function New-XboxOSDirectory {
@@ -143,6 +231,14 @@ function Test-XboxOSManifestSchema {
         'disable-features' {
             if (-not $Configuration.candidates) {
                 $errors.Add('disable-features.json must include candidates[]') | Out-Null
+            }
+            else {
+                $overlap = Assert-XboxOSDisableFeaturesManifestConsistency -Configuration $Configuration
+                if (-not $overlap.Valid) {
+                    foreach ($err in @($overlap.Errors)) {
+                        $errors.Add($err) | Out-Null
+                    }
+                }
             }
         }
         'compatibility' {
@@ -436,6 +532,84 @@ function ConvertTo-XboxOSSafeFileName {
     return ($Name -replace "[$invalid]", '_')
 }
 
+function Get-XboxOSIsoReleaseTag {
+    <#
+    .SYNOPSIS
+        Derives an ISO release tag only from verified metadata.
+    .NOTES
+        Never infers 24H2/25H2 solely from an ISO filename such as 26300.9457.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$DisplayVersion,
+        [string]$BuildNumber,
+        [string]$ConfiguredRelease,
+        [string]$UnverifiedFallback = 'buildunknown'
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($DisplayVersion) -and $DisplayVersion -match '^\d{2}H\d$') {
+        return $DisplayVersion.ToUpperInvariant()
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($BuildNumber) -and $BuildNumber -match '^(\d+)(?:\.(\d+))?$') {
+        $tag = "build$($Matches[1])"
+        if ($Matches[2]) { $tag += ".$($Matches[2])" }
+        return $tag
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ConfiguredRelease) -and
+        $ConfiguredRelease -notmatch '(?i)^(unverified|unknown|tbd|todo)$' -and
+        $ConfiguredRelease -match '^\d{2}H\d$') {
+        return $ConfiguredRelease.ToUpperInvariant()
+    }
+
+    return $UnverifiedFallback
+}
+
+function Get-XboxOSIsoFileName {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Configuration,
+
+        [string]$DisplayVersion,
+        [string]$BuildNumber,
+        [string]$Edition
+    )
+
+    $iso = $Configuration.iso
+    if ($iso.PSObject.Properties.Name -contains 'fileName' -and -not [string]::IsNullOrWhiteSpace([string]$iso.fileName)) {
+        return ConvertTo-XboxOSSafeFileName -Name ([string]$iso.fileName)
+    }
+
+    $fallback = 'buildunknown'
+    if ($iso.PSObject.Properties.Name -contains 'unverifiedReleaseFallback' -and $iso.unverifiedReleaseFallback) {
+        $fallback = [string]$iso.unverifiedReleaseFallback
+    }
+
+    $configuredRelease = $null
+    if ($Configuration.PSObject.Properties.Name -contains 'target' -and
+        $Configuration.target.PSObject.Properties.Name -contains 'release') {
+        $configuredRelease = [string]$Configuration.target.release
+    }
+
+    $releaseTag = Get-XboxOSIsoReleaseTag -DisplayVersion $DisplayVersion -BuildNumber $BuildNumber -ConfiguredRelease $configuredRelease -UnverifiedFallback $fallback
+    $template = 'XboxOS11-Win11Pro-{releaseTag}.iso'
+    if ($iso.PSObject.Properties.Name -contains 'fileNameTemplate' -and $iso.fileNameTemplate) {
+        $template = [string]$iso.fileNameTemplate
+    }
+
+    $editionTag = 'Win11Pro'
+    if (-not [string]::IsNullOrWhiteSpace($Edition)) {
+        if ($Edition -match 'Pro') { $editionTag = 'Win11Pro' }
+        elseif ($Edition -match 'Home') { $editionTag = 'Win11Home' }
+        elseif ($Edition -match 'Enterprise') { $editionTag = 'Win11Enterprise' }
+    }
+
+    $name = $template.Replace('{releaseTag}', $releaseTag).Replace('{editionTag}', $editionTag)
+    return ConvertTo-XboxOSSafeFileName -Name $name
+}
+
 function Test-XboxOSArchitectureSupported {
     [CmdletBinding()]
     param(
@@ -476,33 +650,151 @@ function Assert-XboxOSBuildSafety {
         [string]$WorkspaceRoot,
 
         [Parameter(Mandatory)]
-        [string]$RepoRoot
+        [string]$RepoRoot,
+
+        [string[]]$AdditionalPaths = @(),
+
+        [switch]$AllowCloudSynchronizedPaths,
+
+        [switch]$AllowRepositoryPaths
     )
 
-    $workspaceFull = [System.IO.Path]::GetFullPath($WorkspaceRoot).TrimEnd('\')
-    $repoFull = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\')
-    $systemRoot = [System.IO.Path]::GetFullPath($env:SystemRoot).TrimEnd('\')
+    $repoFull = Get-XboxOSCanonicalPath -Path $RepoRoot
+    $systemRoot = Get-XboxOSCanonicalPath -Path $env:SystemRoot
+    $pathsToValidate = @($WorkspaceRoot) + @($AdditionalPaths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
-    if ($workspaceFull -eq $systemRoot -or $workspaceFull.StartsWith("$systemRoot\", [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to use Windows system directory as workspace: $workspaceFull"
-    }
+    $exactForbidden = @(
+        (Get-XboxOSCanonicalPath -Path ($env:SystemDrive + '\'))
+        (Get-XboxOSCanonicalPath -Path (Join-Path $env:SystemDrive 'Windows'))
+        (Get-XboxOSCanonicalPath -Path (Join-Path $env:SystemDrive 'Program Files'))
+        (Get-XboxOSCanonicalPath -Path (Join-Path $env:SystemDrive 'Program Files (x86)'))
+        (Get-XboxOSCanonicalPath -Path (Join-Path $env:SystemDrive 'Users'))
+    )
 
-    $forbidden = @(
-        $env:SystemDrive + '\'
-        Join-Path $env:SystemDrive 'Windows'
-        Join-Path $env:SystemDrive 'Program Files'
-        Join-Path $env:SystemDrive 'Program Files (x86)'
-        Join-Path $env:SystemDrive 'Users'
-    ) | ForEach-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\') }
+    foreach ($candidate in $pathsToValidate) {
+        $full = Get-XboxOSCanonicalPath -Path $candidate
 
-    foreach ($path in $forbidden) {
-        if ($workspaceFull -eq $path) {
-            throw "Refusing unsafe workspace root: $workspaceFull"
+        if (Test-XboxOSPathEqualsOrUnder -Path $full -ParentPath $systemRoot) {
+            throw "Refusing to use Windows system directory for build artifacts: $full"
+        }
+
+        foreach ($forbidden in $exactForbidden) {
+            if ($full.Equals($forbidden, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Refusing unsafe build path root: $full"
+            }
+        }
+
+        if (-not $AllowRepositoryPaths -and (Test-XboxOSPathEqualsOrUnder -Path $full -ParentPath $repoFull)) {
+            throw "Refusing build path inside the Git repository ('$repoFull'): $full. Use an external workspace such as C:\XboxOS\Work."
+        }
+
+        if (-not $AllowCloudSynchronizedPaths -and (Test-XboxOSCloudSynchronizedPath -Path $full)) {
+            throw "Refusing build path inside a cloud-synchronized folder (OneDrive/Dropbox/etc.): $full. Use a local non-synced path such as C:\XboxOS\Work."
         }
     }
 
-    if ($workspaceFull -eq $repoFull) {
-        throw 'Workspace root must not be the repository root. Use artifacts/workspace or another isolated directory.'
+    return $true
+}
+
+function Assert-XboxOSServicingPathSafety {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$RepoRoot,
+
+        [string]$Purpose = 'image servicing'
+    )
+
+    $full = Get-XboxOSCanonicalPath -Path $Path
+    if (Test-XboxOSPathEqualsOrUnder -Path $full -ParentPath $RepoRoot) {
+        throw "Refusing $Purpose inside the Git repository: $full"
+    }
+    if (Test-XboxOSCloudSynchronizedPath -Path $full) {
+        throw "Refusing $Purpose inside a cloud-synchronized folder: $full"
+    }
+
+    return $true
+}
+
+function Get-XboxOSInventoryAvailability {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('Unknown', 'Empty', 'Available')]
+        [string]$State,
+
+        [AllowEmptyCollection()]
+        [string[]]$Items = @()
+    )
+
+    switch ($State) {
+        'Unknown' {
+            return [pscustomobject]@{
+                State       = 'Unknown'
+                Items       = @()
+                IsKnown     = $false
+                CanEvaluate = $false
+            }
+        }
+        'Empty' {
+            return [pscustomobject]@{
+                State       = 'Empty'
+                Items       = @()
+                IsKnown     = $true
+                CanEvaluate = $true
+            }
+        }
+        default {
+            return [pscustomobject]@{
+                State       = 'Available'
+                Items       = @($Items)
+                IsKnown     = $true
+                CanEvaluate = $true
+            }
+        }
+    }
+}
+
+function Assert-XboxOSPhaseOutcome {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowNull()]
+        [object]$Result,
+
+        [Parameter(Mandatory)]
+        [string]$PhaseName
+    )
+
+    if ($null -eq $Result) {
+        return $true
+    }
+
+    $failed = @()
+    if ($Result.PSObject.Properties.Name -contains 'Results' -and $null -ne $Result.Results) {
+        $failed = @($Result.Results | Where-Object { $_.Status -eq 'Failed' })
+    }
+    elseif ($Result -is [System.Collections.IEnumerable] -and -not ($Result -is [string])) {
+        $failed = @($Result | Where-Object { $_ -and ($_.PSObject.Properties.Name -contains 'Status') -and $_.Status -eq 'Failed' })
+    }
+
+    if ($failed.Count -gt 0) {
+        $details = ($failed | ForEach-Object {
+                $target = if ($_.PSObject.Properties.Name -contains 'Package' -and $_.Package) { $_.Package }
+                elseif ($_.PSObject.Properties.Name -contains 'Feature' -and $_.Feature) { $_.Feature }
+                elseif ($_.PSObject.Properties.Name -contains 'Candidate' -and $_.Candidate) { $_.Candidate }
+                else { 'item' }
+                "$target => $($_.Message)"
+            }) -join '; '
+        throw "Phase '$PhaseName' reported $($failed.Count) failed operation(s): $details"
+    }
+
+    if ($Result.PSObject.Properties.Name -contains 'Success' -and $Result.Success -eq $false) {
+        $message = if ($Result.PSObject.Properties.Name -contains 'Message') { $Result.Message } else { 'Success=false' }
+        throw "Phase '$PhaseName' reported failure: $message"
     }
 
     return $true
@@ -547,16 +839,25 @@ function New-XboxOSBuildContext {
         $outputRoot = Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.output) -BasePath $config.RepoRoot
     }
 
-    $null = Assert-XboxOSBuildSafety -WorkspaceRoot $workspaceRoot -RepoRoot $config.RepoRoot
+    $logsRoot = Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.logs) -BasePath $config.RepoRoot
+    $cacheRoot = Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.cache) -BasePath $config.RepoRoot
+    $tempRoot = Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.temp) -BasePath $config.RepoRoot
+
+    $null = Assert-XboxOSBuildSafety -WorkspaceRoot $workspaceRoot -RepoRoot $config.RepoRoot -AdditionalPaths @(
+        $logsRoot
+        $cacheRoot
+        $tempRoot
+        $outputRoot
+    )
 
     $paths = [ordered]@{
         Workspace      = New-XboxOSDirectory -Path (Join-Path $workspaceRoot $buildId)
         SourceCopy     = $null
         Mount          = $null
         WorkingWim     = $null
-        Logs           = New-XboxOSDirectory -Path (Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.logs) -BasePath $config.RepoRoot)
-        Cache          = New-XboxOSDirectory -Path (Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.cache) -BasePath $config.RepoRoot)
-        Temp           = New-XboxOSDirectory -Path (Resolve-XboxOSPath -Path ([string]$config.Raw.workspace.temp) -BasePath $config.RepoRoot)
+        Logs           = New-XboxOSDirectory -Path $logsRoot
+        Cache          = New-XboxOSDirectory -Path $cacheRoot
+        Temp           = New-XboxOSDirectory -Path $tempRoot
         Output         = New-XboxOSDirectory -Path $outputRoot
         Reports        = $null
     }
@@ -566,25 +867,33 @@ function New-XboxOSBuildContext {
     $paths.WorkingWim = Join-Path $paths.Workspace 'install.wim'
     $paths.Reports = New-XboxOSDirectory -Path (Join-Path $paths.Workspace 'reports')
 
+    $null = Assert-XboxOSServicingPathSafety -Path $paths.Mount -RepoRoot $config.RepoRoot -Purpose 'WIM mount directory'
+    $null = Assert-XboxOSServicingPathSafety -Path $paths.WorkingWim -RepoRoot $config.RepoRoot -Purpose 'working WIM path'
+
     $logFile = New-XboxOSLogger -LogDirectory $paths.Logs -BuildId $buildId -Level ([string]$config.Raw.logging.level)
 
     $context = [pscustomobject]@{
-        BuildId           = $buildId
-        DryRun            = [bool]$DryRun
-        Configuration     = $config
-        SourceISO         = (Resolve-XboxOSPath -Path $SourceISO)
-        Paths             = [pscustomobject]$paths
-        LogFile           = $logFile
-        SourceMeta        = $null
-        MountedImagePath  = $null
-        MountedIsoPath    = $null
-        InventoryBefore   = $null
-        InventoryAfter    = $null
-        Validation        = $null
-        PhaseResults      = New-Object System.Collections.ArrayList
-        StartedUtc        = (Get-Date).ToUniversalTime()
-        CompletedUtc      = $null
-        Success           = $false
+        BuildId               = $buildId
+        DryRun                = [bool]$DryRun
+        Configuration         = $config
+        SourceISO             = (Resolve-XboxOSPath -Path $SourceISO)
+        Paths                 = [pscustomobject]$paths
+        LogFile               = $logFile
+        SourceMeta            = $null
+        MountedImagePath      = $null
+        ImageMounted          = $false
+        MountedIsoPath        = $null
+        InventoryBefore       = $null
+        InventoryAfter        = $null
+        AppxInventoryState    = 'Unknown'
+        FeatureInventoryState = 'Unknown'
+        AppxInventory         = $null
+        FeatureInventory      = $null
+        Validation            = $null
+        PhaseResults          = New-Object System.Collections.ArrayList
+        StartedUtc            = (Get-Date).ToUniversalTime()
+        CompletedUtc          = $null
+        Success               = $false
     }
 
     Write-XboxOSLog -Level Information -Message "Build context created" -Data @{
@@ -678,6 +987,7 @@ function Invoke-XboxOSDism {
         }
     }
 
+    # Capture native exit code immediately; never treat a missing/nonzero code as success.
     $output = & $DismPath @ArgumentList 2>&1
     $exitCode = $LASTEXITCODE
     $text = @($output | ForEach-Object { "$_" })
@@ -686,15 +996,718 @@ function Invoke-XboxOSDism {
         Write-XboxOSLog -Level Debug -Message $line
     }
 
-    if ($exitCode -ne 0) {
+    if ($null -eq $exitCode) {
+        throw "DISM did not return an exit code. Command: $display`n$($text -join "`n")"
+    }
+
+    if ([int]$exitCode -ne 0) {
         throw "DISM failed with exit code $exitCode. Command: $display`n$($text -join "`n")"
     }
 
     return [pscustomobject]@{
-        ExitCode = $exitCode
+        ExitCode = [int]$exitCode
         Output   = $text
         Command  = $display
         DryRun   = $false
+    }
+}
+
+function Assert-XboxOSDisableFeaturesManifestConsistency {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Configuration
+    )
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    $never = @()
+    if ($Configuration.PSObject.Properties['neverDisable'] -and $Configuration.neverDisable) {
+        $never = @($Configuration.neverDisable | ForEach-Object { [string]$_ })
+    }
+
+    foreach ($candidate in @($Configuration.candidates)) {
+        if (-not $candidate) { continue }
+        $enabled = $true
+        if ($candidate.PSObject.Properties['enabled']) {
+            $enabled = [bool]$candidate.enabled
+        }
+        if (-not $enabled) { continue }
+
+        foreach ($featureName in @($candidate.featureNames)) {
+            $name = [string]$featureName
+            if ([string]::IsNullOrWhiteSpace($name)) { continue }
+            foreach ($pattern in $never) {
+                if ($name -like $pattern) {
+                    $errors.Add(("Enabled disable candidate '{0}' includes feature '{1}' which is also covered by neverDisable pattern '{2}'." -f $candidate.id, $name, $pattern)) | Out-Null
+                }
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        Valid  = ($errors.Count -eq 0)
+        Errors = $errors.ToArray()
+    }
+}
+
+function ConvertFrom-XboxOSDismPackageListOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output
+    )
+
+    $packages = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+        if ($text -match '^\s*Package Identity\s*:\s*(.+)$') {
+            if ($current) { $packages.Add([pscustomobject]$current) | Out-Null }
+            $current = [ordered]@{
+                Identity    = $Matches[1].Trim()
+                State       = $null
+                ReleaseType = $null
+            }
+            continue
+        }
+
+        if ($current) {
+            if ($text -match '^\s*State\s*:\s*(.+)$') {
+                $current.State = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Release Type\s*:\s*(.+)$') {
+                $current.ReleaseType = $Matches[1].Trim()
+            }
+        }
+    }
+    if ($current) { $packages.Add([pscustomobject]$current) | Out-Null }
+
+    return $packages.ToArray()
+}
+
+function ConvertFrom-XboxOSDismFeatureListOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output
+    )
+
+    $features = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+        if ($text -match '^\s*Feature Name\s*:\s*(.+)$') {
+            if ($current) { $features.Add([pscustomobject]$current) | Out-Null }
+            $current = [ordered]@{
+                Name  = $Matches[1].Trim()
+                State = $null
+            }
+            continue
+        }
+
+        if ($current -and $text -match '^\s*State\s*:\s*(.+)$') {
+            $current.State = $Matches[1].Trim()
+        }
+    }
+    if ($current) { $features.Add([pscustomobject]$current) | Out-Null }
+
+    return $features.ToArray()
+}
+
+function ConvertFrom-XboxOSDismProvisionedAppxListOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output
+    )
+
+    $packages = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+        if ($text -match '^\s*DisplayName\s*:\s*(.+)$') {
+            if ($current -and -not [string]::IsNullOrWhiteSpace([string]$current.PackageName)) {
+                $packages.Add([pscustomobject]$current) | Out-Null
+            }
+            $current = [ordered]@{
+                DisplayName  = $Matches[1].Trim()
+                PackageName  = $null
+                Version      = $null
+                Architecture = $null
+            }
+            continue
+        }
+
+        if ($current) {
+            if ($text -match '^\s*PackageName\s*:\s*(.+)$') {
+                $current.PackageName = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Version\s*:\s*(.+)$') {
+                $current.Version = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Architecture\s*:\s*(.+)$') {
+                $current.Architecture = $Matches[1].Trim()
+            }
+        }
+    }
+    if ($current -and -not [string]::IsNullOrWhiteSpace([string]$current.PackageName)) {
+        $packages.Add([pscustomobject]$current) | Out-Null
+    }
+
+    return $packages.ToArray()
+}
+
+function Get-XboxOSDismListedValues {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Label
+    )
+
+    $values = New-Object System.Collections.Generic.List[string]
+    $pattern = '^\s*{0}\s*:\s*(.+)$' -f [regex]::Escape($Label)
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        if ("$line" -match $pattern) {
+            $values.Add($Matches[1].Trim()) | Out-Null
+        }
+    }
+
+    # Emit to pipeline so callers can recollect with @() without nested arrays.
+    return $values.ToArray()
+}
+
+function Test-XboxOSFeatureStateDisabled {
+    [CmdletBinding()]
+    param(
+        [string]$State
+    )
+
+    if ([string]::IsNullOrWhiteSpace($State)) {
+        return $false
+    }
+
+    # DISM uses "Disabled" and variants such as "Disabled with Payload Removed".
+    return ($State -eq 'Disabled') -or ($State -like 'Disabled *')
+}
+
+function Get-XboxOSFeatureStateSummary {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Features
+    )
+
+    $list = @($Features)
+    $byState = [ordered]@{}
+    $accounted = 0
+    foreach ($feature in $list) {
+        if ($null -eq $feature) { continue }
+        $state = $null
+        if ($feature -is [string]) {
+            $state = '(name-only)'
+        }
+        elseif ($feature.PSObject.Properties['State']) {
+            $state = [string]$feature.State
+        }
+
+        if ([string]::IsNullOrWhiteSpace($state)) {
+            $state = '(unspecified)'
+        }
+
+        if (-not $byState.Contains($state)) {
+            $byState[$state] = 0
+        }
+        $byState[$state] = [int]$byState[$state] + 1
+        $accounted++
+    }
+
+    return [pscustomobject]@{
+        Total     = $list.Count
+        Accounted = $accounted
+        Complete  = ($accounted -eq $list.Count)
+        ByState   = [pscustomobject]$byState
+    }
+}
+
+function New-XboxOSCompatibilityMatrix {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]]$AppxPackages,
+
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Features,
+
+        [Parameter(Mandatory)]
+        [object]$RemoveAppsManifest,
+
+        [Parameter(Mandatory)]
+        [object]$DisableFeaturesManifest,
+
+        [Parameter(Mandatory)]
+        [object]$CompatibilityManifest
+    )
+
+    $protectedAppx = @(Get-XboxOSProtectedAppxPatterns -CompatibilityManifest $CompatibilityManifest)
+    $neverDisable = @()
+    if ($DisableFeaturesManifest.PSObject.Properties['neverDisable'] -and $DisableFeaturesManifest.neverDisable) {
+        $neverDisable = @($DisableFeaturesManifest.neverDisable | ForEach-Object { [string]$_ })
+    }
+    $protectedFeaturePatterns = @()
+    if ($CompatibilityManifest.PSObject.Properties['protectedFeatureNamePatterns'] -and $CompatibilityManifest.protectedFeatureNamePatterns) {
+        $protectedFeaturePatterns = @($CompatibilityManifest.protectedFeatureNamePatterns | ForEach-Object { [string]$_ })
+    }
+
+    $featureNames = @(
+        foreach ($feature in @($Features)) {
+            if ($null -eq $feature) { continue }
+            if ($feature -is [string]) { $feature }
+            elseif ($feature.PSObject.Properties['Name']) { [string]$feature.Name }
+        }
+    )
+
+    $appxRows = New-Object System.Collections.Generic.List[object]
+    foreach ($candidate in @($RemoveAppsManifest.candidates)) {
+        $enabled = $true
+        if ($candidate.PSObject.Properties['enabled']) { $enabled = [bool]$candidate.enabled }
+        $patterns = @($candidate.patterns | ForEach-Object { [string]$_ })
+
+        $matchError = $null
+        $matched = @()
+        try {
+            $matched = @(Resolve-XboxOSPackageMatches -Patterns $patterns -AvailablePackages @($AppxPackages) -RejectAmbiguous)
+        }
+        catch {
+            $matchError = $_.Exception.Message
+        }
+
+        $status = 'Absent'
+        $detail = 'No provisioned AppX identity matched the candidate patterns.'
+        if ($matchError) {
+            $status = 'Ambiguous'
+            $detail = $matchError
+        }
+        elseif ($matched.Count -gt 0) {
+            $protectedHits = @($matched | Where-Object { Test-XboxOSPackageProtected -PackageName $_ -ProtectedPatterns $protectedAppx })
+            if ($protectedHits.Count -gt 0) {
+                $status = 'Protected'
+                $detail = 'Matched identities are protected; removal is not authorized from package-name prefixes alone.'
+            }
+            elseif (-not $enabled) {
+                $status = 'Present'
+                $detail = 'Present in inventory but candidate is disabled in remove-apps manifest.'
+            }
+            else {
+                $status = 'Eligible'
+                $detail = 'Present, unprotected, and enabled for consideration after explicit review.'
+            }
+        }
+
+        $appxRows.Add([pscustomobject]@{
+            Kind       = 'AppX'
+            Candidate  = [string]$candidate.id
+            Enabled    = $enabled
+            Status     = $status
+            Patterns   = $patterns
+            Matches    = $matched
+            Detail     = $detail
+        }) | Out-Null
+    }
+
+    $featureRows = New-Object System.Collections.Generic.List[object]
+    $overlap = Assert-XboxOSDisableFeaturesManifestConsistency -Configuration $DisableFeaturesManifest
+    foreach ($err in @($overlap.Errors)) {
+        $featureRows.Add([pscustomobject]@{
+            Kind      = 'Feature'
+            Candidate = 'ManifestConsistency'
+            Enabled   = $true
+            Status    = 'Conflicting'
+            Feature   = $null
+            State     = $null
+            Detail    = $err
+        }) | Out-Null
+    }
+
+    foreach ($candidate in @($DisableFeaturesManifest.candidates)) {
+        $enabled = $true
+        if ($candidate.PSObject.Properties['enabled']) { $enabled = [bool]$candidate.enabled }
+        $resolved = @(Resolve-XboxOSFeatureMatches -FeatureNames @($candidate.featureNames) -AvailableFeatures $featureNames)
+
+        foreach ($item in $resolved) {
+            $state = $null
+            if ($item.Resolved) {
+                $hit = @($Features | Where-Object {
+                        if ($_ -is [string]) { $_ -eq $item.Resolved }
+                        else { $_.Name -eq $item.Resolved }
+                    } | Select-Object -First 1)
+                if ($hit.Count -eq 1 -and $hit[0] -isnot [string] -and $hit[0].PSObject.Properties['State']) {
+                    $state = [string]$hit[0].State
+                }
+            }
+
+            $status = 'Absent'
+            $detail = 'Feature not present in inventory.'
+            if ($item.Status -eq 'Exact' -and $item.Resolved) {
+                $isNever = Test-XboxOSFeatureProtected -FeatureName $item.Resolved -NeverDisable $neverDisable
+                $isCompatProtected = $false
+                foreach ($pattern in $protectedFeaturePatterns) {
+                    if ($item.Resolved -like $pattern) { $isCompatProtected = $true; break }
+                }
+
+                if ($isNever -or $isCompatProtected) {
+                    if ($enabled) {
+                        $status = 'Conflicting'
+                        $detail = 'Present and listed as an enabled disable candidate while also protected/neverDisable.'
+                    }
+                    else {
+                        $status = 'Protected'
+                        $detail = 'Present and protected by neverDisable / compatibility policy.'
+                    }
+                }
+                elseif (-not $enabled) {
+                    $status = 'Present'
+                    $detail = 'Present in inventory but candidate is disabled in disable-features manifest.'
+                }
+                elseif (Test-XboxOSFeatureStateDisabled -State $state) {
+                    $status = 'AlreadyDisabled'
+                    $detail = 'Configured disable candidate is already satisfied; future servicing should skip this feature.'
+                }
+                elseif ($state -eq 'Enabled') {
+                    $status = 'Eligible'
+                    $detail = 'Present, enabled, unprotected, and actionable for a future disable operation after explicit review.'
+                }
+                else {
+                    $status = 'Present'
+                    $detail = ("Present with DISM state '{0}'; not classified as an actionable disable without review." -f $(if ($state) { $state } else { '(unspecified)' }))
+                }
+            }
+
+            $featureRows.Add([pscustomobject]@{
+                Kind      = 'Feature'
+                Candidate = [string]$candidate.id
+                Enabled   = $enabled
+                Status    = $status
+                Feature   = $(if ($item.Resolved) { $item.Resolved } else { $item.Requested })
+                State     = $state
+                Detail    = $detail
+            }) | Out-Null
+        }
+    }
+
+    $rows = @($appxRows.ToArray() + $featureRows.ToArray())
+    $summary = [ordered]@{
+        present          = @($rows | Where-Object Status -eq 'Present').Count
+        absent           = @($rows | Where-Object Status -eq 'Absent').Count
+        protected        = @($rows | Where-Object Status -eq 'Protected').Count
+        eligible         = @($rows | Where-Object Status -eq 'Eligible').Count
+        alreadyDisabled  = @($rows | Where-Object Status -eq 'AlreadyDisabled').Count
+        ambiguous        = @($rows | Where-Object Status -eq 'Ambiguous').Count
+        conflicting      = @($rows | Where-Object Status -eq 'Conflicting').Count
+    }
+
+    return [pscustomobject]@{
+        generatedUtc = (Get-Date).ToUniversalTime()
+        summary      = [pscustomobject]$summary
+        rows         = $rows
+    }
+}
+
+function Format-XboxOSInventorySampleLines {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Items,
+
+        [int]$Take = 25
+    )
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($item in @($Items | Select-Object -First $Take)) {
+        if ($null -eq $item) { continue }
+        if ($item -is [string]) {
+            $lines.Add($item) | Out-Null
+        }
+        elseif ($item.PSObject.Properties['PackageName']) {
+            $lines.Add([string]$item.PackageName) | Out-Null
+        }
+        elseif ($item.PSObject.Properties['Identity']) {
+            $state = if ($item.PSObject.Properties['State'] -and $item.State) { " ($($item.State))" } else { '' }
+            $lines.Add(('{0}{1}' -f $item.Identity, $state)) | Out-Null
+        }
+        elseif ($item.PSObject.Properties['Name']) {
+            $state = if ($item.PSObject.Properties['State'] -and $item.State) { " ($($item.State))" } else { '' }
+            $lines.Add(('{0}{1}' -f $item.Name, $state)) | Out-Null
+        }
+        else {
+            $lines.Add([string]$item) | Out-Null
+        }
+    }
+    return [string[]]$lines.ToArray()
+}
+
+function Get-XboxOSDismVersionFromOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output,
+
+        [Parameter(Mandatory)]
+        [int]$ExitCode
+    )
+
+    if ($ExitCode -ne 0) {
+        throw ("DISM version probe failed with exit code {0}." -f $ExitCode)
+    }
+
+    $versions = New-Object System.Collections.Generic.List[string]
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ($text -match '^\s*Version\s*:\s*(\d+(?:\.\d+)+)\s*$') {
+            $versions.Add($Matches[1]) | Out-Null
+        }
+    }
+
+    if ($versions.Count -eq 0) {
+        throw 'DISM version could not be reliably determined from command output.'
+    }
+
+    $unique = @($versions | Select-Object -Unique)
+    if ($unique.Count -gt 1) {
+        throw ("DISM version output is ambiguous; found multiple Version values: {0}" -f ($unique -join ', '))
+    }
+
+    return [string]$unique[0]
+}
+
+function Write-XboxOSCompatTestStatusMarker {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$StatusPath,
+
+        [Parameter(Mandatory)]
+        [bool]$Success,
+
+        [Parameter(Mandatory)]
+        [int]$ExitCode,
+
+        [hashtable]$Fields
+    )
+
+    $directory = Split-Path -Parent $StatusPath
+    if (-not [string]::IsNullOrWhiteSpace($directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($StatusPath)
+    $parent = if ([string]::IsNullOrWhiteSpace($directory)) { (Get-Location).Path } else { $directory }
+    $succeededPath = Join-Path $parent ($baseName + '.succeeded')
+    $failedPath = Join-Path $parent ($baseName + '.failed')
+    $legacyDonePath = Join-Path $parent ($baseName + '.done')
+
+    # Never leave a success-implying .done marker from prior runs of this status stem.
+    if (Test-Path -LiteralPath $legacyDonePath) {
+        Remove-Item -LiteralPath $legacyDonePath -Force
+    }
+    if (Test-Path -LiteralPath $succeededPath) {
+        Remove-Item -LiteralPath $succeededPath -Force
+    }
+    if (Test-Path -LiteralPath $failedPath) {
+        Remove-Item -LiteralPath $failedPath -Force
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $null = $lines.Add(('success={0}' -f $(if ($Success) { 'True' } else { 'False' })))
+    $null = $lines.Add(('exitCode={0}' -f $ExitCode))
+    $null = $lines.Add(('outcome={0}' -f $(if ($Success) { 'Succeeded' } else { 'Failed' })))
+    if ($Fields) {
+        foreach ($key in ($Fields.Keys | Sort-Object)) {
+            $null = $lines.Add(('{0}={1}' -f $key, $Fields[$key]))
+        }
+    }
+
+    ($lines -join [Environment]::NewLine) | Set-Content -LiteralPath $StatusPath -Encoding UTF8
+
+    $outcomePath = if ($Success) { $succeededPath } else { $failedPath }
+    @(
+        ('success={0}' -f $(if ($Success) { 'True' } else { 'False' }))
+        ('exitCode={0}' -f $ExitCode)
+        ('statusFile={0}' -f $StatusPath)
+    ) -join [Environment]::NewLine | Set-Content -LiteralPath $outcomePath -Encoding UTF8
+
+    return [pscustomobject]@{
+        StatusPath     = $StatusPath
+        OutcomePath    = $outcomePath
+        Success        = $Success
+        ExitCode       = $ExitCode
+        LegacyDonePath = $legacyDonePath
+    }
+}
+
+function ConvertFrom-XboxOSDismImageInfoOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [string[]]$Output
+    )
+
+    $images = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    $sawIndex = $false
+
+    foreach ($line in @($Output)) {
+        if ($null -eq $line) { continue }
+        $text = "$line"
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+        if ($text -match '^\s*Index\s*:\s*(\d+)\s*$') {
+            if ($current) {
+                if ([string]::IsNullOrWhiteSpace([string]$current.Name)) {
+                    throw 'DISM image metadata could not be reliably parsed: an Index entry is missing a Name.'
+                }
+                $images.Add([pscustomobject]$current) | Out-Null
+            }
+            $current = [ordered]@{
+                Index        = [int]$Matches[1]
+                Name         = $null
+                Description  = $null
+                Size         = $null
+                Architecture = $null
+            }
+            $sawIndex = $true
+            continue
+        }
+
+        if ($current) {
+            if ($text -match '^\s*Name\s*:\s*(.+)$') {
+                $current.Name = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Description\s*:\s*(.+)$') {
+                $current.Description = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Size\s*:\s*(.+)$') {
+                $current.Size = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Architecture\s*:\s*(.+)$') {
+                $current.Architecture = $Matches[1].Trim()
+            }
+        }
+    }
+
+    if ($current) {
+        if ([string]::IsNullOrWhiteSpace([string]$current.Name)) {
+            throw 'DISM image metadata could not be reliably parsed: an Index entry is missing a Name.'
+        }
+        $images.Add([pscustomobject]$current) | Out-Null
+    }
+
+    if (-not $sawIndex) {
+        throw 'DISM image metadata could not be reliably parsed: no Index entries were found.'
+    }
+
+    # Emit images to the pipeline so callers can safely recollect with @().
+    return $images.ToArray()
+}
+
+function Resolve-XboxOSExactImageIndex {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Images,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ExactName
+    )
+
+    $list = @($Images)
+    if ($list.Count -eq 0) {
+        throw "No Windows image indexes were available while resolving '$ExactName'."
+    }
+
+    foreach ($image in $list) {
+        if ($null -eq $image) {
+            throw 'DISM image metadata could not be reliably parsed: a null image entry was encountered.'
+        }
+        if ($null -eq $image.PSObject.Properties['Index'] -or $null -eq $image.Index) {
+            throw 'DISM image metadata could not be reliably parsed: an image entry is missing Index.'
+        }
+        if ($null -eq $image.PSObject.Properties['Name'] -or [string]::IsNullOrWhiteSpace([string]$image.Name)) {
+            throw 'DISM image metadata could not be reliably parsed: an image entry is missing Name.'
+        }
+    }
+
+    $matched = @(
+        $list | Where-Object {
+            [string]::Equals([string]$_.Name.Trim(), $ExactName.Trim(), [System.StringComparison]::OrdinalIgnoreCase)
+        }
+    )
+
+    if ($matched.Count -eq 0) {
+        $available = ($list | ForEach-Object { '{0}:{1}' -f $_.Index, $_.Name }) -join '; '
+        throw ("Exact image name '{0}' was not found among source indexes. Available: {1}" -f $ExactName, $available)
+    }
+
+    if ($matched.Count -gt 1) {
+        $dupes = ($matched | ForEach-Object { '{0}:{1}' -f $_.Index, $_.Name }) -join '; '
+        throw ("Exact image name '{0}' is ambiguous; matched {1} indexes: {2}" -f $ExactName, $matched.Count, $dupes)
+    }
+
+    $selected = $matched[0]
+    $description = $null
+    $size = $null
+    $architecture = $null
+    if ($null -ne $selected.PSObject.Properties['Description']) { $description = $selected.Description }
+    if ($null -ne $selected.PSObject.Properties['Size']) { $size = $selected.Size }
+    if ($null -ne $selected.PSObject.Properties['Architecture']) { $architecture = $selected.Architecture }
+
+    return [pscustomobject]@{
+        Index        = [int]$selected.Index
+        Name         = [string]$selected.Name
+        Description  = $description
+        Size         = $size
+        Architecture = $architecture
+        MatchCount   = 1
+        Available    = @(
+            $list | ForEach-Object {
+                [pscustomobject]@{
+                    Index = [int]$_.Index
+                    Name  = [string]$_.Name
+                }
+            }
+        )
     }
 }
 
@@ -716,24 +1729,7 @@ function Get-XboxOSImageInfo {
     }
 
     $result = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Get-ImageInfo', "/ImageFile:$ImagePath")
-    $images = New-Object System.Collections.Generic.List[object]
-    $current = $null
-
-    foreach ($line in $result.Output) {
-        if ($line -match '^\s*Index\s*:\s*(\d+)') {
-            if ($current) { $images.Add([pscustomobject]$current) | Out-Null }
-            $current = [ordered]@{ Index = [int]$Matches[1]; Name = $null; Description = $null; Size = $null; Architecture = $null }
-        }
-        elseif ($current) {
-            if ($line -match '^\s*Name\s*:\s*(.+)$') { $current.Name = $Matches[1].Trim() }
-            elseif ($line -match '^\s*Description\s*:\s*(.+)$') { $current.Description = $Matches[1].Trim() }
-            elseif ($line -match '^\s*Size\s*:\s*(.+)$') { $current.Size = $Matches[1].Trim() }
-            elseif ($line -match '^\s*Architecture\s*:\s*(.+)$') { $current.Architecture = $Matches[1].Trim() }
-        }
-    }
-    if ($current) { $images.Add([pscustomobject]$current) | Out-Null }
-
-    return $images.ToArray()
+    return @(ConvertFrom-XboxOSDismImageInfoOutput -Output @($result.Output))
 }
 
 function Get-XboxOSProtectedAppxPatterns {
@@ -769,9 +1765,11 @@ function Resolve-XboxOSPackageMatches {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]]$Patterns,
 
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]]$AvailablePackages,
 
         [switch]$RejectAmbiguous
@@ -800,9 +1798,11 @@ function Resolve-XboxOSFeatureMatches {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]]$FeatureNames,
 
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [string[]]$AvailableFeatures
     )
 
@@ -866,7 +1866,7 @@ function Find-XboxOSDriverPackages {
     )
 
     if (-not (Test-Path -LiteralPath $DriverDirectory)) {
-        return @()
+        return [object[]]@()
     }
 
     $recurse = $Recursive -or ($DriversManifest -and $DriversManifest.recursive)
@@ -904,7 +1904,7 @@ function Find-XboxOSDriverPackages {
         }) | Out-Null
     }
 
-    return $packages.ToArray()
+    return [object[]]$packages.ToArray()
 }
 
 function Find-XboxOSUpdatePackages {
@@ -915,11 +1915,11 @@ function Find-XboxOSUpdatePackages {
     )
 
     if (-not (Test-Path -LiteralPath $UpdateDirectory)) {
-        return @()
+        return [object[]]@()
     }
 
-    $files = Get-ChildItem -LiteralPath $UpdateDirectory -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in @('.cab', '.msu') }
+    $files = @(Get-ChildItem -LiteralPath $UpdateDirectory -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -in @('.cab', '.msu') })
 
     $packages = foreach ($file in $files) {
         $kind = if ($file.Name -match 'SSU|ServicingStack') { 'ServicingStack'
@@ -937,15 +1937,21 @@ function Find-XboxOSUpdatePackages {
         }
     }
 
-    return @($packages)
+    return [object[]]@($packages)
 }
 
 function Get-XboxOSOrderedUpdatePackages {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowNull()]
         [object[]]$Packages
     )
+
+    if ($null -eq $Packages -or @($Packages).Count -eq 0) {
+        return [object[]]@()
+    }
 
     $rank = @{
         ServicingStack = 0
@@ -993,6 +1999,7 @@ function Clear-XboxOSWorkspace {
         return
     }
 
+    # Cleanup may target an already-validated external workspace; still reject repo/cloud paths.
     Assert-XboxOSBuildSafety -WorkspaceRoot $WorkspacePath -RepoRoot (Get-XboxOSRepoRoot)
 
     if ($PreserveReports) {
@@ -1023,16 +2030,16 @@ function Invoke-XboxOSMountCleanup {
         return
     }
 
-    $args = @('/Unmount-Image', "/MountDir:$MountPath")
+    $dismArgs = @('/Unmount-Image', "/MountDir:$MountPath")
     if ($Discard) {
-        $args += '/Discard'
+        $dismArgs += '/Discard'
     }
     else {
-        $args += '/Commit'
+        $dismArgs += '/Commit'
     }
 
     try {
-        Invoke-XboxOSDism -DismPath $DismPath -ArgumentList $args -DryRun:$DryRun | Out-Null
+        Invoke-XboxOSDism -DismPath $DismPath -ArgumentList $dismArgs -DryRun:$DryRun | Out-Null
     }
     catch {
         Write-XboxOSLog -Level Warning -Message "Mount cleanup failed: $($_.Exception.Message)"

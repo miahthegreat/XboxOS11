@@ -6,7 +6,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [object]$Context,
+    [Alias('Context')]
+    [object]$BuildContext,
 
     [int]$Index = 1,
     [string]$DismPath,
@@ -21,30 +22,48 @@ $modulePath = Join-Path $PSScriptRoot '..\modules\XboxOS.Build\XboxOS.Build.psd1
 Import-Module $modulePath -Force
 
 if (-not $DismPath) { $DismPath = Find-XboxOSDism }
-$wim = $Context.Paths.WorkingWim
-$mount = $Context.Paths.Mount
+$wim = $BuildContext.Paths.WorkingWim
+$mount = $BuildContext.Paths.Mount
 
-if (-not $DryRun -and -not (Test-Path -LiteralPath $wim)) {
+$null = Assert-XboxOSServicingPathSafety -Path $mount -RepoRoot $BuildContext.Configuration.RepoRoot -Purpose 'WIM mount'
+$null = Assert-XboxOSServicingPathSafety -Path $wim -RepoRoot $BuildContext.Configuration.RepoRoot -Purpose 'working WIM'
+
+if ($DryRun) {
+    Write-XboxOSLog -Level Information -Message 'DryRun: skipping image mount; inventory remains Unknown.'
+    $BuildContext.MountedImagePath = $null
+    $BuildContext.ImageMounted = $false
+    return [pscustomobject]@{
+        MountPath    = $mount
+        ImageFile    = $wim
+        Index        = $Index
+        DryRun       = $true
+        ImageMounted = $false
+    }
+}
+
+if (-not (Test-Path -LiteralPath $wim)) {
     throw "Working WIM not found: $wim. Run Import-Source.ps1 first."
 }
 
 New-XboxOSDirectory -Path $mount | Out-Null
 
-$args = @(
+$dismArgs = @(
     '/Mount-Image'
     "/ImageFile:$wim"
     "/Index:$Index"
     "/MountDir:$mount"
 )
-if ($ReadOnly) { $args += '/ReadOnly' }
+if ($ReadOnly) { $dismArgs += '/ReadOnly' }
 
-Invoke-XboxOSDism -DismPath $DismPath -ArgumentList $args -DryRun:$DryRun | Out-Null
-$Context.MountedImagePath = $mount
+Invoke-XboxOSDism -DismPath $DismPath -ArgumentList $dismArgs | Out-Null
+$BuildContext.MountedImagePath = $mount
+$BuildContext.ImageMounted = $true
 Write-XboxOSLog -Level Information -Message "Image mounted at $mount (index $Index)"
 
 return [pscustomobject]@{
-    MountPath = $mount
-    ImageFile = $wim
-    Index     = $Index
-    DryRun    = [bool]$DryRun
+    MountPath    = $mount
+    ImageFile    = $wim
+    Index        = $Index
+    DryRun       = $false
+    ImageMounted = $true
 }

@@ -1,21 +1,30 @@
 # Milestone Roadmap
 
-## M1: Image build foundation (current)
+## M1: Image build foundation (complete)
 
-Reproducible Windows ISO customization pipeline.
+Reproducible Windows ISO customization pipeline and read-only DISM compatibility baseline.
 
-- Prerequisite validation
-- Source ISO import and edition export
-- Inventory-before/after
-- Manifest-driven AppX removal and optional feature disable
-- Optional INF drivers and CAB/MSU updates
-- Validation reports and oscdimg ISO export
-- Pester unit tests and GitHub Actions validation
-- Conservative Xbox mode documentation/post-install stubs
+Completed:
 
-## M2: Unattended installation
+- Prerequisite validation and workspace isolation (`C:\XboxOS`)
+- Source ISO import helpers and exact Windows 11 Pro index discovery
+- Inventory-before/after with flat, state-aware DISM parsing
+- Manifest-driven AppX / feature planning with protected-component safeguards
+- Optional INF drivers and CAB/MSU update helpers (dry-run safe)
+- Validation reports, oscdimg ISO export helpers, Pester + GitHub Actions
+- Elevated read-only DISM compatibility against Windows 11 Pro 26H2 (`26300.9457`)
+- Compatibility matrix distinguishing Eligible vs AlreadyDisabled (no writable servicing)
 
-Windows Setup automation, edition selection, user configuration, and privacy settings without hardcoded credentials.
+Baseline documentation: [m1-compatibility-baseline.md](m1-compatibility-baseline.md).
+
+## M2: Design and safety validation (next)
+
+Design the writable servicing engine and approval gates **without** immediately modifying Windows images.
+
+- Treat AlreadyDisabled features as no-ops; only Enabled unprotected candidates are actionable
+- Preserve ambiguity rejection and protected-component priority
+- Define explicit operator authorization for the first image-mutation attempt
+- Unattended Setup / edition selection design may proceed after the safety model is agreed
 
 ## M3: Xbox mode integration
 

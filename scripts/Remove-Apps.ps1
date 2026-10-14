@@ -2,6 +2,11 @@
 <#
 .SYNOPSIS
     Removes provisioned AppX packages listed in remove-apps.json after inventory-based matching.
+.NOTES
+    Inventory states:
+      Unknown   - no mounted-image inventory (typical dry-run); candidates are NotEvaluated
+      Empty     - inventory was queried and contained no packages
+      Available - inventory was queried and packages are known
 #>
 [CmdletBinding()]
 param(
@@ -12,7 +17,14 @@ param(
     [string]$ManifestPath,
     [string]$CompatibilityPath,
     [string]$DismPath,
+
+    [Parameter()]
+    [AllowEmptyCollection()]
     [string[]]$AvailablePackages,
+
+    [ValidateSet('Unknown', 'Empty', 'Available')]
+    [string]$InventoryState,
+
     [switch]$DryRun
 )
 
@@ -33,19 +45,44 @@ $protected = Get-XboxOSProtectedAppxPatterns -CompatibilityManifest $compatibili
 $rejectAmbiguous = [bool]$config.Raw.safety.rejectAmbiguousPackageMatches
 $mount = $BuildContext.Paths.Mount
 
-if (-not $AvailablePackages) {
-    if ($DryRun) {
-        $AvailablePackages = @()
-    }
-    else {
-        $inv = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @("/Image:$mount", '/Get-ProvisionedAppxPackages')
-        $AvailablePackages = foreach ($line in $inv.Output) {
-            if ($line -match '^\s*PackageName\s*:\s*(.+)$') { $Matches[1].Trim() }
-        }
+$packagesBound = $PSBoundParameters.ContainsKey('AvailablePackages')
+$stateBound = $PSBoundParameters.ContainsKey('InventoryState')
+
+if ($packagesBound) {
+    if (-not $stateBound) {
+        $InventoryState = if (@($AvailablePackages).Count -eq 0) { 'Empty' } else { 'Available' }
     }
 }
+elseif ($stateBound) {
+    if ($InventoryState -eq 'Available') {
+        throw 'InventoryState=Available requires -AvailablePackages to be supplied.'
+    }
+    $AvailablePackages = @()
+}
+elseif ($BuildContext.PSObject.Properties.Name -contains 'AppxInventoryState' -and
+        $BuildContext.AppxInventoryState -and
+        $BuildContext.AppxInventoryState -ne 'Unknown') {
+    $InventoryState = [string]$BuildContext.AppxInventoryState
+    $AvailablePackages = @($BuildContext.AppxInventory)
+}
+elseif ($DryRun -or -not $BuildContext.ImageMounted) {
+    $InventoryState = 'Unknown'
+    $AvailablePackages = @()
+}
+else {
+    if (-not $DryRun) {
+        $null = Assert-XboxOSServicingPathSafety -Path $mount -RepoRoot $config.RepoRoot -Purpose 'AppX removal'
+    }
+    $inv = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @("/Image:$mount", '/Get-ProvisionedAppxPackages')
+    $AvailablePackages = @(foreach ($line in $inv.Output) {
+            if ($line -match '^\s*PackageName\s*:\s*(.+)$') { $Matches[1].Trim() }
+        })
+    $InventoryState = if ($AvailablePackages.Count -eq 0) { 'Empty' } else { 'Available' }
+}
 
+$availability = Get-XboxOSInventoryAvailability -State $InventoryState -Items @($AvailablePackages)
 $results = New-Object System.Collections.Generic.List[object]
+$fatalErrors = New-Object System.Collections.Generic.List[string]
 
 foreach ($candidate in @($manifest.candidates)) {
     if (-not $candidate.enabled) {
@@ -58,8 +95,18 @@ foreach ($candidate in @($manifest.candidates)) {
         continue
     }
 
+    if (-not $availability.CanEvaluate) {
+        $results.Add([pscustomobject]@{
+            Candidate = $candidate.id
+            Package   = $null
+            Status    = 'NotEvaluated'
+            Message   = 'No mounted-image AppX inventory is available; package presence cannot be evaluated.'
+        }) | Out-Null
+        continue
+    }
+
     try {
-        $resolvedPackages = @(Resolve-XboxOSPackageMatches -Patterns @($candidate.patterns) -AvailablePackages @($AvailablePackages) -RejectAmbiguous:$rejectAmbiguous)
+        $resolvedPackages = @(Resolve-XboxOSPackageMatches -Patterns @($candidate.patterns) -AvailablePackages @($availability.Items) -RejectAmbiguous:$rejectAmbiguous)
     }
     catch {
         $results.Add([pscustomobject]@{
@@ -68,6 +115,7 @@ foreach ($candidate in @($manifest.candidates)) {
             Status    = 'Failed'
             Message   = $_.Exception.Message
         }) | Out-Null
+        $fatalErrors.Add($_.Exception.Message) | Out-Null
         Write-XboxOSLog -Level Error -Message $_.Exception.Message
         continue
     }
@@ -77,7 +125,7 @@ foreach ($candidate in @($manifest.candidates)) {
             Candidate = $candidate.id
             Package   = $null
             Status    = 'Absent'
-            Message   = 'No provisioned package matched approved patterns'
+            Message   = 'No provisioned package matched approved patterns in the known inventory'
         }) | Out-Null
         continue
     }
@@ -94,7 +142,6 @@ foreach ($candidate in @($manifest.candidates)) {
             continue
         }
 
-        # Extra guard: package must be in the approved candidate match set only (already true)
         try {
             if ($DryRun) {
                 Write-XboxOSLog -Level Information -Message "DryRun: would remove $package"
@@ -106,6 +153,7 @@ foreach ($candidate in @($manifest.candidates)) {
                 }) | Out-Null
             }
             else {
+                $null = Assert-XboxOSServicingPathSafety -Path $mount -RepoRoot $config.RepoRoot -Purpose 'AppX removal'
                 Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @(
                     "/Image:$mount"
                     '/Remove-ProvisionedAppxPackage'
@@ -127,16 +175,27 @@ foreach ($candidate in @($manifest.candidates)) {
                 Status    = 'Failed'
                 Message   = $_.Exception.Message
             }) | Out-Null
+            $fatalErrors.Add("Failed removing ${package}: $($_.Exception.Message)") | Out-Null
             Write-XboxOSLog -Level Error -Message "Failed removing $package : $($_.Exception.Message)"
-            throw
         }
     }
 }
 
 $reportPath = Join-Path $BuildContext.Paths.Reports 'RemoveApps.json'
-($results | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $reportPath -Encoding UTF8
-
-return [pscustomobject]@{
-    Results = $results
-    Report  = $reportPath
+$payload = [ordered]@{
+    inventoryState = $InventoryState
+    dryRun         = [bool]$DryRun
+    results        = $results
 }
+($payload | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $reportPath -Encoding UTF8
+
+$outcome = [pscustomobject]@{
+    Results        = $results
+    Report         = $reportPath
+    InventoryState = $InventoryState
+    Success        = ($fatalErrors.Count -eq 0)
+    Message        = $(if ($fatalErrors.Count -eq 0) { 'OK' } else { ($fatalErrors -join '; ') })
+}
+
+Assert-XboxOSPhaseOutcome -Result $outcome -PhaseName 'RemoveApps' | Out-Null
+return $outcome

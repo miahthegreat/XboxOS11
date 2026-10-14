@@ -72,8 +72,19 @@ elseif ($DryRun) {
 # Protected dependency expectations from remove-apps report if present
 $removeReport = Join-Path $Context.Paths.Reports 'RemoveApps.json'
 if (Test-Path -LiteralPath $removeReport) {
-    $removed = Get-Content -LiteralPath $removeReport -Raw | ConvertFrom-Json
-    $protectedHits = @($removed | Where-Object { $_.Message -match 'Protected' -and $_.Status -eq 'Removed' })
+    $removeDoc = Get-Content -LiteralPath $removeReport -Raw | ConvertFrom-Json
+    $removeEntries = if ($removeDoc.PSObject.Properties.Name -contains 'results') {
+        @($removeDoc.results)
+    }
+    else {
+        @($removeDoc)
+    }
+    $protectedHits = @($removeEntries | Where-Object {
+            ($_.PSObject.Properties.Name -contains 'Message') -and
+            ($_.PSObject.Properties.Name -contains 'Status') -and
+            $_.Message -match 'Protected' -and
+            $_.Status -eq 'Removed'
+        })
     Add-ValidationCheck -Name 'ProtectedNotRemoved' -Passed ($protectedHits.Count -eq 0) `
         -Message $(if ($protectedHits.Count -eq 0) { 'No protected packages were removed.' } else { 'Protected packages were removed unexpectedly.' })
 }
@@ -81,18 +92,29 @@ if (Test-Path -LiteralPath $removeReport) {
 # Inventory after presence
 if ($Context.InventoryAfter -and (Test-Path -LiteralPath $Context.InventoryAfter)) {
     $inv = Get-Content -LiteralPath $Context.InventoryAfter -Raw | ConvertFrom-Json
-    $protectedPatterns = @($compatibility.protectedAppxPatterns)
+    $availability = if ($inv.PSObject.Properties.Name -contains 'inventoryAvailability') { [string]$inv.inventoryAvailability } else { 'Available' }
     $missingCritical = New-Object System.Collections.Generic.List[string]
-    # Soft check: warn if Store/Xbox patterns vanish entirely when inventories are non-empty
-    if ($inv.appxPackages -and @($inv.appxPackages).Count -gt 0) {
-        $store = @($inv.appxPackages | Where-Object { $_ -like 'Microsoft.WindowsStore*' })
-        if ($store.Count -eq 0) {
-            $missingCritical.Add('Microsoft.WindowsStore*') | Out-Null
-        }
+
+    if ($availability -eq 'Unknown') {
+        Add-ValidationCheck -Name 'StorePresentIfInventoried' -Passed $true `
+            -Message 'After-inventory availability is Unknown (dry-run / unmounted); Store presence not evaluated.' `
+            -Severity 'Warning'
     }
-    Add-ValidationCheck -Name 'StorePresentIfInventoried' -Passed ($missingCritical.Count -eq 0) `
-        -Message $(if ($missingCritical.Count -eq 0) { 'Store package still present in after-inventory (or inventory empty/dry-run).' } else { "Missing critical packages: $($missingCritical -join ', ')" }) `
-        -Severity 'Warning'
+    else {
+        $appx = @()
+        if ($inv.PSObject.Properties.Name -contains 'appxPackages' -and $null -ne $inv.appxPackages) {
+            $appx = @($inv.appxPackages)
+        }
+        if ($appx.Count -gt 0) {
+            $store = @($appx | Where-Object { $_ -like 'Microsoft.WindowsStore*' })
+            if ($store.Count -eq 0) {
+                $missingCritical.Add('Microsoft.WindowsStore*') | Out-Null
+            }
+        }
+        Add-ValidationCheck -Name 'StorePresentIfInventoried' -Passed ($missingCritical.Count -eq 0) `
+            -Message $(if ($missingCritical.Count -eq 0) { 'Store package still present in after-inventory (or inventory empty).' } else { "Missing critical packages: $($missingCritical -join ', ')" }) `
+            -Severity 'Warning'
+    }
 }
 else {
     Add-ValidationCheck -Name 'AfterInventory' -Passed $DryRun -Message $(if ($DryRun) { 'After inventory not required in dry-run.' } else { 'After inventory missing.' }) -Severity 'Warning'

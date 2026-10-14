@@ -1,0 +1,32 @@
+Deployment Image Servicing and Management tool
+Version: 10.0.26100.8972
+
+DISM.exe [dism_options] {Imaging_command} [<Imaging_arguments>]
+DISM.exe {/Image:<path_to_offline_image> | /Online} [dism_options] {servicing_command} [<servicing_arguments>]
+
+DESCRIPTION:
+
+  DISM enumerates, installs, uninstalls, configures, and updates features
+  and packages in Windows images. The commands that are available depend
+  on the servicing used and whether the image is offline or running.
+
+OPTIONS:
+
+  /English
+  /Format
+  /WinDir
+  /SysDriveDir
+  /LogPath
+  /LogLevel
+  /NoRestart
+  /Quiet
+  /ScratchDir
+
+For more information about these options and their arguments, specify an
+option immediately followed by /?.
+
+EXAMPLES:
+
+  DISM.exe /Mount-Image /? 
+  DISM.exe /ScratchDir /?
+  DISM.exe /Image:C:\test\offline /Get-Packages
