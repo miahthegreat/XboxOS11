@@ -1,0 +1,58 @@
+@{
+    RootModule        = 'XboxOS.Build.psm1'
+    ModuleVersion     = '0.1.0'
+    GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
+    Author            = 'XboxOS11 Contributors'
+    CompanyName       = 'XboxOS11'
+    Copyright         = 'Copyright (c) 2026 XboxOS11 Contributors. MIT License.'
+    Description       = 'Reproducible Windows 11 gaming image customization helpers for XboxOS11.'
+    PowerShellVersion = '5.1'
+    FunctionsToExport = @(
+        'Get-XboxOSRepoRoot'
+        'Import-XboxOSManifest'
+        'Get-XboxOSBuildConfiguration'
+        'Resolve-XboxOSPath'
+        'New-XboxOSDirectory'
+        'Test-XboxOSAdministrator'
+        'Test-XboxOSWindowsHost'
+        'Find-XboxOSDism'
+        'Find-XboxOSAdkTools'
+        'Get-XboxOSDiskFreeBytes'
+        'Write-XboxOSLog'
+        'New-XboxOSLogger'
+        'New-XboxOSBuildContext'
+        'Save-XboxOSBuildReport'
+        'Get-XboxOSFileHash'
+        'Test-XboxOSWritablePath'
+        'Invoke-XboxOSDism'
+        'Get-XboxOSImageInfo'
+        'ConvertTo-XboxOSSafeFileName'
+        'Test-XboxOSArchitectureSupported'
+        'Get-XboxOSProtectedAppxPatterns'
+        'Test-XboxOSPackageProtected'
+        'Resolve-XboxOSPackageMatches'
+        'Resolve-XboxOSFeatureMatches'
+        'Test-XboxOSFeatureProtected'
+        'Find-XboxOSDriverPackages'
+        'Find-XboxOSUpdatePackages'
+        'Get-XboxOSOrderedUpdatePackages'
+        'New-XboxOSIsoBootData'
+        'Test-XboxOSDryRunGuard'
+        'Assert-XboxOSBuildSafety'
+        'Get-XboxOSRequiredConfigFields'
+        'Test-XboxOSManifestSchema'
+        'Clear-XboxOSWorkspace'
+        'Invoke-XboxOSMountCleanup'
+    )
+    CmdletsToExport   = @()
+    VariablesToExport = @()
+    AliasesToExport   = @()
+    PrivateData       = @{
+        PSData = @{
+            Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
+            LicenseUri   = 'https://opensource.org/licenses/MIT'
+            ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
+            ReleaseNotes = 'Milestone 1: image build foundation.'
+        }
+    }
+}

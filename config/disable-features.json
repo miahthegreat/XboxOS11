@@ -1,0 +1,60 @@
+{
+  "version": "1.0.0",
+  "description": "Optional Windows features to disable offline. Payloads are retained by default (DisableFeature without /Remove).",
+  "defaultAction": "Disable",
+  "removePayload": false,
+  "candidates": [
+    {
+      "id": "XpsViewer",
+      "featureNames": ["Xps-Foundation-Xps-Viewer"],
+      "reason": "Legacy XPS viewer; verify presence before disable.",
+      "enabled": true
+    },
+    {
+      "id": "PrintingXPS",
+      "featureNames": ["Printing-XPSServices-Features"],
+      "reason": "Optional XPS printing services.",
+      "enabled": true
+    },
+    {
+      "id": "Smb1",
+      "featureNames": [
+        "SMB1Protocol",
+        "SMB1Protocol-Client",
+        "SMB1Protocol-Server",
+        "SMB1Protocol-Deprecation"
+      ],
+      "reason": "Legacy SMB 1.0 is insecure and unused by modern game launchers.",
+      "enabled": true
+    },
+    {
+      "id": "WorkFolders",
+      "featureNames": ["WorkFolders-Client"],
+      "reason": "Enterprise Work Folders client unused on a gaming PC.",
+      "enabled": true
+    },
+    {
+      "id": "FaxAndScan",
+      "featureNames": ["FaxServicesClientPackage"],
+      "reason": "Optional fax client.",
+      "enabled": false
+    }
+  ],
+  "neverDisable": [
+    "Microsoft-Windows-Subsystem-Linux",
+    "VirtualMachinePlatform",
+    "HypervisorPlatform",
+    "Containers-DisposableClientVM",
+    "NetFx3",
+    "NetFx4*",
+    "MediaPlayback",
+    "WindowsMediaPlayer",
+    "DirectPlay",
+    "SMB1Protocol-Deprecation"
+  ],
+  "notes": [
+    "Exact feature names are resolved from Get-WindowsOptionalFeature inventory before any change.",
+    "Do not disable core networking, security, graphics, audio, or gaming infrastructure.",
+    "removePayload=false keeps component payloads for easier servicing and restore."
+  ]
+}

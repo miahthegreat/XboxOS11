@@ -1,0 +1,12 @@
+Microsoft.WindowsStore_22405.1401.0.0_neutral_~_8wekyb3d8bbwe
+Microsoft.Xbox.TCUI_1.24.10001.0_neutral_~_8wekyb3d8bbwe
+Microsoft.GamingApp_2405.1001.0.0_x64__8wekyb3d8bbwe
+Microsoft.XboxGamingOverlay_5.824.12002.0_neutral_~_8wekyb3d8bbwe
+Microsoft.BingWeather_4.53.0.0_neutral_~_8wekyb3d8bbwe
+Microsoft.BingNews_4.55.0.0_neutral_~_8wekyb3d8bbwe
+Clipchamp.Clipchamp_2.2.0.0_neutral_~_yxz26nhyzhsrt
+Microsoft.MicrosoftSolitaireCollection_4.12.0.0_neutral_~_8wekyb3d8bbwe
+Microsoft.Copilot_1.0.0.0_neutral_~_8wekyb3d8bbwe
+MicrosoftTeams_24102.x.x.x_x64__8wekyb3d8bbwe
+Microsoft.OutlookForWindows_1.0.0.0_neutral_~_8wekyb3d8bbwe
+Microsoft.VCLibs.140.00_14.0.32530.0_x64__8wekyb3d8bbwe

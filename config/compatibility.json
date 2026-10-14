@@ -1,0 +1,183 @@
+{
+  "version": "1.0.0",
+  "description": "Protected gaming and platform dependencies that must not be removed or disabled by XboxOS11 manifests.",
+  "xboxMode": {
+    "minimumWindowsRelease": "24H2",
+    "recommendedWindowsRelease": "25H2",
+    "supportedFormFactors": ["handheld", "desktop", "laptop", "tablet"],
+    "startupToGamingHome": {
+      "component": "Microsoft-Windows-Gaming-Configuration",
+      "setting": "StartupToGamingHome",
+      "documented": true,
+      "documentationUrl": "https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-gaming-configuration-startuptogaminghome",
+      "configurationPasses": ["offlineServicing", "specialize", "oobeSystem"],
+      "desktopSupportNotes": "Microsoft documents Xbox mode settings UI for non-handheld PCs (Settings > Gaming > Xbox mode). Automatic Enter Xbox mode on startup is documented primarily for gaming handhelds. StartupToGamingHome is an OEM unattend setting; do not assume it produces a validated desktop Xbox-mode boot without post-install verification.",
+      "manualWorkflowUrl": "https://support.microsoft.com/en-us/servicing/os/windows/docs/2025/10/windows-gaming-full-screen-experience"
+    },
+    "requirements": [
+      "Windows 11 version 24H2 or later",
+      "Xbox app",
+      "Microsoft Store",
+      "Xbox Game Bar / Game Bar settings entry points",
+      "Controller-capable input stack (XInput)"
+    ],
+    "doNotReplaceShell": true
+  },
+  "protectedAppxPatterns": [
+    "Microsoft.WindowsStore*",
+    "Microsoft.StorePurchaseApp*",
+    "Microsoft.DesktopAppInstaller*",
+    "Microsoft.Xbox*",
+    "Microsoft.GamingApp*",
+    "Microsoft.GamingServices*",
+    "Microsoft.XboxIdentityProvider*",
+    "Microsoft.XboxGameOverlay*",
+    "Microsoft.XboxGamingOverlay*",
+    "Microsoft.XboxSpeechToTextOverlay*",
+    "Microsoft.Xbox.TCUI*",
+    "Microsoft.VCLibs*",
+    "Microsoft.UI.Xaml*",
+    "Microsoft.NET.Native*",
+    "Microsoft.Services.Store.Engagement*",
+    "Microsoft.WindowsAppRuntime*",
+    "Microsoft.Windows.ContentDeliveryManager*",
+    "Microsoft.WebView*",
+    "Microsoft.MicrosoftEdge*",
+    "Microsoft.WinJS*",
+    "Microsoft.WindowsCalculator*",
+    "Microsoft.Paint*",
+    "Microsoft.ScreenSketch*",
+    "Microsoft.WindowsTerminal*",
+    "Microsoft.WindowsNotepad*",
+    "Microsoft.SecHealthUI*",
+    "Microsoft.MicrosoftStickyNotes*"
+  ],
+  "protectedCapabilities": [
+    "App.Support.WindowsFeatureExperiencePack~~~~0.0.1.0",
+    "Language.TextToSpeech*",
+    "Media.WindowsMediaPlayer*",
+    "OneCoreUAP.OneSync*"
+  ],
+  "protectedFeatureNamePatterns": [
+    "NetFx*",
+    "MediaPlayback",
+    "WindowsMediaPlayer",
+    "DirectPlay",
+    "Microsoft-Windows-InternetExplorer*"
+  ],
+  "protectedCategories": [
+    {
+      "id": "microsoft-store",
+      "label": "Microsoft Store infrastructure",
+      "reason": "Required to install Xbox app updates and many modern games."
+    },
+    {
+      "id": "xbox",
+      "label": "Xbox app and identity dependencies",
+      "reason": "Required for Xbox mode / Full Screen Experience and Xbox network features."
+    },
+    {
+      "id": "gaming-services",
+      "label": "Gaming Services",
+      "reason": "Xbox PC gaming runtime."
+    },
+    {
+      "id": "game-bar",
+      "label": "Xbox Game Bar dependencies",
+      "reason": "Entry points for Xbox mode and capture overlays."
+    },
+    {
+      "id": "windows-update",
+      "label": "Windows Update",
+      "reason": "Security and driver updates."
+    },
+    {
+      "id": "defender",
+      "label": "Microsoft Defender",
+      "reason": "Security baseline; not disabled for benchmarks."
+    },
+    {
+      "id": "directx",
+      "label": "DirectX",
+      "reason": "Graphics API used by games."
+    },
+    {
+      "id": "media-foundation",
+      "label": "Media Foundation",
+      "reason": "Video cutscenes and media playback."
+    },
+    {
+      "id": "webview2",
+      "label": "WebView2",
+      "reason": "Used by launchers and Xbox web content."
+    },
+    {
+      "id": "dotnet",
+      "label": ".NET components",
+      "reason": "Launcher and tooling dependency."
+    },
+    {
+      "id": "vcredist",
+      "label": "Visual C++ runtime compatibility",
+      "reason": "Native game runtime dependency."
+    },
+    {
+      "id": "bluetooth",
+      "label": "Bluetooth services",
+      "reason": "Wireless controllers and headsets."
+    },
+    {
+      "id": "audio",
+      "label": "Audio services",
+      "reason": "Game and chat audio."
+    },
+    {
+      "id": "networking",
+      "label": "Networking",
+      "reason": "Online multiplayer and store downloads."
+    },
+    {
+      "id": "msi",
+      "label": "Windows Installer",
+      "reason": "Launcher and redistributable installation."
+    },
+    {
+      "id": "crypto",
+      "label": "Cryptographic services",
+      "reason": "Code integrity and TLS."
+    },
+    {
+      "id": "servicing",
+      "label": "Windows component servicing",
+      "reason": "Updates and feature enablement."
+    },
+    {
+      "id": "anticheat",
+      "label": "Anti-cheat compatibility surface",
+      "reason": "Avoid breaking kernel/security expectations used by Easy Anti-Cheat, BattlEye, Ricochet, Vanguard, etc."
+    }
+  ],
+  "postInstallOnly": [
+    "AMD Chipset Driver package (vendor installer)",
+    "AMD Software: Adrenalin Edition",
+    "Steam",
+    "Battle.net",
+    "EA App",
+    "Ubisoft Connect",
+    "Epic Games Launcher",
+    "Xbox app updates from Microsoft Store",
+    "Visual C++ redistributables as required by individual games"
+  ],
+  "securityDefaults": {
+    "tpmRequired": true,
+    "secureBootRequired": true,
+    "defenderEnabled": true,
+    "vbsLeftDefault": true,
+    "disableSecurityForBenchmarks": false
+  },
+  "notes": [
+    "A smaller ISO does not guarantee better gaming performance.",
+    "Components are protected because removing them commonly breaks Store, Xbox mode, launchers, or anti-cheat.",
+    "Always inventory the offline image before acting; do not assume a package exists."
+  ]
+}

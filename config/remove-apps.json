@@ -1,0 +1,86 @@
+{
+  "version": "1.0.0",
+  "description": "Provisioned AppX packages considered for removal. Exact PackageName identities discovered in the image are required before removal.",
+  "matchMode": "ExactOrSinglePrefix",
+  "dryRunDefault": false,
+  "candidates": [
+    {
+      "id": "Clipchamp",
+      "displayName": "Microsoft Clipchamp",
+      "patterns": ["Clipchamp.Clipchamp*"],
+      "reason": "Optional consumer video editor not required for gaming.",
+      "enabled": true
+    },
+    {
+      "id": "Copilot",
+      "displayName": "Copilot consumer packages",
+      "patterns": [
+        "Microsoft.Copilot*",
+        "Microsoft.Windows.Ai.Copilot.Provider*"
+      ],
+      "reason": "Consumer Copilot packages; verify absence does not break Store/Xbox before enabling.",
+      "enabled": true
+    },
+    {
+      "id": "TeamsConsumer",
+      "displayName": "Microsoft Teams (consumer)",
+      "patterns": ["MicrosoftTeams*", "MSTeams*"],
+      "reason": "Consumer Teams chat client; keep enterprise Teams if provisioned separately.",
+      "enabled": true
+    },
+    {
+      "id": "News",
+      "displayName": "Microsoft News",
+      "patterns": ["Microsoft.BingNews*"],
+      "reason": "Promotional news app.",
+      "enabled": true
+    },
+    {
+      "id": "Weather",
+      "displayName": "Microsoft Weather",
+      "patterns": ["Microsoft.BingWeather*"],
+      "reason": "Optional weather app.",
+      "enabled": true
+    },
+    {
+      "id": "Solitaire",
+      "displayName": "Microsoft Solitaire Collection",
+      "patterns": ["Microsoft.MicrosoftSolitaireCollection*"],
+      "reason": "Optional casual game collection.",
+      "enabled": true
+    },
+    {
+      "id": "OutlookConsumer",
+      "displayName": "Outlook for Windows (consumer)",
+      "patterns": ["Microsoft.OutlookForWindows*", "Microsoft.MicrosoftOfficeHub*"],
+      "reason": "Consumer Outlook / Office Hub promotional packages.",
+      "enabled": true
+    },
+    {
+      "id": "GetHelp",
+      "displayName": "Get Help",
+      "patterns": ["Microsoft.GetHelp*"],
+      "reason": "Optional support app.",
+      "enabled": false
+    },
+    {
+      "id": "Tips",
+      "displayName": "Tips",
+      "patterns": ["Microsoft.Getstarted*"],
+      "reason": "Optional tips app.",
+      "enabled": false
+    },
+    {
+      "id": "XboxTCUI",
+      "displayName": "Xbox TCUI (protected example)",
+      "patterns": ["Microsoft.Xbox.TCUI*"],
+      "reason": "Listed only to demonstrate protection; must never be removed.",
+      "enabled": false
+    }
+  ],
+  "notes": [
+    "OneDrive is typically not a provisioned AppX package and is not removed by this manifest.",
+    "Only packages present in the offline image inventory and matching a single approved candidate may be removed.",
+    "Protected packages from compatibility.json are never removed, even if listed here."
+  ]
+}

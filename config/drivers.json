@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "description": "Optional INF-based driver integration for offline images. Full AMD Adrenalin installers are not supported offline.",
+  "architecture": "amd64",
+  "driverDirectory": "./drivers",
+  "recursive": true,
+  "requireCatalog": false,
+  "rejectPatterns": [
+    "*Adrenalin*",
+    "*AMDSoftwareInstaller*",
+    "*Setup.exe",
+    "*.msi",
+    "*.exe"
+  ],
+  "acceptedExtensions": [".inf"],
+  "notes": [
+    "Place extracted INF/SYS/CAT driver packages under ./drivers before build.",
+    "Chipset INF packages may be integrated when valid; GPU user-mode Adrenalin stacks should be installed after Setup.",
+    "Architecture must match the target image (amd64)."
+  ]
+}

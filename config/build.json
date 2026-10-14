@@ -1,0 +1,74 @@
+{
+  "$schema": "./schemas/build.schema.json",
+  "project": "XboxOS11",
+  "version": "0.1.0",
+  "description": "Gaming-focused Windows 11 image customization for Xbox Full Screen Experience",
+  "target": {
+    "windowsVersion": "11",
+    "release": "25H2",
+    "edition": "Windows 11 Pro",
+    "architecture": "amd64",
+    "imageNamePattern": "*Pro*",
+    "minimumBuild": 26100,
+    "bootFirmware": "UEFI",
+    "partitionStyle": "GPT"
+  },
+  "hardwareProfile": {
+    "cpu": "AMD Ryzen 7 7800X3D",
+    "gpu": "AMD Radeon RX 9070 XT",
+    "notes": "Chipset and Radeon Adrenalin software should be installed after Windows Setup; do not inject the full Adrenalin installer into the offline image."
+  },
+  "workspace": {
+    "root": "./artifacts/workspace",
+    "cache": "./artifacts/cache",
+    "logs": "./artifacts/logs",
+    "temp": "./artifacts/temp",
+    "output": "./artifacts/output",
+    "minimumFreeGb": 40
+  },
+  "source": {
+    "preserveOriginal": true,
+    "hashAlgorithm": "SHA256",
+    "preferredImageFormat": "wim"
+  },
+  "iso": {
+    "label": "XboxOS11",
+    "fileName": "XboxOS11-Win11Pro-25H2.iso",
+    "uefiBoot": true,
+    "splitWimThresholdBytes": 4294967295,
+    "bootData": "-bootdata:2#p0,e,b{boot}\\etfsboot.com#pEF,e,b{efi}\\efisys.bin"
+  },
+  "phases": {
+    "importSource": true,
+    "inventoryBefore": true,
+    "removeApps": true,
+    "disableFeatures": true,
+    "addDrivers": true,
+    "addUpdates": true,
+    "inventoryAfter": true,
+    "validate": true,
+    "exportIso": true
+  },
+  "paths": {
+    "removeAppsManifest": "./config/remove-apps.json",
+    "disableFeaturesManifest": "./config/disable-features.json",
+    "servicesManifest": "./config/services.json",
+    "driversManifest": "./config/drivers.json",
+    "compatibilityManifest": "./config/compatibility.json",
+    "driverDirectory": "./drivers",
+    "updateDirectory": "./updates"
+  },
+  "safety": {
+    "requireAdministrator": true,
+    "allowHostModification": false,
+    "commitOnFailure": false,
+    "dryRunDefault": false,
+    "rejectAmbiguousPackageMatches": true,
+    "neverRemoveProtectedPackages": true
+  },
+  "logging": {
+    "level": "Information",
+    "structuredJson": true,
+    "retainDays": 14
+  }
+}

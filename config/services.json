@@ -1,0 +1,126 @@
+{
+  "version": "1.0.0",
+  "description": "Service policy guidance for post-install tuning. Milestone 1 does not modify host or image services automatically.",
+  "milestone": 1,
+  "applyDuringImageBuild": false,
+  "protectedServices": [
+    {
+      "name": "wuauserv",
+      "displayName": "Windows Update",
+      "reason": "Required for security and cumulative updates."
+    },
+    {
+      "name": "WinDefend",
+      "displayName": "Microsoft Defender Antivirus Service",
+      "reason": "Do not disable security for benchmarks."
+    },
+    {
+      "name": "mpssvc",
+      "displayName": "Windows Defender Firewall",
+      "reason": "Network security baseline."
+    },
+    {
+      "name": "AudioSrv",
+      "displayName": "Windows Audio",
+      "reason": "Required for game audio."
+    },
+    {
+      "name": "AudioEndpointBuilder",
+      "displayName": "Windows Audio Endpoint Builder",
+      "reason": "Required for audio endpoints."
+    },
+    {
+      "name": "bthserv",
+      "displayName": "Bluetooth Support Service",
+      "reason": "Controller and headset connectivity."
+    },
+    {
+      "name": "BTAGService",
+      "displayName": "Bluetooth Audio Gateway Service",
+      "reason": "Bluetooth audio devices."
+    },
+    {
+      "name": "GamingServices",
+      "displayName": "Gaming Services",
+      "reason": "Xbox and Store gaming infrastructure."
+    },
+    {
+      "name": "GamingServicesNet",
+      "displayName": "Gaming Services Network",
+      "reason": "Xbox networking dependencies."
+    },
+    {
+      "name": "InstallService",
+      "displayName": "Microsoft Store Install Service",
+      "reason": "Store package installation."
+    },
+    {
+      "name": "ClipSVC",
+      "displayName": "Client License Service",
+      "reason": "Store licensing."
+    },
+    {
+      "name": "CryptSvc",
+      "displayName": "Cryptographic Services",
+      "reason": "Code signing and certificate trust."
+    },
+    {
+      "name": "msiserver",
+      "displayName": "Windows Installer",
+      "reason": "Launcher and redistributable installs."
+    },
+    {
+      "name": "TrustedInstaller",
+      "displayName": "Windows Modules Installer",
+      "reason": "Component servicing."
+    },
+    {
+      "name": "RpcSs",
+      "displayName": "Remote Procedure Call (RPC)",
+      "reason": "Core OS dependency."
+    },
+    {
+      "name": "Dnscache",
+      "displayName": "DNS Client",
+      "reason": "Networking."
+    },
+    {
+      "name": "Dhcp",
+      "displayName": "DHCP Client",
+      "reason": "Networking."
+    },
+    {
+      "name": "NlaSvc",
+      "displayName": "Network Location Awareness",
+      "reason": "Networking."
+    },
+    {
+      "name": "VaultSvc",
+      "displayName": "Credential Manager",
+      "reason": "Account and game credentials."
+    },
+    {
+      "name": "TokenBroker",
+      "displayName": "Web Account Manager",
+      "reason": "Microsoft account / Xbox identity."
+    }
+  ],
+  "candidatesForLaterMilestones": [
+    {
+      "name": "DiagTrack",
+      "proposedStart": "Manual",
+      "status": "deferred",
+      "notes": "Evaluate impact before changing; not applied in M1."
+    },
+    {
+      "name": "SysMain",
+      "proposedStart": "Manual",
+      "status": "deferred",
+      "notes": "Superfetch/SysMain tuning is benchmark-driven in M4."
+    }
+  ],
+  "notes": [
+    "TPM, Secure Boot, Defender, and VBS protections remain enabled by default.",
+    "Service changes belong in later milestones with measured impact."
+  ]
+}

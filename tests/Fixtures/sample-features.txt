@@ -1,0 +1,10 @@
+Xps-Foundation-Xps-Viewer
+Printing-XPSServices-Features
+SMB1Protocol
+SMB1Protocol-Client
+WorkFolders-Client
+NetFx3
+MediaPlayback
+WindowsMediaPlayer
+DirectPlay
+Microsoft-Windows-Subsystem-Linux

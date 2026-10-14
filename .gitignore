@@ -1,0 +1,64 @@
+# Build artifacts and working directories
+artifacts/cache/*
+!artifacts/cache/.gitkeep
+artifacts/logs/*
+!artifacts/logs/.gitkeep
+artifacts/temp/*
+!artifacts/temp/.gitkeep
+artifacts/output/*
+!artifacts/output/.gitkeep
+artifacts/workspace/*
+!artifacts/workspace/.gitkeep
+
+# Windows image media (never commit Microsoft binaries)
+*.iso
+*.wim
+*.esd
+*.swm
+*.vhd
+*.vhdx
+*.cab
+*.msu
+*.ffu
+
+# Driver packages and update caches
+/drivers/
+/updates/
+*.sys
+*.cat
+*.inf
+!tests/Fixtures/**/*.inf
+
+# Secrets and local overrides
+.env
+*.pfx
+*.p12
+secrets/
+config/local*.json
+*.local.json
+
+# Logs and reports generated at runtime
+*.log
+reports/
+BuildReport-*.json
+Inventory-*.json
+Validation-*.json
+
+# PowerShell / IDE
+.psgallery/
+*.psess
+*.binlog
+.vs/
+.idea/
+*.user
+*.suo
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Test output
+TestResults/
+coverage/
+Pester*.xml
