@@ -26,7 +26,9 @@ def main():
     if run.get("head_sha") != SHA or run.get("conclusion") != "success" or run.get("name") != "Validate":
         return print("Not a successful matching Validate run.")
     prs = run.get("pull_requests") or []
-    # workflow_run.pull_requests can be empty in some situations: fail closed.
+    # Explicit workflow_dispatch validation after bot push may not include associated PRs.
+    if run.get("event") == "workflow_dispatch" and not prs:
+        prs = api(f"/repos/{REPO}/commits/{SHA}/pulls?per_page=100")
     if len(prs) != 1:
         return print("No unique PR association; fail closed.")
     n = prs[0]["number"]
@@ -112,8 +114,9 @@ def main():
     for f in result["findings"][:POLICY["maxFindings"]]:
         lines.append(f"- **{f['severity']}** \`{f['file']}\`: {f['explanation']} **Fix:** {f['fix']}")
     post(n,"\n\n".join(lines))
-    # Automated Cursor dispatch remains disabled pending security review of fix runner.
-    # CHANGES_REQUESTED is posted for human-directed remediation in this initial stage.
+    if decision == "CHANGES_REQUESTED":
+        api(f"/repos/{REPO}/actions/workflows/agent-fix.yml/dispatches","POST",
+            {"ref":current["base"]["ref"],"inputs":{"pr":str(n),"sha":SHA}})
     print(f"Reviewed PR #{n}: {decision}")
 
 if __name__=="__main__":
