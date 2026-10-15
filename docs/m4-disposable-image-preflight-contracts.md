@@ -6,7 +6,7 @@ Milestone 4 integrates the M2 plan engine and M3 safety architecture with a **re
 
 | Contract | Version |
 |----------|---------|
-| Preflight engine | `4.1.1` |
+| Preflight engine | `4.1.2` |
 | Read-only DISM adapter | `readonly-dism-v1` |
 | Disposable workspace | `workspace-v1` |
 | Image integrity | `image-integrity-v1` |
@@ -52,11 +52,12 @@ Adapters:
 - Expected build `26300.9457`, DisplayVersion `26H2` (kept separate from observed values)
 - Live path mounts the ISO, resolves `sources\install.wim` or `install.esd`, exports Pro, then dismounts the ISO
 - After read-only mount, **observed** edition/build/UBR/DisplayVersion/architecture are collected from DISM image info + mounted SOFTWARE hive (never substituted from expected constants)
+- Registry hive mounts use a unique run-scoped `HKLM\XboxOSPreflight-<run>-<nonce>` key with ownership tokens; preexisting keys are never overwritten; unload requires native exit code 0 **and** independent absence verification
 - Fail closed when observed identity cannot be established or does not match expected source identity
-- After `/Unmount-Image /Discard`, `/Get-MountedImageInfo` must confirm the owned mount is gone; cleanup success requires that confirmation
+- After `/Unmount-Image /Discard`, `/Get-MountedImageInfo` must confirm the owned mount is gone; cleanup success requires that confirmation **and** verified registry-hive absence
 - Original ISO is never modified; SHA256 re-verified after the run
 
-Fail closed on hash mismatch, edition ambiguity, missing elevation (live), insufficient disk, unsafe paths (OneDrive / traversal / reparse), unrelated mounts, incomplete inventory, or unverified cleanup.
+Fail closed on hash mismatch, edition ambiguity, missing elevation (live), insufficient disk, unsafe paths (OneDrive / traversal / reparse), unrelated mounts, incomplete inventory, unverified cleanup, or registry-hive cleanup failure.
 
 ## Disposable workspace (`workspace-v1`)
 

@@ -131,6 +131,10 @@
         'Get-XboxOSExpectedSourceImageIdentity'
         'Assert-XboxOSObservedSourceImageIdentity'
         'Get-XboxOSMountedImageHiveMetadata'
+        'New-XboxOSOwnedRegistryHiveMountSpec'
+        'Test-XboxOSRegistryHiveMountPresent'
+        'Assert-XboxOSOwnedRegistryHiveMount'
+        'Invoke-XboxOSOwnedRegistryHiveUnload'
         'Confirm-XboxOSOwnedMountCleanup'
         'Set-XboxOSPreflightCleanupStatus'
         'Assert-XboxOSInventoryCompletenessForPreflight'
@@ -147,7 +151,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 4.1.1: observed mounted-image metadata, verified cleanup, hardened DISM outcomes.'
+            ReleaseNotes = 'Milestone 4.1.2: unique owned registry hive mounts with verified unload before WIM cleanup success.'
         }
     }
 }

@@ -1,7 +1,7 @@
 # Milestone 4 disposable-image read-only preflight. Dotted into XboxOS.Build.psm1.
 # Live DISM mounts/exports are gated; CI uses mocks/fixtures only.
 
-$script:XboxOSPreflightEngineVersion = '4.1.1'
+$script:XboxOSPreflightEngineVersion = '4.1.2'
 $script:XboxOSReadOnlyDismAdapterVersion = 'readonly-dism-v1'
 $script:XboxOSDisposableWorkspaceSchemaVersion = 'workspace-v1'
 $script:XboxOSImageIntegritySchemaVersion = 'image-integrity-v1'
@@ -226,11 +226,158 @@ function Assert-XboxOSObservedSourceImageIdentity {
     }
 }
 
+function New-XboxOSOwnedRegistryHiveMountSpec {
+    [CmdletBinding()]
+    param(
+        [string]$RunId = '',
+        [string]$OwnershipSeed = ''
+    )
+
+    if (-not $RunId) {
+        $RunId = [datetime]::UtcNow.ToString('yyyyMMddHHmmssfff')
+    }
+    $sanitized = ($RunId -replace '[^A-Za-z0-9\-]', '')
+    if ([string]::IsNullOrWhiteSpace($sanitized)) {
+        $sanitized = [datetime]::UtcNow.ToString('yyyyMMddHHmmssfff')
+    }
+    $safeLen = [math]::Min(24, $sanitized.Length)
+    $safeRun = $sanitized.Substring(0, $safeLen)
+    $nonce = [guid]::NewGuid().ToString('N').Substring(0, 12)
+    $leafName = 'XboxOSPreflight-{0}-{1}' -f $safeRun, $nonce
+    if (-not $OwnershipSeed) {
+        $OwnershipSeed = '{0}|{1}|{2}' -f $leafName, $PID, [guid]::NewGuid().ToString('N')
+    }
+    $ownershipToken = Get-XboxOSUtf8Sha256Hex -Text ("{0}|{1}|{2}" -f $leafName, $OwnershipSeed, $PID)
+
+    return [pscustomobject]@{
+        leafName           = $leafName
+        regKeyPath         = "HKLM\$leafName"
+        psProviderPath     = "HKLM:\$leafName"
+        ownershipToken     = $ownershipToken
+        ownershipSeed      = $OwnershipSeed
+        ownerProcessId     = $PID
+        createdUtc         = [datetime]::UtcNow
+        loadedByThisRun    = $false
+        unloadVerified     = $false
+    }
+}
+
+function Test-XboxOSRegistryHiveMountPresent {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$LeafName,
+        [scriptblock]$PresenceTester = $null
+    )
+
+    if ([string]::IsNullOrWhiteSpace($LeafName)) {
+        throw 'LeafName is required for registry hive presence test.'
+    }
+    if ($LeafName -match '[\\/]' -or $LeafName -match '\.\.') {
+        throw "Refusing unsafe registry hive leaf name: $LeafName"
+    }
+    if ($PresenceTester) {
+        return [bool](& $PresenceTester -LeafName $LeafName)
+    }
+    return [bool](Test-Path -LiteralPath ("HKLM:\{0}" -f $LeafName))
+}
+
+function Assert-XboxOSOwnedRegistryHiveMount {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$HiveMountSpec,
+        [Parameter(Mandatory)][string]$ExpectedOwnershipToken
+    )
+
+    if (-not $HiveMountSpec -or [string]::IsNullOrWhiteSpace([string]$HiveMountSpec.leafName)) {
+        throw 'Registry hive mount spec is missing leafName.'
+    }
+    if ($HiveMountSpec.ownerProcessId -ne $PID) {
+        throw ("Refusing registry hive operation for mount owned by another process. leaf={0} ownerPid={1} thisPid={2}" -f `
+                $HiveMountSpec.leafName, $HiveMountSpec.ownerProcessId, $PID)
+    }
+    if (-not [string]::Equals([string]$HiveMountSpec.ownershipToken, $ExpectedOwnershipToken, [System.StringComparison]::Ordinal)) {
+        throw ("Registry hive ownership token mismatch for leaf '{0}'." -f $HiveMountSpec.leafName)
+    }
+    if ($HiveMountSpec.leafName -notmatch '^XboxOSPreflight-[A-Za-z0-9\-]+$') {
+        throw ("Registry hive leaf name is not a valid XboxOS preflight mount: {0}" -f $HiveMountSpec.leafName)
+    }
+}
+
+function Invoke-XboxOSOwnedRegistryHiveUnload {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$HiveMountSpec,
+        [Parameter(Mandatory)][string]$ExpectedOwnershipToken,
+        [scriptblock]$RegUnload = $null,
+        [scriptblock]$PresenceTester = $null
+    )
+
+    Assert-XboxOSOwnedRegistryHiveMount -HiveMountSpec $HiveMountSpec -ExpectedOwnershipToken $ExpectedOwnershipToken
+
+    $presentBefore = Test-XboxOSRegistryHiveMountPresent -LeafName $HiveMountSpec.leafName -PresenceTester $PresenceTester
+    if (-not $presentBefore) {
+        $HiveMountSpec.unloadVerified = $true
+        $HiveMountSpec.loadedByThisRun = $false
+        return [pscustomobject]@{
+            verified     = $true
+            alreadyAbsent = $true
+            leafName     = $HiveMountSpec.leafName
+            unloadExitCode = 0
+            unloadOutput = @('Hive already absent before unload.')
+        }
+    }
+
+    $unloadOutput = @()
+    $unloadExit = $null
+    if ($RegUnload) {
+        $result = & $RegUnload -RegKeyPath $HiveMountSpec.regKeyPath -LeafName $HiveMountSpec.leafName
+        if ($result -is [hashtable] -or $result -is [System.Collections.IDictionary]) {
+            if ($result.ContainsKey('ExitCode')) { $unloadExit = [int]$result.ExitCode }
+            if ($result.ContainsKey('Output')) { $unloadOutput = @($result.Output) }
+        }
+        else {
+            if ($result.PSObject.Properties['ExitCode']) { $unloadExit = [int]$result.ExitCode }
+            if ($result.PSObject.Properties['Output']) { $unloadOutput = @($result.Output) }
+        }
+    }
+    else {
+        $raw = & reg.exe unload $HiveMountSpec.regKeyPath 2>&1
+        $unloadExit = $LASTEXITCODE
+        $unloadOutput = @($raw | ForEach-Object { "$_" })
+    }
+
+    if ($null -eq $unloadExit -or [int]$unloadExit -ne 0) {
+        throw ("RecoveryRequired: reg.exe unload failed for owned hive '{0}' with exit code {1}. Output: {2}" -f `
+                $HiveMountSpec.leafName, $unloadExit, ($unloadOutput -join ' '))
+    }
+
+    $stillPresent = Test-XboxOSRegistryHiveMountPresent -LeafName $HiveMountSpec.leafName -PresenceTester $PresenceTester
+    if ($stillPresent) {
+        throw ("RecoveryRequired: owned registry hive '{0}' still present after unload exit code 0." -f $HiveMountSpec.leafName)
+    }
+
+    $HiveMountSpec.unloadVerified = $true
+    $HiveMountSpec.loadedByThisRun = $false
+    return [pscustomobject]@{
+        verified       = $true
+        alreadyAbsent  = $false
+        leafName       = $HiveMountSpec.leafName
+        unloadExitCode = [int]$unloadExit
+        unloadOutput   = $unloadOutput
+    }
+}
+
 function Get-XboxOSMountedImageHiveMetadata {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$MountDir,
-        [scriptblock]$HiveReader = $null
+        [scriptblock]$HiveReader = $null,
+        [string]$RunId = '',
+        [string]$OwnershipSeed = '',
+        [scriptblock]$RegLoad = $null,
+        [scriptblock]$RegUnload = $null,
+        [scriptblock]$PresenceTester = $null,
+        [scriptblock]$CurrentVersionReader = $null
     )
 
     if ($HiveReader) {
@@ -238,36 +385,87 @@ function Get-XboxOSMountedImageHiveMetadata {
         if ($null -eq $result) {
             throw 'HiveReader returned no mounted-image metadata.'
         }
+        $injectedMount = $null
+        if ($result.PSObject.Properties['hiveMount']) { $injectedMount = $result.hiveMount }
         return [pscustomobject]@{
-            buildNumber    = $(if ($result.PSObject.Properties['buildNumber']) { [string]$result.buildNumber } else { $null })
-            displayVersion = $(if ($result.PSObject.Properties['displayVersion']) { [string]$result.displayVersion } else { $null })
-            editionId      = $(if ($result.PSObject.Properties['editionId']) { [string]$result.editionId } else { $null })
-            productName    = $(if ($result.PSObject.Properties['productName']) { [string]$result.productName } else { $null })
-            architecture   = $(if ($result.PSObject.Properties['architecture']) { [string]$result.architecture } else { $null })
-            metadataSource = 'injected-hive-reader'
+            buildNumber              = $(if ($result.PSObject.Properties['buildNumber']) { [string]$result.buildNumber } else { $null })
+            displayVersion           = $(if ($result.PSObject.Properties['displayVersion']) { [string]$result.displayVersion } else { $null })
+            editionId                = $(if ($result.PSObject.Properties['editionId']) { [string]$result.editionId } else { $null })
+            productName              = $(if ($result.PSObject.Properties['productName']) { [string]$result.productName } else { $null })
+            architecture             = $(if ($result.PSObject.Properties['architecture']) { [string]$result.architecture } else { $null })
+            metadataSource           = 'injected-hive-reader'
+            hiveMount                = $injectedMount
+            hiveCleanupVerified      = $true
+            hiveCleanupNotApplicable = $true
         }
     }
 
     $hive = Join-Path $MountDir 'Windows\System32\config\SOFTWARE'
-    if (-not (Test-Path -LiteralPath $hive)) {
+    $harnessedRegistry = [bool]($RegLoad -or $RegUnload -or $PresenceTester -or $CurrentVersionReader)
+    if (-not $harnessedRegistry -and -not (Test-Path -LiteralPath $hive)) {
         throw "Mounted SOFTWARE hive not found under mount dir: $hive"
     }
 
-    $tempHive = 'HKLM\XboxOSPreflightReadOnly'
-    $loaded = $false
+    $mountSpec = New-XboxOSOwnedRegistryHiveMountSpec -RunId $RunId -OwnershipSeed $OwnershipSeed
+    $ownedToken = [string]$mountSpec.ownershipToken
+
+    if (Test-XboxOSRegistryHiveMountPresent -LeafName $mountSpec.leafName -PresenceTester $PresenceTester) {
+        throw ("Refusing to overwrite preexisting registry hive mount '{0}'." -f $mountSpec.leafName)
+    }
+
+    $queryError = $null
+    $cleanupError = $null
+    $metadata = $null
+    $loadExit = $null
+    $loadOutput = @()
+
     try {
-        $loadOut = & reg.exe load $tempHive $hive 2>&1
-        $loadExit = $LASTEXITCODE
-        if ($null -eq $loadExit -or [int]$loadExit -ne 0) {
-            throw ("reg.exe load failed with exit code {0}: {1}" -f $loadExit, (($loadOut | ForEach-Object { "$_" }) -join ' '))
+        Assert-XboxOSOwnedRegistryHiveMount -HiveMountSpec $mountSpec -ExpectedOwnershipToken $ownedToken
+
+        if ($RegLoad) {
+            $loadResult = & $RegLoad -RegKeyPath $mountSpec.regKeyPath -HiveFile $hive -LeafName $mountSpec.leafName
+            if ($loadResult -is [hashtable] -or $loadResult -is [System.Collections.IDictionary]) {
+                if ($loadResult.ContainsKey('ExitCode')) { $loadExit = [int]$loadResult.ExitCode }
+                if ($loadResult.ContainsKey('Output')) { $loadOutput = @($loadResult.Output) }
+            }
+            else {
+                if ($loadResult.PSObject.Properties['ExitCode']) { $loadExit = [int]$loadResult.ExitCode }
+                if ($loadResult.PSObject.Properties['Output']) { $loadOutput = @($loadResult.Output) }
+            }
         }
-        $loaded = $true
-        $cv = Get-ItemProperty -Path 'HKLM:\XboxOSPreflightReadOnly\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop
-        $build = [string]$cv.CurrentBuild
+        else {
+            $rawLoad = & reg.exe load $mountSpec.regKeyPath $hive 2>&1
+            $loadExit = $LASTEXITCODE
+            $loadOutput = @($rawLoad | ForEach-Object { "$_" })
+        }
+
+        if ($null -eq $loadExit -or [int]$loadExit -ne 0) {
+            throw ("reg.exe load failed for owned hive '{0}' with exit code {1}: {2}" -f `
+                    $mountSpec.leafName, $loadExit, ($loadOutput -join ' '))
+        }
+        $mountSpec.loadedByThisRun = $true
+
+        if (-not (Test-XboxOSRegistryHiveMountPresent -LeafName $mountSpec.leafName -PresenceTester $PresenceTester)) {
+            throw ("Registry hive load reported success but mount '{0}' is not present." -f $mountSpec.leafName)
+        }
+
+        $cv = $null
+        if ($CurrentVersionReader) {
+            $cv = & $CurrentVersionReader -LeafName $mountSpec.leafName -PsProviderPath $mountSpec.psProviderPath
+        }
+        else {
+            $cv = Get-ItemProperty -Path ("{0}\Microsoft\Windows NT\CurrentVersion" -f $mountSpec.psProviderPath) -ErrorAction Stop
+        }
+        if ($null -eq $cv) {
+            throw 'Mounted hive CurrentVersion query returned no data.'
+        }
+
+        $build = $null
+        if ($cv.PSObject.Properties['CurrentBuild']) { $build = [string]$cv.CurrentBuild }
         if ([string]::IsNullOrWhiteSpace($build)) {
             throw 'Mounted hive CurrentBuild is missing.'
         }
-        if ($cv.UBR -or $cv.UBR -eq 0) {
+        if (($cv.PSObject.Properties['UBR'] -and ($cv.UBR -or $cv.UBR -eq 0))) {
             $build = '{0}.{1}' -f $build, $cv.UBR
         }
         $display = $null
@@ -275,20 +473,67 @@ function Get-XboxOSMountedImageHiveMetadata {
         if ([string]::IsNullOrWhiteSpace($display)) {
             throw 'Mounted hive DisplayVersion is missing.'
         }
-        return [pscustomobject]@{
-            buildNumber    = $build
-            displayVersion = $display
-            editionId      = $(if ($cv.PSObject.Properties['EditionID']) { [string]$cv.EditionID } else { $null })
-            productName    = $(if ($cv.PSObject.Properties['ProductName']) { [string]$cv.ProductName } else { $null })
-            architecture   = $null
-            metadataSource = 'mounted-software-hive'
+
+        $metadata = [pscustomobject]@{
+            buildNumber              = $build
+            displayVersion           = $display
+            editionId                = $(if ($cv.PSObject.Properties['EditionID']) { [string]$cv.EditionID } else { $null })
+            productName              = $(if ($cv.PSObject.Properties['ProductName']) { [string]$cv.ProductName } else { $null })
+            architecture             = $null
+            metadataSource           = 'mounted-software-hive'
+            hiveMount                = $mountSpec
+            hiveCleanupVerified      = $false
+            hiveCleanupNotApplicable = $false
+            loadExitCode             = [int]$loadExit
+            loadOutput               = $loadOutput
         }
+    }
+    catch {
+        $queryError = $_
     }
     finally {
-        if ($loaded) {
-            & reg.exe unload $tempHive 2>$null | Out-Null
+        if ([bool]$mountSpec.loadedByThisRun) {
+            try {
+                $unload = Invoke-XboxOSOwnedRegistryHiveUnload `
+                    -HiveMountSpec $mountSpec `
+                    -ExpectedOwnershipToken $ownedToken `
+                    -RegUnload $RegUnload `
+                    -PresenceTester $PresenceTester
+                if ($metadata) {
+                    $metadata.hiveCleanupVerified = [bool]$unload.verified
+                    $metadata | Add-Member -NotePropertyName unloadExitCode -NotePropertyValue $unload.unloadExitCode -Force
+                    $metadata | Add-Member -NotePropertyName unloadOutput -NotePropertyValue $unload.unloadOutput -Force
+                }
+            }
+            catch {
+                $cleanupError = $_
+                $mountSpec.unloadVerified = $false
+                if ($metadata) {
+                    $metadata.hiveCleanupVerified = $false
+                }
+            }
+        }
+        elseif ($metadata -and -not $mountSpec.loadedByThisRun) {
+            # Load never succeeded; treat hive cleanup as verified absent.
+            $metadata.hiveCleanupVerified = $true
+            $mountSpec.unloadVerified = $true
         }
     }
+
+    if ($cleanupError) {
+        throw ("RecoveryRequired: registry hive cleanup failed for '{0}': {1}. Workspace evidence must be preserved; WIM cleanup must not report success while this hive may remain loaded." -f `
+                $mountSpec.leafName, $cleanupError.Exception.Message)
+    }
+    if ($queryError) {
+        throw $queryError
+    }
+    if ($null -eq $metadata) {
+        throw 'Mounted-image hive metadata could not be collected.'
+    }
+    if (-not [bool]$metadata.hiveCleanupVerified) {
+        throw ("RecoveryRequired: registry hive '{0}' cleanup was not independently verified." -f $mountSpec.leafName)
+    }
+    return $metadata
 }
 
 function Confirm-XboxOSOwnedMountCleanup {
@@ -357,8 +602,17 @@ function Set-XboxOSPreflightCleanupStatus {
     if ($Preflight.cleanupStatus -eq 'Failed' -and $Status -ne 'Failed') {
         return
     }
-    if ($Status -eq 'Succeeded' -and -not [bool]$Preflight.cleanupVerified) {
-        return
+    if ($Status -eq 'Succeeded') {
+        if (-not [bool]$Preflight.cleanupVerified) {
+            return
+        }
+        # Registry hive must be verified absent before WIM cleanup may be marked successful.
+        if ($Preflight.PSObject.Properties['registryHiveCleanupVerified'] -and
+            $Preflight.PSObject.Properties['registryHiveCleanupNotApplicable'] -and
+            -not [bool]$Preflight.registryHiveCleanupNotApplicable -and
+            -not [bool]$Preflight.registryHiveCleanupVerified) {
+            return
+        }
     }
     $Preflight.cleanupStatus = $Status
 }
@@ -1431,10 +1685,13 @@ function New-XboxOSDisposableImagePreflight {
         postIsoIntegrityVerified        = $false
         sourceImageFileFromIso          = $null
         expectedSourceImage             = $null
-        inventoryMetadataVerified       = $false
-        cleanupVerified                 = $false
-        finalMountInventory             = @()
-        baselineMountInventory          = @()
+        inventoryMetadataVerified         = $false
+        cleanupVerified                   = $false
+        registryHiveMount                 = $null
+        registryHiveCleanupVerified       = $false
+        registryHiveCleanupNotApplicable  = $false
+        finalMountInventory               = @()
+        baselineMountInventory            = @()
     }
 }
 
@@ -1689,6 +1946,10 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         [scriptblock]$IsoDismountRunner = $null,
         [scriptblock]$HashProvider = $null,
         [scriptblock]$HiveReader = $null,
+        [scriptblock]$RegLoad = $null,
+        [scriptblock]$RegUnload = $null,
+        [scriptblock]$PresenceTester = $null,
+        [scriptblock]$CurrentVersionReader = $null,
         [long]$MinimumFreeBytes = 20GB,
         [switch]$SkipWorkspaceFiles
     )
@@ -1708,8 +1969,8 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
     if (-not $adapter -or -not $adapter.Ctx -or $adapter.Ctx.Kind -ne 'real-readonly-dism') {
         throw 'Live read-only preflight requires New-XboxOSRealReadOnlyDismAdapter (kind=real-readonly-dism).'
     }
-    if ([bool]$adapter.Ctx.NativeRunner -and -not $HiveReader) {
-        throw 'Harnessed live read-only runs require -HiveReader so observed metadata is not substituted from expected values.'
+    if ([bool]$adapter.Ctx.NativeRunner -and -not $HiveReader -and -not ($RegLoad -or $CurrentVersionReader -or $PresenceTester)) {
+        throw 'Harnessed live read-only runs require -HiveReader or injected registry operations so observed metadata is not substituted from expected values.'
     }
 
     $null = $Preflight.audit.Add((New-XboxOSAuditEvent -Type 'PreflightStart' -Message 'Live read-only preflight started'))
@@ -1721,6 +1982,9 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
     $Preflight.expectedSourceImage = $expectedIdentity
     $Preflight.cleanupVerified = $false
     $Preflight.inventoryMetadataVerified = $false
+    $Preflight.registryHiveCleanupVerified = $false
+    $Preflight.registryHiveCleanupNotApplicable = $false
+    $Preflight.registryHiveMount = $null
 
     # Discard accidental pipeline output from nested asserts/Add calls.
     $null = $(
@@ -1865,7 +2129,33 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         $Preflight.readOnlyMountOccurred = $true
         if ($adapter.Ctx) { $adapter.Ctx.ReadOnlyMountOccurred = $true }
 
-        $hiveMeta = Get-XboxOSMountedImageHiveMetadata -MountDir $Preflight.workspace.mountDir -HiveReader $HiveReader
+        try {
+            $hiveMeta = Get-XboxOSMountedImageHiveMetadata `
+                -MountDir $Preflight.workspace.mountDir `
+                -HiveReader $HiveReader `
+                -RunId $Preflight.preflightId `
+                -OwnershipSeed ("{0}|{1}" -f $Preflight.preflightId, $Preflight.workspace.ownershipToken) `
+                -RegLoad $RegLoad `
+                -RegUnload $RegUnload `
+                -PresenceTester $PresenceTester `
+                -CurrentVersionReader $CurrentVersionReader
+        }
+        catch {
+            $Preflight.registryHiveCleanupVerified = $false
+            if ($_.Exception.Message -match 'registry hive cleanup failed|still present after unload|cleanup was not independently verified') {
+                $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Failed
+            }
+            throw
+        }
+        if ($hiveMeta.PSObject.Properties['hiveMount']) {
+            $Preflight.registryHiveMount = $hiveMeta.hiveMount
+        }
+        $Preflight.registryHiveCleanupVerified = [bool]$hiveMeta.hiveCleanupVerified
+        $Preflight.registryHiveCleanupNotApplicable = [bool]$hiveMeta.hiveCleanupNotApplicable
+        if (-not $Preflight.registryHiveCleanupVerified -and -not $Preflight.registryHiveCleanupNotApplicable) {
+            $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Failed
+            throw 'RecoveryRequired: registry hive cleanup was not verified; refusing to continue toward WIM cleanup success.'
+        }
         if ([string]::IsNullOrWhiteSpace([string]$hiveMeta.buildNumber) -or [string]::IsNullOrWhiteSpace([string]$hiveMeta.displayVersion)) {
             throw 'Mounted-image hive metadata incomplete (buildNumber/displayVersion required).'
         }
@@ -1974,10 +2264,17 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
             -BaselineMounts $Preflight.baselineMountInventory
         $null = $Preflight.commands.Add($cleanupConfirm.command)
         $Preflight.finalMountInventory = @($cleanupConfirm.finalMounts)
+        if (-not [bool]$Preflight.registryHiveCleanupVerified -and -not [bool]$Preflight.registryHiveCleanupNotApplicable) {
+            $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Failed
+            throw 'RecoveryRequired: refusing WIM cleanup success while registry hive cleanup remains unverified.'
+        }
         $Preflight.cleanupVerified = $true
         $Preflight.mountOwned = $false
         $Preflight.transactionState = 'ReadOnlyUnmounted'
         $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Succeeded
+        if ($Preflight.cleanupStatus -ne 'Succeeded') {
+            throw 'Cleanup confirmation completed but cleanup status could not be marked Succeeded (registry hive or mount verification incomplete).'
+        }
         $Preflight.transactionState = 'Completed'
     }
     catch {
@@ -1996,10 +2293,23 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
                         -BaselineMounts $Preflight.baselineMountInventory
                     $null = $Preflight.commands.Add($cleanupConfirm.command)
                     $Preflight.finalMountInventory = @($cleanupConfirm.finalMounts)
-                    $Preflight.cleanupVerified = $true
                     $Preflight.mountOwned = $false
-                    $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Recovered
-                    $Preflight.transactionState = 'Aborted'
+                    $registryHiveBlocking = (
+                        -not [bool]$Preflight.registryHiveCleanupNotApplicable -and
+                        -not [bool]$Preflight.registryHiveCleanupVerified
+                    )
+                    if ($registryHiveBlocking) {
+                        # WIM mount may be gone, but registry hive cleanup failure forbids overall cleanup success.
+                        $Preflight.cleanupVerified = $false
+                        $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Failed
+                        $Preflight.transactionState = 'Failed'
+                        $null = $Preflight.blockers.Add('RecoveryRequired: disposable WIM mount was discarded, but registry hive cleanup remains unverified; evidence preserved.')
+                    }
+                    else {
+                        $Preflight.cleanupVerified = $true
+                        $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Recovered
+                        $Preflight.transactionState = 'Aborted'
+                    }
                 }
                 catch {
                     $null = $Preflight.blockers.Add(('Cleanup confirmation failure: {0}' -f $_.Exception.Message))
@@ -2092,10 +2402,15 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
             realDismExecutionEnabled = $Preflight.realDismExecutionEnabled
         })
 
+    $registryHiveOk = (
+        [bool]$Preflight.registryHiveCleanupNotApplicable -or
+        [bool]$Preflight.registryHiveCleanupVerified
+    )
     $lifecycleOk = (
         $Preflight.transactionState -eq 'Completed' -and
         $Preflight.cleanupStatus -eq 'Succeeded' -and
         [bool]$Preflight.cleanupVerified -and
+        $registryHiveOk -and
         -not $Preflight.mountOwned -and
         [bool]$Preflight.postIsoIntegrityVerified -and
         [bool]$Preflight.inventoryMetadataVerified -and
@@ -2159,10 +2474,15 @@ function Save-XboxOSDisposableImagePreflightReport {
         -not $Preflight.executionAuthorized
     )
     if ($Preflight.mode -eq 'LiveReadOnly') {
+        $registryHiveOk = (
+            [bool]$Preflight.registryHiveCleanupNotApplicable -or
+            [bool]$Preflight.registryHiveCleanupVerified
+        )
         $lifecycleOk = (
             $lifecycleOk -and
             [bool]$Preflight.postIsoIntegrityVerified -and
             [bool]$Preflight.cleanupVerified -and
+            $registryHiveOk -and
             [bool]$Preflight.inventoryMetadataVerified -and
             $null -ne $Preflight.freshInventory -and
             $Preflight.freshInventory.verificationStatus -eq 'Authoritative'
@@ -2205,9 +2525,12 @@ function Save-XboxOSDisposableImagePreflightReport {
         postIsoSha256                   = $Preflight.postIsoSha256
         postIsoIntegrityVerified        = [bool]$Preflight.postIsoIntegrityVerified
         disposableWimSha256             = $Preflight.disposableWimSha256
-        inventoryMetadataVerified       = [bool]$Preflight.inventoryMetadataVerified
-        cleanupVerified                 = [bool]$Preflight.cleanupVerified
-        finalMountInventory             = @($Preflight.finalMountInventory)
+        inventoryMetadataVerified         = [bool]$Preflight.inventoryMetadataVerified
+        cleanupVerified                   = [bool]$Preflight.cleanupVerified
+        registryHiveMount                 = $Preflight.registryHiveMount
+        registryHiveCleanupVerified       = [bool]$Preflight.registryHiveCleanupVerified
+        registryHiveCleanupNotApplicable  = [bool]$Preflight.registryHiveCleanupNotApplicable
+        finalMountInventory               = @($Preflight.finalMountInventory)
         prerequisites                   = $Preflight.prerequisites
         workspace                       = $(if ($Preflight.workspace) {
                 [pscustomobject]@{
@@ -2279,6 +2602,10 @@ function Save-XboxOSDisposableImagePreflightReport {
     $null = $md.Add(('- Dependencies: **{0}**' -f $(if ($report.dependencyResult) { $report.dependencyResult.aggregateOutcome } else { 'n/a' })))
     $null = $md.Add(('- Cleanup: **{0}**' -f $report.cleanupStatus))
     $null = $md.Add(('- Cleanup verified: **{0}**' -f $report.cleanupVerified))
+    $null = $md.Add(('- Registry hive cleanup verified: **{0}**' -f $report.registryHiveCleanupVerified))
+    if ($report.registryHiveMount -and $report.registryHiveMount.PSObject.Properties['leafName']) {
+        $null = $md.Add(('- Registry hive mount: `{0}`' -f $report.registryHiveMount.leafName))
+    }
     $null = $md.Add(('- Mount owned: **{0}**' -f $report.mountOwned))
     $null = $md.Add(('- Inventory metadata verified: **{0}**' -f $report.inventoryMetadataVerified))
     $null = $md.Add(('- Modifying commands invoked: **{0}**' -f $report.modifyingCommandsInvoked))

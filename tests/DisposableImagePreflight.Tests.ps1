@@ -47,8 +47,8 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
         }
     }
 
-    It 'reports preflight engine 4.1.1 and readonly-dism-v1' {
-        Get-XboxOSPreflightEngineVersion | Should -Be '4.1.1'
+    It 'reports preflight engine 4.1.2 and readonly-dism-v1' {
+        Get-XboxOSPreflightEngineVersion | Should -Be '4.1.2'
         Get-XboxOSReadOnlyDismAdapterVersion | Should -Be 'readonly-dism-v1'
         Get-XboxOSRealDismExecutionEnabled | Should -BeFalse
     }
@@ -233,6 +233,8 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
         $pf.cleanupStatus | Should -Be 'Succeeded'
         $pf.cleanupVerified | Should -BeTrue
         $pf.inventoryMetadataVerified | Should -BeTrue
+        $pf.registryHiveCleanupVerified | Should -BeTrue
+        $pf.registryHiveCleanupNotApplicable | Should -BeTrue
         $pf.mountOwned | Should -BeFalse
         $pf.modifyingCommandsInvoked | Should -BeFalse
         $pf.realDismExecutionEnabled | Should -BeFalse
@@ -353,6 +355,229 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
         $pf2.cleanupStatus | Should -BeIn @('Failed', 'Recovered')
         $pf2.cleanupVerified | Should -BeFalse
         $pf2.preflightDecision | Should -Be 'Failed'
+    }
+
+    It 'creates unique owned registry hive mount names and refuses collisions' {
+        $a = New-XboxOSOwnedRegistryHiveMountSpec -RunId 'runA'
+        $b = New-XboxOSOwnedRegistryHiveMountSpec -RunId 'runA'
+        $a.leafName | Should -Match '^XboxOSPreflight-runA-[0-9a-f]{12}$'
+        $b.leafName | Should -Match '^XboxOSPreflight-runA-[0-9a-f]{12}$'
+        $a.leafName | Should -Not -Be $b.leafName
+        $a.ownershipToken | Should -Not -BeNullOrEmpty
+        Assert-XboxOSOwnedRegistryHiveMount -HiveMountSpec $a -ExpectedOwnershipToken $a.ownershipToken
+        { Assert-XboxOSOwnedRegistryHiveMount -HiveMountSpec $a -ExpectedOwnershipToken 'nope' } |
+            Should -Throw -ExpectedMessage '*ownership token mismatch*'
+
+        # Any newly generated leaf appears occupied => refuse overwrite.
+        $presence = { param($LeafName) return $true }
+        {
+            Get-XboxOSMountedImageHiveMetadata `
+                -MountDir $script:WorkRoot `
+                -RunId 'collision' `
+                -OwnershipSeed 'seed' `
+                -PresenceTester $presence `
+                -RegLoad { throw 'should not load over collision' }
+        } | Should -Throw -ExpectedMessage '*preexisting registry hive mount*'
+    }
+
+    It 'fails closed on hive load failure, missing CurrentVersion, unload failure, and unverified absence' {
+        $mountDir = Join-Path $script:WorkRoot 'hive-mount'
+        $software = Join-Path $mountDir 'Windows\System32\config\SOFTWARE'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $software) -Force | Out-Null
+        Set-Content -LiteralPath $software -Value 'fake-hive' -Encoding ascii
+
+        $bag = [pscustomobject]@{ Present = [System.Collections.Generic.Dictionary[string, bool]]::new() }
+        $presence = {
+            param($LeafName)
+            return $bag.Present.ContainsKey([string]$LeafName) -and $bag.Present[[string]$LeafName]
+        }.GetNewClosure()
+        $loadOk = {
+            param($RegKeyPath, $HiveFile, $LeafName)
+            $bag.Present[[string]$LeafName] = $true
+            @{ ExitCode = 0; Output = @('loaded') }
+        }.GetNewClosure()
+        $unloadOk = {
+            param($RegKeyPath, $LeafName)
+            $bag.Present[[string]$LeafName] = $false
+            @{ ExitCode = 0; Output = @('unloaded') }
+        }.GetNewClosure()
+
+        {
+            Get-XboxOSMountedImageHiveMetadata `
+                -MountDir $mountDir `
+                -RunId 'loadfail' `
+                -PresenceTester $presence `
+                -RegLoad { param($RegKeyPath, $HiveFile, $LeafName) @{ ExitCode = 1; Output = @('load denied') } }
+        } | Should -Throw -ExpectedMessage '*load failed*'
+
+        $bag.Present.Clear()
+        {
+            Get-XboxOSMountedImageHiveMetadata `
+                -MountDir $mountDir `
+                -RunId 'missingcv' `
+                -PresenceTester $presence `
+                -RegLoad $loadOk `
+                -RegUnload $unloadOk `
+                -CurrentVersionReader { param($LeafName, $PsProviderPath) return [pscustomobject]@{ CurrentBuild = ''; DisplayVersion = '' } }
+        } | Should -Throw -ExpectedMessage '*CurrentBuild*'
+
+        $bag.Present.Clear()
+        {
+            Get-XboxOSMountedImageHiveMetadata `
+                -MountDir $mountDir `
+                -RunId 'unloadfail' `
+                -PresenceTester $presence `
+                -RegLoad $loadOk `
+                -RegUnload ({
+                        param($RegKeyPath, $LeafName)
+                        @{ ExitCode = 5; Output = @('access denied') }
+                    }) `
+                -CurrentVersionReader {
+                    param($LeafName, $PsProviderPath)
+                    [pscustomobject]@{ CurrentBuild = '26300'; UBR = 9457; DisplayVersion = '26H2'; EditionID = 'Professional' }
+                }
+        } | Should -Throw -ExpectedMessage '*registry hive cleanup failed*'
+        @($bag.Present.GetEnumerator() | Where-Object Value -eq $true).Count | Should -BeGreaterThan 0
+
+        $bag.Present.Clear()
+        {
+            Get-XboxOSMountedImageHiveMetadata `
+                -MountDir $mountDir `
+                -RunId 'ghostunload' `
+                -PresenceTester $presence `
+                -RegLoad $loadOk `
+                -RegUnload ({
+                        param($RegKeyPath, $LeafName)
+                        @{ ExitCode = 0; Output = @('unloaded') }
+                    }) `
+                -CurrentVersionReader {
+                    param($LeafName, $PsProviderPath)
+                    [pscustomobject]@{ CurrentBuild = '26300'; UBR = 9457; DisplayVersion = '26H2' }
+                }
+        } | Should -Throw -ExpectedMessage '*still present after unload*'
+    }
+
+    It 'verifies hive cleanup after inspection errors and does not unload unrelated keys' {
+        $mountDir = Join-Path $script:WorkRoot 'hive-mount-recovery'
+        $software = Join-Path $mountDir 'Windows\System32\config\SOFTWARE'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $software) -Force | Out-Null
+        Set-Content -LiteralPath $software -Value 'fake-hive' -Encoding ascii
+
+        $bag = [pscustomobject]@{
+            Present     = [System.Collections.Generic.Dictionary[string, bool]]::new()
+            UnloadCalls = [System.Collections.ArrayList]@()
+        }
+        $bag.Present['OtherAppHive'] = $true
+        $presence = {
+            param($LeafName)
+            return $bag.Present.ContainsKey([string]$LeafName) -and $bag.Present[[string]$LeafName]
+        }.GetNewClosure()
+        try {
+            $null = Get-XboxOSMountedImageHiveMetadata `
+                -MountDir $mountDir `
+                -RunId 'inspecterr' `
+                -PresenceTester $presence `
+                -RegLoad ({
+                        param($RegKeyPath, $HiveFile, $LeafName)
+                        $bag.Present[[string]$LeafName] = $true
+                        @{ ExitCode = 0; Output = @('loaded') }
+                    }.GetNewClosure()) `
+                -RegUnload ({
+                        param($RegKeyPath, $LeafName)
+                        $null = $bag.UnloadCalls.Add([string]$LeafName)
+                        $bag.Present[[string]$LeafName] = $false
+                        @{ ExitCode = 0; Output = @('unloaded') }
+                    }.GetNewClosure()) `
+                -CurrentVersionReader { throw 'simulated CurrentVersion query failure' }
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'CurrentVersion query failure'
+        }
+        $bag.Present['OtherAppHive'] | Should -BeTrue
+        @($bag.UnloadCalls).Count | Should -Be 1
+        @($bag.UnloadCalls)[0] | Should -Match '^XboxOSPreflight-inspecterr-'
+        @($bag.Present.GetEnumerator() | Where-Object { $_.Key -like 'XboxOSPreflight-*' -and $_.Value }).Count | Should -Be 0
+
+        $meta = Get-XboxOSMountedImageHiveMetadata `
+            -MountDir $mountDir `
+            -RunId 'okhive' `
+            -PresenceTester $presence `
+            -RegLoad ({
+                    param($RegKeyPath, $HiveFile, $LeafName)
+                    $bag.Present[[string]$LeafName] = $true
+                    @{ ExitCode = 0; Output = @('loaded') }
+                }.GetNewClosure()) `
+            -RegUnload ({
+                    param($RegKeyPath, $LeafName)
+                    $bag.Present[[string]$LeafName] = $false
+                    @{ ExitCode = 0; Output = @('unloaded') }
+                }.GetNewClosure()) `
+            -CurrentVersionReader {
+                param($LeafName, $PsProviderPath)
+                [pscustomobject]@{ CurrentBuild = '26300'; UBR = 9457; DisplayVersion = '26H2'; EditionID = 'Professional'; ProductName = 'Windows 11 Pro' }
+            }
+        $meta.hiveCleanupVerified | Should -BeTrue
+        $meta.buildNumber | Should -Be '26300.9457'
+        $meta.hiveMount.leafName | Should -Match '^XboxOSPreflight-okhive-'
+        $bag.Present['OtherAppHive'] | Should -BeTrue
+    }
+
+    It 'refuses WIM cleanup success when registry hive cleanup fails during live harness' {
+        $isoPath = Join-Path $script:TempRoot 'Windows11_hivecleanup.iso'
+        Set-Content -LiteralPath $isoPath -Value 'fake' -Encoding ascii
+        $sourceWim = Join-Path $script:TempRoot 'iso-root-hive\sources\install.wim'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $sourceWim) -Force | Out-Null
+        Set-Content -LiteralPath $sourceWim -Value 'wim' -Encoding ascii
+        $rec = New-XboxOSRecordingDismRunner -AutoFixtureResponses -FixtureRoot $script:Fixtures
+        $adapter = New-XboxOSRealReadOnlyDismAdapter -DismPath 'C:\Windows\System32\dism.exe' -NativeRunner $rec.Runner
+        $expectedSha = [string]$script:ExpectedSha
+        $hiveBag = [pscustomobject]@{ Present = [System.Collections.Generic.Dictionary[string, bool]]::new() }
+        $pf = New-XboxOSDisposableImagePreflight `
+            -Plan $script:Plan `
+            -BaselineInventory $script:Inventory `
+            -CompatibilityManifest $script:Compatibility `
+            -Adapter $adapter `
+            -Mode LiveReadOnly `
+            -IsoPath $isoPath `
+            -WorkRoot $script:WorkRoot `
+            -LogsRoot $script:LogsRoot
+        $pf = Invoke-XboxOSDisposableImagePreflightLiveReadOnly `
+            -Preflight $pf `
+            -ConfirmLiveReadOnlyPreflight `
+            -AllowLiveReadOnlyPreflight `
+            -IUnderstandTemporaryHostState `
+            -AllowCiBypassForUnitTests `
+            -HashProvider ({ param($IsoPath) return $expectedSha }.GetNewClosure()) `
+            -IsoMountRunner ({
+                    param($IsoPath)
+                    [pscustomobject]@{ IsoPath = $IsoPath; DriveLetter = 'V'; IsoRoot = 'V:\'; SourceImageFile = $sourceWim; DiskImage = $null }
+                }.GetNewClosure()) `
+            -IsoDismountRunner { param($IsoPath) } `
+            -PresenceTester ({
+                    param($LeafName)
+                    return $hiveBag.Present.ContainsKey([string]$LeafName) -and $hiveBag.Present[[string]$LeafName]
+                }.GetNewClosure()) `
+            -RegLoad ({
+                    param($RegKeyPath, $HiveFile, $LeafName)
+                    $hiveBag.Present[[string]$LeafName] = $true
+                    @{ ExitCode = 0; Output = @('loaded') }
+                }.GetNewClosure()) `
+            -RegUnload ({
+                    param($RegKeyPath, $LeafName)
+                    @{ ExitCode = 9; Output = @('unload failed') }
+                }.GetNewClosure()) `
+            -CurrentVersionReader {
+                param($LeafName, $PsProviderPath)
+                [pscustomobject]@{ CurrentBuild = '26300'; UBR = 9457; DisplayVersion = '26H2'; EditionID = 'Professional' }
+            } `
+            -MinimumFreeBytes 1KB
+        $pf.transactionState | Should -Not -Be 'Completed'
+        $pf.registryHiveCleanupVerified | Should -BeFalse
+        $pf.cleanupStatus | Should -Be 'Failed'
+        $pf.preflightDecision | Should -Be 'Failed'
+        ($pf.blockers -join ' ') | Should -Match 'registry hive cleanup failed'
+        # WIM discard may still be attempted for recovery, but success is forbidden.
+        $pf.cleanupVerified | Should -BeFalse
     }
 
     It 'fails closed on observed edition/build/DisplayVersion mismatches' {
