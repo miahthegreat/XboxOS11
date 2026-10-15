@@ -151,6 +151,7 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M3 execution safety contracts](docs/m3-execution-safety-contracts.md)
 - [M3 transaction state machine](docs/m3-transaction-state-machine.md)
 - [M3 unresolved risks](docs/m3-unresolved-risks.md)
+- [M3 completion baseline](docs/m3-completion-baseline.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
