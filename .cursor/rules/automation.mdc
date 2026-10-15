@@ -1,9 +1,0 @@
----
-description: Rules for automated GitHub PR fixing
-alwaysApply: true
----
-Automated GitHub fixes are restricted to ordinary documentation, source and test changes.
-Never run DISM, mount images, modify host networking, provision VMs or VHDs, elevate privileges, activate Layer D, change servicing authorizations, or build an ISO.
-Never edit .github/, automation/, .cursor/, postinstall/, authorization/safety code, or high-risk manifests.
-Never run git, gh, curl, or arbitrary external shell commands; do not access credentials.
-Never merge. Make minimal changes for the exact reviewed findings. Any unsafe request must be declined.

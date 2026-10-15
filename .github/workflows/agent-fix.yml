@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   generate-patch:
-    if: ${{ vars.AGENT_LOOP_ENABLED == 'true' }}
+    if: ${{ vars.CLAUDE_LOOP_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -48,19 +48,19 @@ jobs:
           ref: ${{ inputs.sha }}
           path: workspace
           persist-credentials: false
-      - name: Install Cursor CLI
+      - name: Install Claude Code CLI
         run: |
-          curl -fsSL https://cursor.com/install | bash
-          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
-      - name: Run Cursor without GitHub write token
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Run Claude Code without GitHub write token
         working-directory: workspace
         env:
-          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ inputs.pr }}
           REVIEWED_SHA: ${{ inputs.sha }}
           GATE_REVIEW_JSON: ../control/review-feedback.json
-        run: python3 ../control/automation/run_cursor_fix.py
+        run: python3 ../control/automation/run_claude_fix.py
       - name: Capture proposed patch (not an executable artifact)
         working-directory: workspace
         run: python3 ../control/automation/capture_patch.py ../candidate.patch
@@ -73,7 +73,7 @@ jobs:
 
   publish-scoped-patch:
     needs: generate-patch
-    if: ${{ vars.AGENT_LOOP_ENABLED == 'true' }}
+    if: ${{ vars.CLAUDE_LOOP_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
