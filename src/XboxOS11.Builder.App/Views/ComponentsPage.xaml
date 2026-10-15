@@ -57,6 +57,13 @@
             <ItemsControl ItemsSource="{x:Bind ViewModel.Features}" ItemTemplate="{StaticResource ComponentTemplate}" />
         </Border>
 
+        <TextBlock Text="Optional Windows capabilities to remove" Style="{StaticResource SectionHeaderStyle}" />
+        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                   Text="Removed capabilities can be added back later from Settings > System > Optional features (requires Windows Update)." />
+        <Border Style="{StaticResource CardStyle}" Padding="4">
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Capabilities}" ItemTemplate="{StaticResource ComponentTemplate}" />
+        </Border>
+
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
             <Button Content="Back" Click="Back_Click" />
             <Button Style="{StaticResource AccentButtonStyle}" Content="Next: drivers &amp; setup" Click="Next_Click" />

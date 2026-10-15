@@ -35,7 +35,7 @@ Then re-run Test-Prerequisites.ps1.
 
 $config = $Context.Configuration.Raw
 $sourceTree = $Context.Paths.SourceCopy
-$workingWim = $Context.Paths.WorkingWim
+$workingWim = Get-XboxOSFinalImagePath -Context $Context
 
 $displayVersion = $null
 $buildNumber = $null
@@ -69,14 +69,24 @@ if (-not $DryRun) {
         throw "Source tree missing: $sourceTree"
     }
     if (-not (Test-Path -LiteralPath $workingWim)) {
-        throw "Working WIM missing: $workingWim"
+        throw "Final image missing: $workingWim"
     }
 
-    $destWim = Join-Path $sourceTree 'sources\install.wim'
+    # The copied ISO tree still holds the original install image (often install.esd on retail media).
+    # Remove every original install image so Setup only ever sees the serviced one.
+    foreach ($removed in @(Clear-XboxOSIsoInstallImages -SourceTree $sourceTree)) {
+        Write-XboxOSLog -Level Information -Message "Removed original install image from ISO tree: $removed"
+    }
+
+    $isEsd = [System.IO.Path]::GetExtension($workingWim) -ieq '.esd'
+    $destWim = Join-Path $sourceTree $(if ($isEsd) { 'sources\install.esd' } else { 'sources\install.wim' })
     Copy-Item -LiteralPath $workingWim -Destination $destWim -Force
 
     $wimItem = Get-Item -LiteralPath $destWim
-    if ($wimItem.Length -gt $threshold) {
+    if ($isEsd -and $wimItem.Length -gt $threshold) {
+        Write-XboxOSLog -Level Warning -Message 'install.esd exceeds 4 GB; FAT32 USB tools will need NTFS/exFAT or a UDF-aware writer (ESD files cannot be split).'
+    }
+    if (-not $isEsd -and $wimItem.Length -gt $threshold) {
         Write-XboxOSLog -Level Information -Message 'install.wim exceeds FAT32 single-file limit; creating split SWM set.'
         $swm = Join-Path $sourceTree 'sources\install.swm'
         if (Test-Path -LiteralPath $swm) {

@@ -4,7 +4,7 @@
 # there are no fields for TPM/Secure Boot/RAM bypasses, network-requirement bypasses, security
 # feature removal, product keys, or automatic disk wiping.
 
-$script:XboxOSBuilderEngineVersion = '7.0.0'
+$script:XboxOSBuilderEngineVersion = '7.1.0'
 $script:XboxOSBuildProfileSchemaVersion = 'xboxos-build-profile-v1'
 $script:XboxOSBuilderPresetSchemaVersion = 'xboxos-builder-preset-v1'
 $script:XboxOSBuilderEventPrefix = 'XBOXOS-EVENT '
@@ -25,7 +25,15 @@ $script:XboxOSBuildProfileShape = [ordered]@{
 
 # Keys added after v1 shipped: accepted when present, never required, so older v1 profiles stay valid.
 $script:XboxOSBuildProfileOptionalKeys = @{
+    ''                  = @('capabilities', 'image')
+    'setup'             = @('localAccount', 'allowUnsupportedHardware')
     'setup.postInstall' = @('optimizations')
+}
+
+# Optional sections (M11 lean image). When present, every listed key is required and no others are allowed.
+$script:XboxOSBuildProfileOptionalSections = [ordered]@{
+    'capabilities' = @('remove')
+    'image'        = @('componentCleanup', 'resetBase', 'compression', 'tweaks')
 }
 
 function Get-XboxOSBuilderEngineVersion { return $script:XboxOSBuilderEngineVersion }
@@ -139,7 +147,7 @@ function ConvertTo-XboxOSOrderedBuildProfile {
     param([Parameter(Mandatory)][object]$BuildProfile)
 
     $o = [ordered]@{}
-    foreach ($k in $script:XboxOSBuildProfileShape['']) {
+    foreach ($k in @($script:XboxOSBuildProfileShape['']) + @($script:XboxOSBuildProfileOptionalKeys[''])) {
         if ($BuildProfile.PSObject.Properties[$k]) { $o[$k] = $BuildProfile.$k }
     }
     return ([pscustomobject]$o | ConvertTo-Json -Depth 12 | ConvertFrom-Json)
@@ -198,6 +206,8 @@ function Get-XboxOSBuilderManifestSet {
         DisableFeatures = Import-XboxOSManifest -Path (Join-Path $RepoRoot 'config\disable-features.json')
         Drivers         = Import-XboxOSManifest -Path (Join-Path $RepoRoot 'config\drivers.json')
         Compatibility   = Import-XboxOSManifest -Path (Join-Path $RepoRoot 'config\compatibility.json')
+        RemoveCapabilities = Import-XboxOSManifest -Path (Join-Path $RepoRoot 'config\remove-capabilities.json')
+        ImageTweaks     = Get-XboxOSImageTweakCatalog -Path (Join-Path $RepoRoot 'config\image-tweaks.json')
     }
 }
 
@@ -245,7 +255,7 @@ function Test-XboxOSBuildProfile {
         foreach ($p in $node.PSObject.Properties) {
             if ($allowed -notcontains $p.Name -and $optional -notcontains $p.Name) {
                 if ($p.Name -match $script:XboxOSBuilderForbiddenSettingPattern) {
-                    [void]$errors.Add(("Unsupported setting '{0}.{1}': XboxOS11 never bypasses Windows requirements, security features, activation, or disk selection." -f $label, $p.Name))
+                    [void]$errors.Add(("Unsupported setting '{0}.{1}': XboxOS11 never bypasses security features, activation, or disk selection. Hardware checks can only be relaxed with the opt-in setup.allowUnsupportedHardware." -f $label, $p.Name))
                 }
                 else {
                     [void]$errors.Add(("Unknown profile setting '{0}.{1}'." -f $label, $p.Name))
@@ -254,6 +264,21 @@ function Test-XboxOSBuildProfile {
         }
         foreach ($req in $allowed) {
             if (-not $node.PSObject.Properties[$req]) { [void]$errors.Add(("Profile setting '{0}.{1}' is required." -f $label, $req)) }
+        }
+    }
+    foreach ($section in $script:XboxOSBuildProfileOptionalSections.Keys) {
+        if (-not $BuildProfile.PSObject.Properties[$section]) { continue }
+        $node = $BuildProfile.$section
+        if ($null -eq $node -or $node -isnot [pscustomobject]) {
+            [void]$errors.Add(("Profile section '{0}' must be an object." -f $section))
+            continue
+        }
+        $allowed = $script:XboxOSBuildProfileOptionalSections[$section]
+        foreach ($p in $node.PSObject.Properties) {
+            if ($allowed -notcontains $p.Name) { [void]$errors.Add(("Unknown profile setting '{0}.{1}'." -f $section, $p.Name)) }
+        }
+        foreach ($req in $allowed) {
+            if (-not $node.PSObject.Properties[$req]) { [void]$errors.Add(("Profile setting '{0}.{1}' is required." -f $section, $req)) }
         }
     }
     if ($errors.Count -gt 0) {
@@ -381,6 +406,54 @@ function Test-XboxOSBuildProfile {
     if ([bool]$post.hardwareAcceleratedGpuScheduling) {
         [void]$warnings.Add('Hardware-accelerated GPU scheduling depends on the GPU driver; it takes effect after the AMD driver is installed and the PC restarts.')
     }
+    foreach ($opt in @('localAccount', 'allowUnsupportedHardware')) {
+        if ($setup.PSObject.Properties[$opt]) {
+            if ($setup.$opt -isnot [bool]) { [void]$errors.Add(("setup.{0} must be true or false." -f $opt)) }
+            elseif ([bool]$setup.$opt -and -not [bool]$setup.unattend) { [void]$errors.Add(("setup.{0} requires setup.unattend=true." -f $opt)) }
+        }
+    }
+    if ($setup.PSObject.Properties['localAccount'] -and [bool]$setup.localAccount) {
+        [void]$warnings.Add('Local account: Setup hides the Microsoft account screens so you can create a local account (name and password are entered during Setup, never stored in the ISO). Confirm this during your install test.')
+    }
+    if ($setup.PSObject.Properties['allowUnsupportedHardware'] -and [bool]$setup.allowUnsupportedHardware) {
+        [void]$warnings.Add('Unsupported hardware: Setup will skip the TPM 2.0, Secure Boot, CPU, and RAM checks. Microsoft does not support Windows 11 on such PCs; they may stop receiving updates, and games whose anti-cheat requires TPM or Secure Boot will not run. Leave this off for supported PCs.')
+    }
+
+    # Capabilities (optional section)
+    if ($BuildProfile.PSObject.Properties['capabilities']) {
+        $capProtected = @()
+        if ($m.Compatibility.PSObject.Properties['protectedCapabilities']) { $capProtected = @($m.Compatibility.protectedCapabilities | ForEach-Object { [string]$_ }) }
+        $selectedCaps = @($BuildProfile.capabilities.remove)
+        if (@($selectedCaps | Select-Object -Unique).Count -ne $selectedCaps.Count) { [void]$errors.Add('capabilities.remove contains duplicates.') }
+        foreach ($id in $selectedCaps) {
+            $cand = @($m.RemoveCapabilities.candidates | Where-Object { [string]$_.id -eq [string]$id })
+            if ($cand.Count -ne 1) { [void]$errors.Add(("Unknown capability candidate '{0}'." -f $id)); continue }
+            if (Test-XboxOSCapabilityCandidateProtected -Candidate $cand[0] -ProtectedPatterns $capProtected) {
+                [void]$errors.Add(("Capability '{0}' is protected and cannot be removed." -f $id))
+            }
+            if ([string]$id -eq 'InternetExplorerMode') { [void]$warnings.Add('Removing Internet Explorer mode: sites that require IE mode in Edge will stop working.') }
+        }
+    }
+
+    # Image (optional section)
+    if ($BuildProfile.PSObject.Properties['image']) {
+        $img = $BuildProfile.image
+        foreach ($b in @('componentCleanup', 'resetBase')) {
+            if ($img.$b -isnot [bool]) { [void]$errors.Add(("image.{0} must be true or false." -f $b)) }
+        }
+        if ([string]$img.compression -notin (Get-XboxOSImageCompressionModes)) {
+            [void]$errors.Add(("image.compression must be one of: {0}." -f ((Get-XboxOSImageCompressionModes) -join ', ')))
+        }
+        if ([bool]$img.resetBase -and -not [bool]$img.componentCleanup) { [void]$errors.Add('image.resetBase requires image.componentCleanup=true.') }
+        if ([bool]$img.resetBase) { [void]$warnings.Add('ResetBase: updates already in the image become permanent (they cannot be uninstalled later). New Windows Updates still install normally.') }
+        if ([string]$img.compression -eq 'Recovery') { [void]$warnings.Add('Recovery compression produces install.esd: the smallest image, but compressing takes much longer and needs extra CPU and memory.') }
+        $tweakCatalog = @($m.ImageTweaks.tweaks)
+        $selectedImageTweaks = @($img.tweaks)
+        if (@($selectedImageTweaks | Select-Object -Unique).Count -ne $selectedImageTweaks.Count) { [void]$errors.Add('image.tweaks contains duplicates.') }
+        foreach ($t in $selectedImageTweaks) {
+            if (@($tweakCatalog | Where-Object { [string]$_.id -eq [string]$t }).Count -ne 1) { [void]$errors.Add(("Unknown image setting '{0}'." -f $t)) }
+        }
+    }
 
     # Output
     $out = [string]$BuildProfile.output.directory
@@ -439,8 +512,38 @@ function Get-XboxOSBuildProfileReview {
                 payloadKept  = -not [bool]$m.DisableFeatures.removePayload
             }
         })
+    $capProtected = @()
+    if ($m.Compatibility.PSObject.Properties['protectedCapabilities']) { $capProtected = @($m.Compatibility.protectedCapabilities | ForEach-Object { [string]$_ }) }
+    $selectedCaps = @()
+    if ($BuildProfile.PSObject.Properties['capabilities']) { $selectedCaps = @($BuildProfile.capabilities.remove) }
+    $capabilities = @($m.RemoveCapabilities.candidates | ForEach-Object {
+            $isProtected = Test-XboxOSCapabilityCandidateProtected -Candidate $_ -ProtectedPatterns $capProtected
+            [pscustomobject]@{
+                id          = [string]$_.id
+                displayName = [string]$_.displayName
+                reason      = [string]$_.reason
+                selected    = [bool]($selectedCaps -contains [string]$_.id)
+                protected   = [bool]$isProtected
+                selectable  = -not [bool]$isProtected
+            }
+        })
+    $selectedImageTweaks = @()
+    if ($BuildProfile.PSObject.Properties['image']) { $selectedImageTweaks = @($BuildProfile.image.tweaks) }
+    $imageTweaks = @($m.ImageTweaks.tweaks | ForEach-Object {
+            [pscustomobject]@{
+                id             = [string]$_.id
+                title          = [string]$_.title
+                description    = [string]$_.description
+                settingsPage   = [string]$_.settingsPage
+                defaultEnabled = [bool]$_.defaultEnabled
+                selected       = [bool]($selectedImageTweaks -contains [string]$_.id)
+            }
+        })
+
     $check = Test-XboxOSBuildProfile -BuildProfile $BuildProfile -RepoRoot $RepoRoot
     return [pscustomobject]@{
+        capabilities       = $capabilities
+        imageTweaks        = $imageTweaks
         profileName        = [string]$BuildProfile.name
         presetId           = [string]$BuildProfile.presetId
         profileHash        = Get-XboxOSBuildProfileHash -BuildProfile $BuildProfile
@@ -485,7 +588,7 @@ function New-XboxOSUnattendXml {
 
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.AppendLine('<?xml version="1.0" encoding="utf-8"?>')
-    [void]$sb.AppendLine('<!-- Generated by XboxOS11 Builder. No disk configuration, product key, accounts, or requirement bypasses. -->')
+    [void]$sb.AppendLine('<!-- Generated by XboxOS11 Builder. No disk configuration, product key, or stored account credentials. -->')
     [void]$sb.AppendLine('<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">')
     [void]$sb.AppendLine('  <settings pass="windowsPE">')
     [void]$sb.AppendLine(('    <component name="Microsoft-Windows-International-Core-WinPE" {0}>' -f $attrs))
@@ -495,9 +598,25 @@ function New-XboxOSUnattendXml {
     [void]$sb.AppendLine(('      <UILanguage>{0}</UILanguage>' -f (& $esc $s.uiLanguage)))
     [void]$sb.AppendLine(('      <UserLocale>{0}</UserLocale>' -f (& $esc $s.userLocale)))
     [void]$sb.AppendLine('    </component>')
-    if ([bool]$s.hideEula) {
+    $unsupportedHw = [bool]($s.PSObject.Properties['allowUnsupportedHardware'] -and [bool]$s.allowUnsupportedHardware)
+    if ([bool]$s.hideEula -or $unsupportedHw) {
         [void]$sb.AppendLine(('    <component name="Microsoft-Windows-Setup" {0}>' -f $attrs))
-        [void]$sb.AppendLine('      <UserData><AcceptEula>true</AcceptEula></UserData>')
+        if ($unsupportedHw) {
+            # Opt-in only (setup.allowUnsupportedHardware): Setup's hardware checks are skipped for this install.
+            [void]$sb.AppendLine('      <RunSynchronous>')
+            $order = 1
+            foreach ($check in @('BypassTPMCheck', 'BypassSecureBootCheck', 'BypassRAMCheck', 'BypassCPUCheck')) {
+                [void]$sb.AppendLine('        <RunSynchronousCommand wcm:action="add">')
+                [void]$sb.AppendLine(('          <Order>{0}</Order>' -f $order))
+                [void]$sb.AppendLine(('          <Path>reg.exe add HKLM\SYSTEM\Setup\LabConfig /v {0} /t REG_DWORD /d 1 /f</Path>' -f $check))
+                [void]$sb.AppendLine('        </RunSynchronousCommand>')
+                $order++
+            }
+            [void]$sb.AppendLine('      </RunSynchronous>')
+        }
+        if ([bool]$s.hideEula) {
+            [void]$sb.AppendLine('      <UserData><AcceptEula>true</AcceptEula></UserData>')
+        }
         [void]$sb.AppendLine('    </component>')
     }
     [void]$sb.AppendLine('  </settings>')
@@ -520,6 +639,11 @@ function New-XboxOSUnattendXml {
     [void]$sb.AppendLine('      <OOBE>')
     if ([bool]$s.hideEula) { [void]$sb.AppendLine('        <HideEULAPage>true</HideEULAPage>') }
     [void]$sb.AppendLine(('        <ProtectYourPC>{0}</ProtectYourPC>' -f $protect))
+    if ($s.PSObject.Properties['localAccount'] -and [bool]$s.localAccount) {
+        # Documented OOBE setting: hide Microsoft account sign-in so Setup offers local account creation.
+        # The account name and password are entered during Setup; nothing about the account is stored here.
+        [void]$sb.AppendLine('        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>')
+    }
     [void]$sb.AppendLine('      </OOBE>')
     if ([bool]$s.postInstall.enabled) {
         [void]$sb.AppendLine('      <FirstLogonCommands>')
@@ -622,6 +746,35 @@ function New-XboxOSBuilderEffectiveConfiguration {
     $build.paths.compatibilityManifest = Join-Path $m.RepoRoot 'config\compatibility.json'
     if ([bool]$BuildProfile.drivers.enabled) { $build.paths.driverDirectory = [string]$BuildProfile.drivers.directory }
     if ([bool]$BuildProfile.updates.enabled) { $build.paths.updateDirectory = [string]$BuildProfile.updates.directory }
+
+    # Lean image (M11): capabilities, offline image settings, component cleanup, recompression.
+    $selectedCaps = @()
+    if ($BuildProfile.PSObject.Properties['capabilities']) { $selectedCaps = @($BuildProfile.capabilities.remove) }
+    $caps = Copy-XboxOSJsonObject -Value $m.RemoveCapabilities
+    foreach ($c in @($caps.candidates)) { $c.enabled = [bool]($selectedCaps -contains [string]$c.id) }
+    $capsPath = Join-Path $full 'remove-capabilities.json'
+    ($caps | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $capsPath -Encoding UTF8
+
+    $img = [pscustomobject]@{ componentCleanup = $false; resetBase = $false; compression = 'Default'; tweaks = @() }
+    if ($BuildProfile.PSObject.Properties['image']) { $img = $BuildProfile.image }
+    $tweakDoc = Copy-XboxOSJsonObject -Value $m.ImageTweaks
+    foreach ($t in @($tweakDoc.tweaks)) {
+        $t | Add-Member -NotePropertyName enabled -NotePropertyValue ([bool](@($img.tweaks) -contains [string]$t.id)) -Force
+    }
+    $tweaksPath = Join-Path $full 'image-tweaks.json'
+    ($tweakDoc | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $tweaksPath -Encoding UTF8
+
+    $build.paths | Add-Member -NotePropertyName removeCapabilitiesManifest -NotePropertyValue $capsPath -Force
+    $build.paths | Add-Member -NotePropertyName imageTweaksManifest -NotePropertyValue $tweaksPath -Force
+    $build.phases | Add-Member -NotePropertyName removeCapabilities -NotePropertyValue ([bool]($selectedCaps.Count -gt 0)) -Force
+    $build.phases | Add-Member -NotePropertyName imageTweaks -NotePropertyValue ([bool](@($img.tweaks).Count -gt 0)) -Force
+    $build.phases | Add-Member -NotePropertyName componentCleanup -NotePropertyValue ([bool]$img.componentCleanup) -Force
+    $build.phases | Add-Member -NotePropertyName recompress -NotePropertyValue ([bool]([string]$img.compression -ne 'Default')) -Force
+    $build | Add-Member -NotePropertyName image -NotePropertyValue ([pscustomobject]@{
+            resetBase   = [bool]$img.resetBase
+            compression = [string]$img.compression
+        }) -Force
+
     $build | Add-Member -NotePropertyName builderProfile -NotePropertyValue ([pscustomobject]@{
             name          = [string]$BuildProfile.name
             presetId      = [string]$BuildProfile.presetId
@@ -730,8 +883,26 @@ function New-XboxOSBuildRecord {
             [ordered]@{ id = [string]$_.id; featureNames = @($_.featureNames) }
         })
     $post = $BuildProfile.setup.postInstall
+    $selectedCaps = @()
+    if ($BuildProfile.PSObject.Properties['capabilities']) { $selectedCaps = @($BuildProfile.capabilities.remove) }
+    $capabilities = @($m.RemoveCapabilities.candidates | Where-Object { $selectedCaps -contains [string]$_.id } | ForEach-Object {
+            [ordered]@{ id = [string]$_.id; displayName = [string]$_.displayName; patterns = @($_.patterns) }
+        })
+    $img = $null
+    if ($BuildProfile.PSObject.Properties['image']) { $img = $BuildProfile.image }
+    $imageTweaks = @($m.ImageTweaks.tweaks | Where-Object { $img -and @($img.tweaks) -contains [string]$_.id } | ForEach-Object {
+            [ordered]@{ id = [string]$_.id; title = [string]$_.title; settingsPage = [string]$_.settingsPage; values = @($_.values) }
+        })
+    $setupOpt = { param($n) [bool]($BuildProfile.setup.PSObject.Properties[$n] -and [bool]$BuildProfile.setup.$n) }
     return [ordered]@{
         schemaVersion     = 'xboxos-build-record-v1'
+        removedCapabilities = $capabilities
+        imageTweaks       = $imageTweaks
+        componentCleanup  = [bool]($img -and [bool]$img.componentCleanup)
+        resetBase         = [bool]($img -and [bool]$img.resetBase)
+        compression       = $(if ($img) { [string]$img.compression } else { 'Default' })
+        localAccount      = (& $setupOpt 'localAccount')
+        allowUnsupportedHardware = (& $setupOpt 'allowUnsupportedHardware')
         toolkitVersion    = Get-XboxOSToolkitVersion -RepoRoot $m.RepoRoot
         builderEngine     = $script:XboxOSBuilderEngineVersion
         profileName       = [string]$BuildProfile.name

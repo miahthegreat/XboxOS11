@@ -63,6 +63,7 @@ try {
                     })
                 neverChange          = @((Get-XboxOSGamingTweakCatalog).neverChange | ForEach-Object { [ordered]@{ item = [string]$_.item; reason = [string]$_.reason } })
                 privacyOptions       = @('Minimal', 'Recommended')
+                compressionModes     = @(Get-XboxOSImageCompressionModes)
                 defaultOutput        = 'C:\XboxOS\Output'
                 defaultProfileFolder = 'C:\XboxOS\Profiles'
             }

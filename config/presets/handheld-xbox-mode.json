@@ -1,7 +1,7 @@
 {
   "schemaVersion": "xboxos-builder-preset-v1",
   "id": "handheld-xbox-mode",
-  "order": 3,
+  "order": 4,
   "displayName": "Handheld - Xbox mode at startup",
   "recommended": false,
   "description": "Balanced plus the documented StartupToGamingHome OEM setting so Xbox mode opens at sign-in. Intended for gaming handhelds; verify on desktops.",

@@ -20,9 +20,9 @@ Describe 'XboxOS11 Milestone 7 builder backend' {
     }
 
     Context 'presets and profiles' {
-        It 'ships four ordered presets that each produce a valid profile' {
+        It 'ships five ordered presets that each produce a valid profile' {
             $presets = @(Get-XboxOSBuilderPreset)
-            @($presets | ForEach-Object { $_.id }) | Should -Be @('gaming-balanced', 'gaming-lean', 'handheld-xbox-mode', 'stock-safe')
+            @($presets | ForEach-Object { $_.id }) | Should -Be @('gaming-balanced', 'gaming-lean', 'gaming-tiny', 'handheld-xbox-mode', 'stock-safe')
             @($presets | Where-Object { $_.recommended }).Count | Should -Be 1
             foreach ($p in $presets) {
                 $check = Test-XboxOSBuildProfile -BuildProfile (& $script:NewProfile $p.id)
@@ -145,6 +145,98 @@ Describe 'XboxOS11 Milestone 7 builder backend' {
             $p.drivers.enabled = $true
             $p.drivers.directory = $drv
             (Test-XboxOSBuildProfile -BuildProfile $p -ForBuild).warnings -join ' ' | Should -Match 'Adrenalin after Windows Setup'
+        }
+    }
+
+    Context 'lean image options (M11)' {
+        It 'validates capabilities and image options and keeps profiles without them valid' {
+            $p = & $script:NewProfile
+            $p | Add-Member -NotePropertyName capabilities -NotePropertyValue ([pscustomobject]@{ remove = @('StepsRecorder', 'WindowsMediaPlayer') })
+            $p | Add-Member -NotePropertyName image -NotePropertyValue ([pscustomobject]@{ componentCleanup = $false; resetBase = $true; compression = 'Ultra'; tweaks = @('NoSponsoredApps', 'DisableUpdates') })
+            $e = & $script:Errors $p
+            $e | Should -Match "Unknown capability candidate 'WindowsMediaPlayer'"
+            $e | Should -Match 'image.compression must be one of'
+            $e | Should -Match 'image.resetBase requires image.componentCleanup'
+            $e | Should -Match "Unknown image setting 'DisableUpdates'"
+            $e | Should -Not -Match 'StepsRecorder'
+            (Test-XboxOSBuildProfile -BuildProfile (& $script:NewProfile)).valid | Should -BeTrue
+        }
+
+        It 'rejects unknown keys inside the optional sections' {
+            $p = & $script:NewProfile
+            $p | Add-Member -NotePropertyName image -NotePropertyValue ([pscustomobject]@{ componentCleanup = $true; resetBase = $false; compression = 'Max'; tweaks = @(); removeWinRE = $true })
+            & $script:Errors $p | Should -Match "Unknown profile setting 'image.removeWinRE'"
+        }
+
+        It 'ships a valid gaming-tiny preset that turns every lean option on' {
+            $p = & $script:NewProfile 'gaming-tiny'
+            $check = Test-XboxOSBuildProfile -BuildProfile $p
+            $check.valid | Should -BeTrue -Because ($check.errors -join '; ')
+            @($p.capabilities.remove).Count | Should -Be 8
+            $p.image.compression | Should -Be 'Recovery'
+            $p.image.resetBase | Should -BeTrue
+            @($p.apps.remove) | Should -Contain 'Widgets'
+            @($p.apps.remove) | Should -Not -Contain 'XboxTCUI'
+            $saved = Export-XboxOSBuildProfile -BuildProfile $p -Path (Join-Path $script:TempRoot 'tiny.json')
+            $reloaded = Import-XboxOSBuildProfile -Path $saved
+            $reloaded.image.compression | Should -Be 'Recovery'
+            @($reloaded.capabilities.remove).Count | Should -Be 8
+        }
+
+        It 'materializes lean phases, manifests, and the build record' {
+            $eff = New-XboxOSBuilderEffectiveConfiguration -BuildProfile (& $script:NewProfile 'gaming-tiny') -WorkRoot (Join-Path $script:TempRoot 'eff-tiny')
+            $cfg = Get-XboxOSBuildConfiguration -Path $eff.ConfigurationPath
+            foreach ($phase in @('removeCapabilities', 'imageTweaks', 'componentCleanup', 'recompress')) { $cfg.Raw.phases.$phase | Should -BeTrue -Because $phase }
+            $cfg.Raw.image.compression | Should -Be 'Recovery'
+            $caps = Get-Content -LiteralPath $cfg.ResolvedPath.removeCapabilitiesManifest -Raw | ConvertFrom-Json
+            @($caps.candidates | Where-Object { $_.enabled }).Count | Should -Be 8
+            $tweaks = Get-Content -LiteralPath $cfg.ResolvedPath.imageTweaksManifest -Raw | ConvertFrom-Json
+            @($tweaks.tweaks | Where-Object { $_.enabled }).Count | Should -Be 5
+            $record = Get-Content -LiteralPath (Join-Path $eff.MediaOverlayDirectory 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\build-record.json') -Raw | ConvertFrom-Json
+            @($record.removedCapabilities).Count | Should -Be 8
+            @($record.imageTweaks | ForEach-Object { $_.id }) | Should -Contain 'NoOneDriveForNewAccounts'
+            $record.compression | Should -Be 'Recovery'
+            $record.allowUnsupportedHardware | Should -BeFalse
+
+            $plain = New-XboxOSBuilderEffectiveConfiguration -BuildProfile (& $script:NewProfile) -WorkRoot (Join-Path $script:TempRoot 'eff-plain')
+            $pc = Get-XboxOSBuildConfiguration -Path $plain.ConfigurationPath
+            foreach ($phase in @('removeCapabilities', 'imageTweaks', 'componentCleanup', 'recompress')) { $pc.Raw.phases.$phase | Should -BeFalse -Because $phase }
+        }
+
+        It 'adds the documented local-account and opt-in hardware settings to unattend only when selected' {
+            $p = & $script:NewProfile
+            $p.setup | Add-Member -NotePropertyName localAccount -NotePropertyValue $true
+            $p.setup | Add-Member -NotePropertyName allowUnsupportedHardware -NotePropertyValue $true
+            $check = Test-XboxOSBuildProfile -BuildProfile $p
+            $check.valid | Should -BeTrue
+            ($check.warnings -join ' ') | Should -Match 'Unsupported hardware'
+            $doc = [xml](New-XboxOSUnattendXml -BuildProfile $p)
+            $ns = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
+            $ns.AddNamespace('u', 'urn:schemas-microsoft-com:unattend')
+            $doc.SelectSingleNode('//u:OOBE/u:HideOnlineAccountScreens', $ns).InnerText | Should -Be 'true'
+            $paths = @($doc.SelectNodes("//u:settings[@pass='windowsPE']//u:RunSynchronousCommand/u:Path", $ns) | ForEach-Object { $_.InnerText })
+            $paths.Count | Should -Be 4
+            ($paths -join ' ') | Should -Match 'BypassTPMCheck'
+            ($paths -join ' ') | Should -Match 'BypassSecureBootCheck'
+            $xml = New-XboxOSUnattendXml -BuildProfile $p
+            foreach ($forbidden in @('LocalAccount>', 'Password', 'AutoLogon', 'BypassNRO', 'ProductKey', 'DiskConfiguration')) { $xml | Should -Not -Match $forbidden }
+
+            $plain = New-XboxOSUnattendXml -BuildProfile (& $script:NewProfile)
+            $plain | Should -Not -Match 'HideOnlineAccountScreens'
+            $plain | Should -Not -Match 'LabConfig'
+        }
+
+        It 'requires unattend for local account and hardware opt-ins' {
+            $p = & $script:NewProfile 'stock-safe'
+            $p.setup | Add-Member -NotePropertyName allowUnsupportedHardware -NotePropertyValue $true
+            & $script:Errors $p | Should -Match 'setup.allowUnsupportedHardware requires setup.unattend'
+        }
+
+        It 'reviews capabilities and image settings for the frontend' {
+            $r = Get-XboxOSBuildProfileReview -BuildProfile (& $script:NewProfile 'gaming-tiny')
+            @($r.capabilities).Count | Should -Be 8
+            @($r.capabilities | Where-Object { $_.selected }).Count | Should -Be 8
+            @($r.imageTweaks | Where-Object { $_.id -eq 'EdgeNoFirstRun' })[0].selected | Should -BeTrue
         }
     }
 
@@ -299,7 +391,7 @@ Describe 'XboxOS11 Milestone 7 builder backend' {
             $line.Count | Should -Be 1
             $doc = $line[0].Substring(14) | ConvertFrom-Json
             $doc.ok | Should -BeTrue
-            $doc.data.presets.Count | Should -Be 4
+            $doc.data.presets.Count | Should -Be 5
             $doc.data.launchers | Should -Contain 'Steam'
         }
 

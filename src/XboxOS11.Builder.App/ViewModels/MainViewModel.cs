@@ -45,6 +45,8 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<LauncherItem> Launchers { get; } = [];
     public ObservableCollection<OptimizationItem> Optimizations { get; } = [];
     public ObservableCollection<string> NeverChanged { get; } = [];
+    public ObservableCollection<ComponentItem> Capabilities { get; } = [];
+    public ObservableCollection<OptimizationItem> ImageTweaks { get; } = [];
     public ObservableCollection<string> AlwaysPreserved { get; } = [];
     public ObservableCollection<ImageEdition> Editions { get; } = [];
     public ObservableCollection<string> ValidationErrors { get; } = [];
@@ -272,6 +274,66 @@ public sealed partial class MainViewModel : ObservableObject
         set { if (P.Setup.PostInstall.HardwareAcceleratedGpuScheduling != value) { Edit(p => p.Setup.PostInstall.HardwareAcceleratedGpuScheduling = value); } }
     }
 
+    public bool LocalAccount
+    {
+        get => P.Setup.LocalAccount;
+        set
+        {
+            if (P.Setup.LocalAccount == value) { return; }
+            _editor.SetLocalAccount(value);
+            RaiseSetupChanged();
+        }
+    }
+
+    public bool AllowUnsupportedHardware
+    {
+        get => P.Setup.AllowUnsupportedHardware;
+        set
+        {
+            if (P.Setup.AllowUnsupportedHardware == value) { return; }
+            _editor.SetAllowUnsupportedHardware(value);
+            RaiseSetupChanged();
+        }
+    }
+
+    public bool ComponentCleanup
+    {
+        get => P.Image.ComponentCleanup;
+        set
+        {
+            if (P.Image.ComponentCleanup == value) { return; }
+            _editor.SetComponentCleanup(value);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ResetBase));
+            ProfileEdited();
+        }
+    }
+
+    public bool ResetBase
+    {
+        get => P.Image.ResetBase;
+        set
+        {
+            if (P.Image.ResetBase == value) { return; }
+            _editor.SetResetBase(value);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ComponentCleanup));
+            ProfileEdited();
+        }
+    }
+
+    private static readonly string[] CompressionModes = ["Default", "Max", "Recovery"];
+
+    public int CompressionIndex
+    {
+        get => Math.Max(0, Array.IndexOf(CompressionModes, P.Image.Compression));
+        set
+        {
+            var mode = CompressionModes[Math.Clamp(value, 0, CompressionModes.Length - 1)];
+            if (P.Image.Compression != mode) { Edit(p => p.Image.Compression = mode); }
+        }
+    }
+
     public Choice? SelectedLanguage
     {
         get => Languages.FirstOrDefault(c => c.Value == P.Setup.UiLanguage);
@@ -297,13 +359,15 @@ public sealed partial class MainViewModel : ObservableObject
     public string SummaryText =>
         $"{P.Apps.Remove.Count} app(s) removed · {P.Features.Disable.Count} feature(s) disabled · " +
         $"drivers {(P.Drivers.Enabled ? "on" : "off")} · updates {(P.Updates.Enabled ? "on" : "off")} · " +
-        $"unattend {(P.Setup.Unattend ? "on" : "off")} · post-install {(P.Setup.PostInstall.Enabled ? "on" : "off")}";
+        $"unattend {(P.Setup.Unattend ? "on" : "off")} · post-install {(P.Setup.PostInstall.Enabled ? "on" : "off")} · " +
+        $"{P.Capabilities.Remove.Count} capabilities removed · {P.Image.Tweaks.Count} image setting(s) · compression {P.Image.Compression}" +
+        (P.Setup.AllowUnsupportedHardware ? " · UNSUPPORTED HARDWARE ALLOWED" : string.Empty);
 
     public string PresetLabel => Presets.FirstOrDefault(p => p.Id == P.PresetId)?.DisplayName ?? "Custom";
 
     private void RaiseSetupChanged()
     {
-        foreach (var n in new[] { nameof(Unattend), nameof(HideEula), nameof(StartupToGamingHome), nameof(PostInstallEnabled) })
+        foreach (var n in new[] { nameof(Unattend), nameof(HideEula), nameof(StartupToGamingHome), nameof(PostInstallEnabled), nameof(LocalAccount), nameof(AllowUnsupportedHardware) })
         {
             OnPropertyChanged(n);
         }
@@ -426,6 +490,24 @@ public sealed partial class MainViewModel : ObservableObject
             }));
         }
 
+        Capabilities.Clear();
+        foreach (var c in review.Capabilities)
+        {
+            Capabilities.Add(new ComponentItem(c.Id, c.DisplayName, c.Reason, c.Protected || !c.Selectable, c.Selected, (id, sel) =>
+            {
+                var ok = _editor.SetCapabilityRemoved(id, sel);
+                ProfileEdited();
+                return ok;
+            }));
+        }
+
+        ImageTweaks.Clear();
+        foreach (var t in review.ImageTweaks)
+        {
+            ImageTweaks.Add(new OptimizationItem(t.Id, t.Title, t.Description, t.SettingsPage, false, t.Selected,
+                (id, sel) => { _editor.SetImageTweak(id, sel); ProfileEdited(); }));
+        }
+
         AlwaysPreserved.Clear();
         foreach (var s in review.AlwaysPreserved)
         {
@@ -460,6 +542,16 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var o in Optimizations)
         {
             o.Sync(P.Setup.PostInstall.Optimizations.Contains(o.Id, StringComparer.OrdinalIgnoreCase));
+        }
+
+        foreach (var c in Capabilities)
+        {
+            c.Sync(P.Capabilities.Remove.Contains(c.Id, StringComparer.OrdinalIgnoreCase));
+        }
+
+        foreach (var t in ImageTweaks)
+        {
+            t.Sync(P.Image.Tweaks.Contains(t.Id, StringComparer.OrdinalIgnoreCase));
         }
 
         _suppressPresetApply = true;

@@ -12,6 +12,7 @@ public sealed class ProfileEditor
 
     private readonly HashSet<string> _protectedApps = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _protectedFeatures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _protectedCapabilities = new(StringComparer.OrdinalIgnoreCase);
 
     public ProfileEditor(BuildProfile profile) => Profile = profile;
 
@@ -23,6 +24,12 @@ public sealed class ProfileEditor
     {
         _protectedApps.Clear();
         _protectedFeatures.Clear();
+        _protectedCapabilities.Clear();
+        foreach (var c in review.Capabilities.Where(c => c.Protected || !c.Selectable))
+        {
+            _protectedCapabilities.Add(c.Id);
+        }
+
         foreach (var a in review.Apps.Where(a => a.Protected || !a.Selectable))
         {
             _protectedApps.Add(a.Id);
@@ -36,6 +43,7 @@ public sealed class ProfileEditor
         // Defensive: drop anything protected that slipped into the profile.
         Profile.Apps.Remove.RemoveAll(_protectedApps.Contains);
         Profile.Features.Disable.RemoveAll(_protectedFeatures.Contains);
+        Profile.Capabilities.Remove.RemoveAll(_protectedCapabilities.Contains);
     }
 
     /// <summary>Replaces component/setup choices with a preset while keeping the user's ISO, name, and output.</summary>
@@ -119,6 +127,99 @@ public sealed class ProfileEditor
         Changed();
     }
 
+    public bool IsCapabilityProtected(string id) => _protectedCapabilities.Contains(id);
+
+    public bool SetCapabilityRemoved(string id, bool remove)
+    {
+        if (remove && _protectedCapabilities.Contains(id))
+        {
+            return false;
+        }
+
+        var list = Profile.Capabilities.Remove;
+        var has = list.Contains(id, StringComparer.OrdinalIgnoreCase);
+        if (remove == has)
+        {
+            return true;
+        }
+
+        if (remove) { list.Add(id); } else { list.RemoveAll(x => x.Equals(id, StringComparison.OrdinalIgnoreCase)); }
+        Changed();
+        return true;
+    }
+
+    public void SetImageTweak(string id, bool selected)
+    {
+        var list = Profile.Image.Tweaks;
+        var has = list.Contains(id, StringComparer.OrdinalIgnoreCase);
+        if (selected == has)
+        {
+            return;
+        }
+
+        if (selected) { list.Add(id); } else { list.RemoveAll(x => x.Equals(id, StringComparison.OrdinalIgnoreCase)); }
+        Changed();
+    }
+
+    /// <summary>ResetBase only applies after component cleanup, mirroring the backend rule.</summary>
+    public void SetComponentCleanup(bool enabled)
+    {
+        if (Profile.Image.ComponentCleanup == enabled)
+        {
+            return;
+        }
+
+        Profile.Image.ComponentCleanup = enabled;
+        if (!enabled)
+        {
+            Profile.Image.ResetBase = false;
+        }
+
+        Changed();
+    }
+
+    public void SetResetBase(bool enabled)
+    {
+        if (enabled && !Profile.Image.ComponentCleanup)
+        {
+            Profile.Image.ComponentCleanup = true;
+        }
+
+        if (Profile.Image.ResetBase != enabled)
+        {
+            Profile.Image.ResetBase = enabled;
+            Changed();
+        }
+    }
+
+    public void SetLocalAccount(bool enabled)
+    {
+        if (enabled && !Profile.Setup.Unattend)
+        {
+            SetUnattend(true);
+        }
+
+        if (Profile.Setup.LocalAccount != enabled)
+        {
+            Profile.Setup.LocalAccount = enabled;
+            Changed();
+        }
+    }
+
+    public void SetAllowUnsupportedHardware(bool enabled)
+    {
+        if (enabled && !Profile.Setup.Unattend)
+        {
+            SetUnattend(true);
+        }
+
+        if (Profile.Setup.AllowUnsupportedHardware != enabled)
+        {
+            Profile.Setup.AllowUnsupportedHardware = enabled;
+            Changed();
+        }
+    }
+
     public void SetOptimization(string id, bool selected)
     {
         var list = Profile.Setup.PostInstall.Optimizations;
@@ -146,6 +247,8 @@ public sealed class ProfileEditor
             Profile.Setup.PostInstall.Enabled = false;
             Profile.Setup.StartupToGamingHome = false;
             Profile.Setup.HideEula = false;
+            Profile.Setup.LocalAccount = false;
+            Profile.Setup.AllowUnsupportedHardware = false;
         }
 
         Changed();

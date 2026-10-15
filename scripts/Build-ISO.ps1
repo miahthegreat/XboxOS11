@@ -117,6 +117,8 @@ try {
     $Context | Add-Member -NotePropertyName MediaOverlayDirectory -NotePropertyValue $MediaOverlayDirectory -Force
     $dismPath = Find-XboxOSDism
     $phases = $Context.Configuration.Raw.phases
+    # Lean-image phases (M11) are optional in build.json; absent means off.
+    $phaseOn = { param([string]$Name) [bool]($phases.PSObject.Properties[$Name] -and $phases.$Name) }
 
     Write-Host "XboxOS11 build $($Context.BuildId) (DryRun=$DryRun)" -ForegroundColor Green
     Write-Host "Workspace: $($Context.Paths.Workspace)"
@@ -152,6 +154,12 @@ try {
         } | Out-Null
     }
 
+    if (& $phaseOn 'removeCapabilities') {
+        Invoke-Phase -BuildContext $Context -Name 'RemoveCapabilities' -Script {
+            & (Join-Path $PSScriptRoot 'Remove-Capabilities.ps1') -BuildContext $Context -DismPath $dismPath -DryRun:$DryRun
+        } | Out-Null
+    }
+
     if ($phases.addDrivers) {
         Invoke-Phase -BuildContext $Context -Name 'AddDrivers' -Script {
             & (Join-Path $PSScriptRoot 'Add-Drivers.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
@@ -161,6 +169,18 @@ try {
     if ($phases.addUpdates) {
         Invoke-Phase -BuildContext $Context -Name 'AddUpdates' -Script {
             & (Join-Path $PSScriptRoot 'Add-Updates.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
+        } | Out-Null
+    }
+
+    if (& $phaseOn 'imageTweaks') {
+        Invoke-Phase -BuildContext $Context -Name 'ImageTweaks' -Script {
+            & (Join-Path $PSScriptRoot 'Set-ImageTweaks.ps1') -BuildContext $Context -DryRun:$DryRun
+        } | Out-Null
+    }
+
+    if (& $phaseOn 'componentCleanup') {
+        Invoke-Phase -BuildContext $Context -Name 'ComponentCleanup' -Script {
+            & (Join-Path $PSScriptRoot 'Optimize-ImageSize.ps1') -BuildContext $Context -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
@@ -177,6 +197,12 @@ try {
         $imageCommitted = $true
         $Context.ImageMounted = $false
         $Context.MountedImagePath = $null
+    }
+
+    if (& $phaseOn 'recompress') {
+        Invoke-Phase -BuildContext $Context -Name 'Recompress' -Script {
+            & (Join-Path $PSScriptRoot 'Compress-Image.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
+        } | Out-Null
     }
 
     if ($phases.validate) {

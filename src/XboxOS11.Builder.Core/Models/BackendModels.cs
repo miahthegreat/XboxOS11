@@ -11,6 +11,7 @@ public sealed class BuilderCatalog
     public List<string> Launchers { get; set; } = [];
     public List<string> PrivacyOptions { get; set; } = [];
     public List<OptimizationInfo> Optimizations { get; set; } = [];
+    public List<string> CompressionModes { get; set; } = [];
     public List<NeverChangeInfo> NeverChange { get; set; } = [];
     public string DefaultOutput { get; set; } = @"C:\XboxOS\Output";
     public string DefaultProfileFolder { get; set; } = @"C:\XboxOS\Profiles";
@@ -56,6 +57,8 @@ public sealed class ProfileReview
     public string ProfileHash { get; set; } = string.Empty;
     public List<AppCandidate> Apps { get; set; } = [];
     public List<FeatureCandidate> Features { get; set; } = [];
+    public List<CapabilityCandidate> Capabilities { get; set; } = [];
+    public List<ImageTweakInfo> ImageTweaks { get; set; } = [];
     public List<string> AlwaysPreserved { get; set; } = [];
     public ReviewSummary Summary { get; set; } = new();
     public ValidationResult Validation { get; set; } = new();
@@ -81,6 +84,26 @@ public sealed class FeatureCandidate
     public bool Protected { get; set; }
     public bool Selectable { get; set; }
     public bool PayloadKept { get; set; }
+}
+
+public sealed class CapabilityCandidate
+{
+    public string Id { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public bool Selected { get; set; }
+    public bool Protected { get; set; }
+    public bool Selectable { get; set; }
+}
+
+public sealed class ImageTweakInfo
+{
+    public string Id { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string SettingsPage { get; set; } = string.Empty;
+    public bool DefaultEnabled { get; set; }
+    public bool Selected { get; set; }
 }
 
 public sealed class ReviewSummary

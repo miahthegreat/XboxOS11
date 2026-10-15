@@ -50,6 +50,12 @@
                         <x:String>Recommended: Microsoft's default privacy choices</x:String>
                     </RadioButtons>
                     <ToggleSwitch Header="Accept the license terms automatically" IsOn="{x:Bind ViewModel.HideEula, Mode=TwoWay}" />
+                    <ToggleSwitch Header="Create a local account during Setup (skip the Microsoft account screens)" IsOn="{x:Bind ViewModel.LocalAccount, Mode=TwoWay}" />
+                    <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Uses the documented HideOnlineAccountScreens setting. You type the account name and password during Setup; nothing is stored in the ISO. You can link a Microsoft account later for the Store and Game Pass." />
+                    <ToggleSwitch Header="Allow unsupported hardware (skip TPM 2.0, Secure Boot, CPU, and RAM checks)" IsOn="{x:Bind ViewModel.AllowUnsupportedHardware, Mode=TwoWay}" />
+                    <InfoBar IsOpen="{x:Bind ViewModel.AllowUnsupportedHardware, Mode=OneWay}" IsClosable="False" Severity="Error" Title="Unsupported configuration"
+                             Message="Only for PCs that don't meet Windows 11 requirements. Microsoft doesn't support these installs; they may stop getting updates, and games whose anti-cheat requires TPM or Secure Boot won't run. Leave this off on supported PCs such as a Ryzen 7000-series system." />
                     <ToggleSwitch Header="Open Xbox mode at sign-in (StartupToGamingHome)" IsOn="{x:Bind ViewModel.StartupToGamingHome, Mode=TwoWay}" />
                     <InfoBar IsOpen="{x:Bind ViewModel.StartupToGamingHome, Mode=OneWay}" IsClosable="False" Severity="Warning"
                              Message="Microsoft documents this OEM setting for gaming handhelds. On desktop PCs, confirm Xbox mode in Settings › Gaming › Xbox mode after installation." />
@@ -101,6 +107,33 @@
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
                 </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="Image size and defaults" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <ToggleSwitch Header="Clean up the component store (smaller image)" IsOn="{x:Bind ViewModel.ComponentCleanup, Mode=TwoWay}" />
+                <CheckBox Content="Make integrated updates permanent (ResetBase: smallest, but those updates can't be uninstalled)" IsChecked="{x:Bind ViewModel.ResetBase, Mode=TwoWay}" />
+                <RadioButtons Header="Compression" SelectedIndex="{x:Bind ViewModel.CompressionIndex, Mode=TwoWay}">
+                    <x:String>Default: keep the standard install.wim compression</x:String>
+                    <x:String>Maximum: smaller install.wim</x:String>
+                    <x:String>Recovery: smallest install.esd (slow to build)</x:String>
+                </RadioButtons>
+                <TextBlock Text="Defaults for new accounts" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                <ItemsControl ItemsSource="{x:Bind ViewModel.ImageTweaks}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:OptimizationItem">
+                            <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="{x:Bind Title}">
+                                <StackPanel>
+                                    <TextBlock Text="{x:Bind Title}" />
+                                    <TextBlock Text="{x:Bind Description}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="{x:Bind Detail}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
+                            </CheckBox>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
         </Border>
 

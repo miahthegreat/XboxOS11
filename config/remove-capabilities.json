@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "description": "Optional Windows capabilities (Features on Demand) considered for offline removal. Exact identities are resolved from DISM /Get-Capabilities before removal. Removed capabilities can be re-added later with Add-WindowsCapability (requires Windows Update).",
+  "matchMode": "ExactOrSinglePrefix",
+  "candidates": [
+    {
+      "id": "StepsRecorder",
+      "displayName": "Steps Recorder",
+      "patterns": ["App.StepsRecorder~~~~*"],
+      "reason": "Deprecated screen-steps recorder.",
+      "enabled": false
+    },
+    {
+      "id": "MathRecognizer",
+      "displayName": "Math Input Panel",
+      "patterns": ["MathRecognizer~~~~*"],
+      "reason": "Handwritten math input; unused on a gaming PC.",
+      "enabled": false
+    },
+    {
+      "id": "InternetExplorerMode",
+      "displayName": "Internet Explorer mode",
+      "patterns": ["Browser.InternetExplorer~~~~*"],
+      "reason": "Legacy IE mode for Edge. Old intranet sites that need IE mode will stop working.",
+      "enabled": false
+    },
+    {
+      "id": "PowerShellISE",
+      "displayName": "Windows PowerShell ISE",
+      "patterns": ["Microsoft.Windows.PowerShell.ISE~~~~*"],
+      "reason": "Legacy script editor. Windows PowerShell itself stays.",
+      "enabled": false
+    },
+    {
+      "id": "WordPad",
+      "displayName": "WordPad",
+      "patterns": ["Microsoft.Windows.WordPad~~~~*"],
+      "reason": "Retired document editor (older images).",
+      "enabled": false
+    },
+    {
+      "id": "FaxScan",
+      "displayName": "Windows Fax and Scan",
+      "patterns": ["Print.Fax.Scan~~~~*"],
+      "reason": "Fax and scan utility.",
+      "enabled": false
+    },
+    {
+      "id": "QuickAssistLegacy",
+      "displayName": "Quick Assist (legacy capability)",
+      "patterns": ["App.Support.QuickAssist~~~~*"],
+      "reason": "Legacy Quick Assist capability (older images).",
+      "enabled": false
+    },
+    {
+      "id": "ExtendedWallpapers",
+      "displayName": "Extended wallpapers",
+      "patterns": ["Microsoft.Wallpapers.Extended~~~~*"],
+      "reason": "Extra wallpaper set.",
+      "enabled": false
+    }
+  ],
+  "notes": [
+    "Capabilities protected in compatibility.json (protectedCapabilities) are never removed, even if listed here.",
+    "Language, speech, handwriting, OCR, and Windows Hello capabilities are intentionally not candidates."
+  ]
+}

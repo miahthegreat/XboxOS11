@@ -8,6 +8,8 @@
 
       -Features        Re-enable optional features the build disabled (payloads were kept, so no media is
                        needed). Requires administrator. A restart may be required.
+      -Capabilities    Re-add optional Windows capabilities the build removed (needs internet / Windows Update).
+                       Requires administrator.
       -GamingSettings  Restore every gaming optimization to its recorded original value.
       -Apps            List removed apps; with -OpenStore, open each one's Microsoft Store search page
                        so you can reinstall it. Apps are never installed silently.
@@ -23,6 +25,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [switch]$Features,
+    [switch]$Capabilities,
     [switch]$GamingSettings,
     [switch]$Apps,
     [switch]$All,
@@ -51,7 +54,7 @@ if ([string]$record.schemaVersion -ne 'xboxos-build-record-v1') {
     throw "Unsupported build record schema: $($record.schemaVersion)"
 }
 
-if ($All) { $Features = $true; $GamingSettings = $true; $Apps = $true }
+if ($All) { $Features = $true; $Capabilities = $true; $GamingSettings = $true; $Apps = $true }
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $results = New-Object System.Collections.Generic.List[object]
 function Add-Result {
@@ -62,6 +65,14 @@ function Add-Result {
 Write-Host ("XboxOS11 build record: profile '{0}' (preset {1}), toolkit {2}, built {3}" -f $record.profileName, $record.presetId, $record.toolkitVersion, $record.createdUtc)
 Write-Host ("Removed apps: {0}" -f ((@($record.removedApps) | ForEach-Object { $_.displayName }) -join ', '))
 Write-Host ("Disabled features: {0}" -f ((@($record.disabledFeatures) | ForEach-Object { @($_.featureNames) -join '/' }) -join ', '))
+if ($record.PSObject.Properties['removedCapabilities']) {
+    Write-Host ("Removed capabilities: {0}" -f ((@($record.removedCapabilities) | ForEach-Object { $_.displayName }) -join ', '))
+}
+if ($record.PSObject.Properties['imageTweaks']) {
+    foreach ($t in @($record.imageTweaks)) {
+        Write-Host ("Image setting '{0}' - change it in: {1}" -f $t.title, $t.settingsPage)
+    }
+}
 
 if ($Features) {
     foreach ($group in @($record.disabledFeatures)) {
@@ -93,6 +104,42 @@ if ($Features) {
             catch {
                 Add-Result -Area 'Feature' -Item $name -Status 'Failed' -Message $_.Exception.Message
             }
+        }
+    }
+}
+
+if ($Capabilities) {
+    $removedCaps = @()
+    if ($record.PSObject.Properties['removedCapabilities']) { $removedCaps = @($record.removedCapabilities) }
+    foreach ($cap in $removedCaps) {
+        if (-not $isAdmin) {
+            Add-Result -Area 'Capability' -Item ([string]$cap.displayName) -Status 'SkippedRequiresAdministrator' -Message 'Run as administrator.'
+            continue
+        }
+        try {
+            $installed = @(Get-WindowsCapability -Online -ErrorAction Stop | Where-Object {
+                    $name = [string]$_.Name
+                    @($cap.patterns | Where-Object { $name -like [string]$_ }).Count -gt 0
+                })
+            if ($installed.Count -eq 0) {
+                Add-Result -Area 'Capability' -Item ([string]$cap.displayName) -Status 'NotAvailable' -Message 'Not offered for this Windows build.'
+                continue
+            }
+            foreach ($c in $installed) {
+                if ([string]$c.State -eq 'Installed') {
+                    Add-Result -Area 'Capability' -Item ([string]$c.Name) -Status 'AlreadyInstalled'
+                }
+                elseif ($PSCmdlet.ShouldProcess([string]$c.Name, 'Add Windows capability (downloads from Windows Update)')) {
+                    $null = Add-WindowsCapability -Online -Name ([string]$c.Name) -ErrorAction Stop
+                    Add-Result -Area 'Capability' -Item ([string]$c.Name) -Status 'Added'
+                }
+                else {
+                    Add-Result -Area 'Capability' -Item ([string]$c.Name) -Status 'WhatIf'
+                }
+            }
+        }
+        catch {
+            Add-Result -Area 'Capability' -Item ([string]$cap.displayName) -Status 'Failed' -Message $_.Exception.Message
         }
     }
 }

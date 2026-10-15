@@ -207,3 +207,9 @@ Single-source versioning (`VERSION` = 1.0.0), a recovery build record and `Resto
 - Release engineering: [release-engineering.md](release-engineering.md)
 - Readiness and remaining human steps: [v1-release-readiness.md](v1-release-readiness.md)
 - Changelog: [CHANGELOG.md](../CHANGELOG.md)
+
+## M11: Lean image (Tiny11-class, serviceable) — complete
+
+`gaming-tiny` preset; expanded app and capability removal; offline defaults for new accounts; component cleanup, ResetBase, and ESD recompression; optional local account; opt-in unsupported-hardware setting. Store, Xbox, Edge/WebView2, Defender, Windows Update, and WinRE are always kept.
+
+- Design, Tiny11 comparison, and evidence status: [m11-lean-image.md](m11-lean-image.md)
