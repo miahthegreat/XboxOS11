@@ -14,8 +14,22 @@ def api(path, method="GET", data=None, accept="application/vnd.github+json"):
     request = urllib.request.Request(BASE + path, data=body, method=method,
         headers={"Authorization": "Bearer " + TOKEN, "Accept": accept,
                  "User-Agent": "xboxos11-agent-review", "X-GitHub-Api-Version": "2022-11-28"})
-    with urllib.request.urlopen(request, timeout=45) as response:
-        content = response.read()
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            content = response.read()
+    except urllib.error.HTTPError as error:
+        # Report GitHub's error reason, not credentials, response headers, or raw body.
+        raw = error.read(4096).decode("utf-8", errors="replace")
+        try:
+            detail = json.loads(raw)
+            reason = str(detail.get("message", "unknown GitHub error"))[:300]
+        except (ValueError, AttributeError):
+            reason = "non-JSON GitHub response"
+        accepted = str(error.headers.get("X-Accepted-GitHub-Permissions", "unspecified"))[:300]
+        raise RuntimeError(
+            f"GitHub API {method} {path} HTTP {error.code}: {reason}; "
+            f"accepted permissions: {accepted}"
+        ) from error
     return json.loads(content) if content else {}
 
 def post(pr, body):
@@ -109,10 +123,10 @@ def main():
     if current["head"]["sha"] != SHA or current["state"] != "open":
         return print("PR changed during review; discard result.")
     lines=[f"<!-- agent-review:{SHA}:{decision} -->",
-           f"### OpenAI agent review of \`{SHA[:12]}\`",
+           f"### OpenAI agent review of `{SHA[:12]}`",
            f"**Decision:** {decision}", result["summary"]]
     for f in result["findings"][:POLICY["maxFindings"]]:
-        lines.append(f"- **{f['severity']}** \`{f['file']}\`: {f['explanation']} **Fix:** {f['fix']}")
+        lines.append(f"- **{f['severity']}** `{f['file']}`: {f['explanation']} **Fix:** {f['fix']}")
     post(n,"\n\n".join(lines))
     if decision == "CHANGES_REQUESTED":
         api(f"/repos/{REPO}/actions/workflows/agent-fix.yml/dispatches","POST",

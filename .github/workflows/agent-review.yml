@@ -7,7 +7,7 @@ permissions:
   actions: write
   contents: read
   issues: write
-  pull-requests: read
+  pull-requests: write
 concurrency:
   group: agent-review-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
