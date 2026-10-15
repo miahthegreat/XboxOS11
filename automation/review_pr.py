@@ -108,9 +108,8 @@ def main():
     for f in result["findings"][:POLICY["maxFindings"]]:
         lines.append(f"- **{f['severity']}** \`{f['file']}\`: {f['explanation']} **Fix:** {f['fix']}")
     post(n,"\n\n".join(lines))
-    if decision=="CHANGES_REQUESTED":
-        api(f"/repos/{REPO}/actions/workflows/agent-fix.yml/dispatches","POST",
-            {"ref":current["base"]["ref"],"inputs":{"pr":str(n),"sha":SHA}})
+    # Automated Cursor dispatch remains disabled pending security review of fix runner.
+    # CHANGES_REQUESTED is posted for human-directed remediation in this initial stage.
     print(f"Reviewed PR #{n}: {decision}")
 
 if __name__=="__main__":
