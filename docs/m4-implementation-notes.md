@@ -27,8 +27,12 @@
 
 See `docs/m4-disposable-image-preflight-contracts.md` for the exact elevated PowerShell command. This milestone implements the path; operators must review and run it manually outside CI.
 
+## Status
+
+Milestone 4 is complete (merged PR #6). See [m4-completion-baseline.md](m4-completion-baseline.md) for merge SHAs, CI, and the preserved live run `preflight-20261015034144569`.
+
 ## Limitations
 
-- Live ISO path is implemented and unit-tested via harnesses; a real host run still requires an elevated operator on a machine with the expected ISO.
-- Dependency evidence uses structured category checks plus protected-pattern provenance; full Microsoft dependency graphs are not claimed complete.
+- Live ISO path requires an elevated operator on a machine with the expected ISO; CI always refuses LiveReadOnly.
+- Dependency evidence uses structured category checks plus protected-pattern provenance; full Microsoft dependency graphs are not claimed complete (live decision remained Blocked).
 - Approval signatures use test keys; production key management is out of scope.
