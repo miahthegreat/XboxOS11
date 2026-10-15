@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   review:
-    if: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success' && vars.AGENT_LOOP_ENABLED == 'true' }}
+    if: ${{ (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.conclusion == 'success' && vars.AGENT_LOOP_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
