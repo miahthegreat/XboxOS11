@@ -81,6 +81,37 @@ function Get-XboxOSRealDismExecutionEnabled {
     return $false
 }
 
+function Assert-XboxOSExecutionSafetyInvariants {
+    [CmdletBinding()]
+    param(
+        [object]$Transaction = $null,
+        [object]$Approval = $null
+    )
+
+    if (Get-XboxOSRealDismExecutionEnabled) {
+        throw 'Safety invariant violated: realDismExecutionEnabled must be False.'
+    }
+    if ($null -ne $Transaction) {
+        if ($Transaction.modifyingCommandsInvoked) {
+            throw 'Safety invariant violated: modifyingCommandsInvoked must be False.'
+        }
+        if ($Transaction.executionAuthorized) {
+            throw 'Safety invariant violated: executionAuthorized must be False.'
+        }
+        if ($Transaction.realDismExecutionEnabled) {
+            throw 'Safety invariant violated: transaction.realDismExecutionEnabled must be False.'
+        }
+    }
+    if ($null -ne $Approval) {
+        if ($Approval.PSObject.Properties['grantsRealDismExecution'] -and $Approval.grantsRealDismExecution) {
+            throw 'Safety invariant violated: approval.grantsRealDismExecution must be False.'
+        }
+        if ($Approval.PSObject.Properties['realDismExecutionEnabled'] -and $Approval.realDismExecutionEnabled) {
+            throw 'Safety invariant violated: approval.realDismExecutionEnabled must be False.'
+        }
+    }
+}
+
 function New-XboxOSAuditEvent {
     [CmdletBinding()]
     param(
@@ -229,7 +260,9 @@ function New-XboxOSApprovalRecord {
             'Approval records are planning/governance metadata only in Milestone 3.'
             'PendingOperatorApproval on a plan is not an approval record.'
             'This record never enables real DISM mutation.'
+            'Local JSON approval files are not cryptographically authenticated; future milestones must require signed/attested approvals.'
         )
+        cryptographicallyAuthenticated = $false
     }
 }
 
@@ -263,6 +296,31 @@ function Test-XboxOSApprovalValidity {
 
     if ($script:XboxOSApprovalStates -notcontains $state) {
         $errors.Add("Unknown approval state '$state'.") | Out-Null
+        $state = 'Invalidated'
+    }
+
+    if (-not $Approval.PSObject.Properties['binding'] -or $null -eq $Approval.binding) {
+        return [pscustomobject]@{
+            validForSimulation       = $false
+            effectiveState           = 'Invalidated'
+            errors                   = @('Approval binding is missing.')
+            grantsRealDismExecution  = $false
+            realDismExecutionEnabled = Get-XboxOSRealDismExecutionEnabled
+            cryptographicallyAuthenticated = $false
+        }
+    }
+    foreach ($required in @('contentHash', 'hashSchemaVersion', 'engineVersion', 'inventoryFingerprint', 'operatorId', 'scope', 'intendedEnvironment', 'approvedUtc', 'expiresUtc')) {
+        if (-not $Approval.binding.PSObject.Properties[$required] -or [string]::IsNullOrWhiteSpace([string]$Approval.binding.$required)) {
+            $errors.Add("Approval binding field '$required' is missing or empty.") | Out-Null
+            $state = 'Invalidated'
+        }
+    }
+    if (-not $Approval.binding.PSObject.Properties['manifestFingerprints'] -or $null -eq $Approval.binding.manifestFingerprints) {
+        $errors.Add('Approval binding.manifestFingerprints is missing.') | Out-Null
+        $state = 'Invalidated'
+    }
+    if (-not $Approval.binding.PSObject.Properties['approvedOperations'] -or @($Approval.binding.approvedOperations).Count -eq 0) {
+        $errors.Add('Approval binding.approvedOperations is missing or empty.') | Out-Null
         $state = 'Invalidated'
     }
 
@@ -334,11 +392,12 @@ function Test-XboxOSApprovalValidity {
     $validForSimulation = ($state -eq 'Approved' -and $errors.Count -eq 0)
 
     return [pscustomobject]@{
-        validForSimulation       = $validForSimulation
-        effectiveState           = $state
-        errors                   = $errors.ToArray()
-        grantsRealDismExecution  = $false
-        realDismExecutionEnabled = Get-XboxOSRealDismExecutionEnabled
+        validForSimulation                 = $validForSimulation
+        effectiveState                     = $state
+        errors                             = $errors.ToArray()
+        grantsRealDismExecution            = $false
+        realDismExecutionEnabled           = Get-XboxOSRealDismExecutionEnabled
+        cryptographicallyAuthenticated     = $false
     }
 }
 
@@ -900,6 +959,7 @@ function Invoke-XboxOSTransactionSimulate {
                     committed                = [bool]$commit.committed
                     modifyingCommandsInvoked = $false
                 }))
+        Assert-XboxOSExecutionSafetyInvariants -Transaction $Transaction -Approval $Transaction.approval
         return $Transaction
     }
     catch {
@@ -907,6 +967,7 @@ function Invoke-XboxOSTransactionSimulate {
         $null = $Transaction.failureReasons.Add($msg)
         $Transaction.executionAuthorized = $false
         $Transaction.modifyingCommandsInvoked = $false
+        $Transaction.realDismExecutionEnabled = $false
         $Transaction.simulatedAuthorizationResult = 'Denied'
 
         if ($msg -match 'preparation interrupted') {
@@ -988,6 +1049,11 @@ function Save-XboxOSExecutionSafetyReport {
     New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
     $jsonPath = Join-Path $OutputDirectory ($Stem + '.json')
     $mdPath = Join-Path $OutputDirectory ($Stem + '.md')
+
+    $Transaction.modifyingCommandsInvoked = $false
+    $Transaction.executionAuthorized = $false
+    $Transaction.realDismExecutionEnabled = $false
+    Assert-XboxOSExecutionSafetyInvariants -Transaction $Transaction -Approval $Transaction.approval
 
     $approvalState = 'NotRequested'
     if ($null -ne $Transaction.PSObject.Properties['approval'] -and $null -ne $Transaction.approval) {

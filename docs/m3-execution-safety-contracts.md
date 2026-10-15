@@ -46,6 +46,8 @@ An approval binds to:
 
 Approvals must not contain secrets. Recording an approval never triggers execution.
 
+**Authentication limitation (Milestone 3):** Local JSON approval records are **not** cryptographically authenticated. Tampering is detectable only via binding-hash recomputation against a trusted plan/inventory. A future milestone must require signed or attested approval records before any writable servicing is considered.
+
 ## Drift validation (`drift-v1`)
 
 Compares a candidate plan (+ optional approval) against a freshly supplied inventory snapshot (fixtures / simulated evidence only in M3).

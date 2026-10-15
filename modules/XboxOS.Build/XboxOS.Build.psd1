@@ -84,6 +84,7 @@
         'Get-XboxOSDependencySchemaVersion'
         'Get-XboxOSTransactionSchemaVersion'
         'Get-XboxOSRealDismExecutionEnabled'
+        'Assert-XboxOSExecutionSafetyInvariants'
         'New-XboxOSApprovalRecord'
         'Save-XboxOSApprovalRecord'
         'Test-XboxOSApprovalValidity'

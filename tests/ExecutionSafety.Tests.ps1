@@ -116,6 +116,58 @@ Describe 'XboxOS11 Milestone 3 execution safety' {
         $rev.validForSimulation | Should -BeFalse
     }
 
+    It 'invalidates tampered bindingHash and forged real-DISM approval flags' {
+        $approval = New-XboxOSApprovalRecord -Plan $script:Plan -ApprovedOperationIds $script:EligibleIds -OperatorId 'ops-1'
+        $approval.bindingHash = '0' * 64
+        $tampered = Test-XboxOSApprovalValidity -Approval $approval -Plan $script:Plan
+        $tampered.validForSimulation | Should -BeFalse
+        $tampered.effectiveState | Should -Be 'Invalidated'
+        $tampered.cryptographicallyAuthenticated | Should -BeFalse
+
+        $forged = New-XboxOSApprovalRecord -Plan $script:Plan -ApprovedOperationIds $script:EligibleIds -OperatorId 'ops-1'
+        $forged.grantsRealDismExecution = $true
+        $forged.realDismExecutionEnabled = $true
+        $denied = Test-XboxOSApprovalValidity -Approval $forged -Plan $script:Plan
+        $denied.validForSimulation | Should -BeFalse
+        $denied.grantsRealDismExecution | Should -BeFalse
+        { Assert-XboxOSExecutionSafetyInvariants -Approval $forged } | Should -Throw -ExpectedMessage '*grantsRealDismExecution*'
+    }
+
+    It 'fails closed on missing approval binding fields' {
+        $approval = New-XboxOSApprovalRecord -Plan $script:Plan -ApprovedOperationIds $script:EligibleIds -OperatorId 'ops-1'
+        $approval.binding.contentHash = ''
+        $bad = Test-XboxOSApprovalValidity -Approval $approval -Plan $script:Plan
+        $bad.validForSimulation | Should -BeFalse
+        ($bad.errors -join ' ') | Should -Match 'contentHash'
+
+        $noBind = [pscustomobject]@{
+            state                 = 'Approved'
+            approvalSchemaVersion = 'approval-v1'
+            bindingHash           = 'abc'
+            grantsRealDismExecution = $false
+            realDismExecutionEnabled = $false
+        }
+        $missing = Test-XboxOSApprovalValidity -Approval $noBind -Plan $script:Plan
+        $missing.effectiveState | Should -Be 'Invalidated'
+    }
+
+    It 'rejects simulated approval as real execution permission' {
+        $approval = New-XboxOSApprovalRecord -Plan $script:Plan -ApprovedOperationIds $script:EligibleIds -OperatorId 'ops-1'
+        $approval.grantsRealDismExecution | Should -BeFalse
+        $approval.cryptographicallyAuthenticated | Should -BeFalse
+        $tx = New-XboxOSServicingTransaction `
+            -Plan $script:Plan `
+            -FreshInventory $script:Inventory `
+            -CompatibilityManifest $script:Compatibility `
+            -DependencyEvidence $script:VerifiedEvidence `
+            -Backend (New-XboxOSMockServicingBackend)
+        $tx = Invoke-XboxOSTransactionPreflight -Transaction $tx
+        $tx = Invoke-XboxOSTransactionApplyApproval -Transaction $tx -Approval $approval
+        $tx.simulatedAuthorizationResult | Should -Be 'SimulatedApprovedForPreparation'
+        $tx.executionAuthorized | Should -BeFalse
+        Get-XboxOSRealDismExecutionEnabled | Should -BeFalse
+    }
+
     It 'detects inventory fingerprint drift and fail-closes' {
         $drifted = New-XboxOSInventorySnapshot `
             -AppxAvailability Available `
@@ -231,6 +283,61 @@ Describe 'XboxOS11 Milestone 3 execution safety' {
         $tx.state | Should -Be 'Aborted'
         $tx.modifyingCommandsInvoked | Should -BeFalse
         ($tx.recoveryRecommendation -match 'Discard') | Should -BeTrue
+    }
+
+    It 'handles preparation interruption, verification failure, and commit rejection without Completed' {
+        foreach ($mode in @('PreparationInterrupted', 'VerificationFailure', 'CommitRejected')) {
+            $backend = New-XboxOSMockServicingBackend -FailureMode $mode
+            $tx = New-XboxOSServicingTransaction `
+                -Plan $script:Plan `
+                -FreshInventory $script:Inventory `
+                -CompatibilityManifest $script:Compatibility `
+                -DependencyEvidence $script:VerifiedEvidence `
+                -Backend $backend
+            $tx = Invoke-XboxOSTransactionPreflight -Transaction $tx
+            $approval = New-XboxOSApprovalRecord -Plan $script:Plan -ApprovedOperationIds $script:EligibleIds -OperatorId 'ops-1'
+            $tx = Invoke-XboxOSTransactionApplyApproval -Transaction $tx -Approval $approval
+            $tx = Invoke-XboxOSTransactionSimulate -Transaction $tx
+            $tx.state | Should -Be 'RecoveryRequired'
+            $tx.state | Should -Not -Be 'Completed'
+            $tx.executionAuthorized | Should -BeFalse
+            $tx.modifyingCommandsInvoked | Should -BeFalse
+            $tx = Invoke-XboxOSTransactionRecover -Transaction $tx
+            $tx.state | Should -Be 'Aborted'
+            @($tx.audit | Where-Object type -eq 'StateTransition').Count | Should -BeGreaterThan 0
+        }
+    }
+
+    It 'default unknown-dependency preflight never reaches Completed' {
+        $tx = New-XboxOSServicingTransaction `
+            -Plan $script:Plan `
+            -FreshInventory $script:Inventory `
+            -CompatibilityManifest $script:Compatibility `
+            -DependencyEvidence @() `
+            -Backend (New-XboxOSMockServicingBackend)
+        $tx = Invoke-XboxOSTransactionPreflight -Transaction $tx
+        $tx.state | Should -Be 'Failed'
+        $tx.dependencyResult.aggregateOutcome | Should -Be 'Unknown'
+        $tx.simulatedAuthorizationResult | Should -Be 'Denied'
+        $tx.executionAuthorized | Should -BeFalse
+    }
+
+    It 'enforces hard safety invariants after simulated completion' {
+        $backend = New-XboxOSMockServicingBackend
+        $tx = New-XboxOSServicingTransaction `
+            -Plan $script:Plan `
+            -FreshInventory $script:Inventory `
+            -CompatibilityManifest $script:Compatibility `
+            -DependencyEvidence $script:VerifiedEvidence `
+            -Backend $backend
+        $tx = Invoke-XboxOSTransactionPreflight -Transaction $tx
+        $approval = New-XboxOSApprovalRecord -Plan $script:Plan -ApprovedOperationIds $script:EligibleIds -OperatorId 'ops-1'
+        $tx = Invoke-XboxOSTransactionApplyApproval -Transaction $tx -Approval $approval
+        $tx = Invoke-XboxOSTransactionSimulate -Transaction $tx
+        $tx.state | Should -Be 'Completed'
+        Assert-XboxOSExecutionSafetyInvariants -Transaction $tx -Approval $approval
+        $tx.executionAuthorized = $true
+        { Assert-XboxOSExecutionSafetyInvariants -Transaction $tx } | Should -Throw -ExpectedMessage '*executionAuthorized*'
     }
 
     It 'handles approval expiration during apply' {
