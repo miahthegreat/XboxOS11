@@ -114,6 +114,8 @@ jobs:
             'docs/m6d-isolation-evidence.md',
             'docs/m6d-operational-runbook.md',
             'docs/m6d-unresolved-risks.md',
+            'docs/m6d-completion-baseline.md',
+            'docs/m6e-controlled-live-discovery-design.md',
             'config/host-discovery-allowlist.json',
             'modules/XboxOS.Build/HostLabDiscovery.ps1',
             'modules/XboxOS.Build/AuthorizedHostDiscovery.ps1',

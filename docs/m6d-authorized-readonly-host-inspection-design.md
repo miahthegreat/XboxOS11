@@ -1,6 +1,6 @@
 # Milestone 6D — Operator-Authorized Real-Host Discovery
 
-**Status:** Design parent. Implementation contracts live in `AuthorizedHostDiscovery.ps1` (engine `6.3.0-d`) with mocked CI only. **Live host inspection remains unauthorized / inactive.**
+**Status:** Design parent. Implementation complete (PR #16 / `8418035`); see [m6d-completion-baseline.md](m6d-completion-baseline.md). **Live host inspection remains unauthorized / inactive** until separately approved Milestone 6E.
 
 This document proposes an optional, separately approved capability to perform **one bounded, read-only inspection** of a named Windows host and its virtualization environment. It does **not** authorize VM provisioning, networking changes, VHD mutation, DISM writable servicing, Layer D activation, or Windows image modification.
 

@@ -132,7 +132,7 @@ Mocked, allowlisted, read-only discovery contracts for host/hypervisor inspectio
 
 **Framework complete ≠ permission to inspect a production host, provision VMs, or modify Windows images.**
 
-## M6D: Operator-authorized real-host discovery (implementation; live inactive)
+## M6D: Operator-authorized real-host discovery (implementation; live inactive) — complete
 
 Typed, allowlisted, operator-authorization contracts for future read-only host inspection — tested with mocks only. Live activation remains False; default CLI decision remains **HostDiscoveryBlocked**. No provisioning, networking mutation, DISM writable servicing, or Layer D.
 
@@ -145,12 +145,32 @@ Typed, allowlisted, operator-authorization contracts for future read-only host i
 - CLI: `scripts/Test-AuthorizedHostDiscovery.ps1` (default **HostDiscoveryBlocked**; mocked approval only with explicit dual switches)
 - Engine `6.3.0-d`; module `0.6.4`; evidence namespace **`m6d`**; `ActualIsolationVerified` remains false for mock evidence
 - Distinct `HostDiscoveryReal` approval layer (rejects M6C mock approvals and fixture test keys for live trust)
+- Merged via PR #16 (`8418035`); completion baseline: [m6d-completion-baseline.md](m6d-completion-baseline.md)
 
 **Implementation complete ≠ operational host inspection authorization.**
 
-## Product target: Native WinUI 3 Windows 11 ISO Builder
+## M6E: Controlled live read-only host discovery (proposed)
 
-Long-term end-user product (not implemented in M6D): a desktop application that imports a supported Windows 11 ISO, discovers editions, applies gaming-focused presets and component selection with dependency/safety warnings, integrates drivers, supports unattended setup options, exports a custom ISO, and persists importable JSON presets with build logs and integrity reports. Backend contracts in this repository are intended for later WinUI 3 / .NET frontend consumption.
+Design-only proposal for enabling a real-host read-only adapter under two independent gates (implementation review + one operator-controlled run), with durable replay protection and separate `m6e` evidence — still without provisioning or mutation.
+
+- Design: [m6e-controlled-live-discovery-design.md](m6e-controlled-live-discovery-design.md)
+- Not implemented; not authorized; no live host-discovery commands
+
+## Product target: Native WinUI 3 XboxOS11 Builder
+
+Long-term end-user product (not implemented in M6D/M6E design): a desktop application that imports a supported Windows 11 ISO, discovers editions, applies gaming-focused presets and component selection with dependency/safety warnings, integrates drivers, supports unattended setup options, exports a custom ISO, and persists importable JSON presets with build logs and integrity reports.
+
+Intended user workflow (separate from lab authorization architecture):
+
+1. Select a supported Windows 11 ISO
+2. Choose a prebuilt gaming preset or Custom
+3. Review dependency-aware component changes
+4. Configure drivers and installation options
+5. Validate the proposed build
+6. Produce a customized bootable ISO
+7. Save and reuse the build configuration
+
+Backend contracts in this repository are intended for later WinUI 3 / .NET frontend consumption. GUI, ISO production, and new servicing are out of scope for M6D/M6E design.
 
 ## Later: Xbox mode integration
 
