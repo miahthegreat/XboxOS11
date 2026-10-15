@@ -124,6 +124,12 @@ jobs:
             'scripts/Test-AuthorizedHostDiscovery.ps1',
             'tests/HostLabDiscovery.Tests.ps1',
             'tests/AuthorizedHostDiscovery.Tests.ps1',
+            'modules/XboxOS.Build/ControlledLiveDiscovery.ps1',
+            'scripts/Invoke-ControlledLiveHostDiscovery.ps1',
+            'scripts/New-ControlledLiveDiscoveryApproval.ps1',
+            'scripts/New-ControlledLiveDiscoverySigningKey.ps1',
+            'tests/ControlledLiveDiscovery.Tests.ps1',
+            'docs/m6e-controlled-live-discovery-contracts.md',
             'README.md',
             'LICENSE'
           )
