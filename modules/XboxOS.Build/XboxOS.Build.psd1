@@ -110,16 +110,26 @@
         'Resolve-XboxOSReadOnlyDismArguments'
         'Assert-XboxOSReadOnlyDismOperationAllowed'
         'New-XboxOSMockReadOnlyDismAdapter'
+        'New-XboxOSRealReadOnlyDismAdapter'
+        'New-XboxOSRecordingDismRunner'
+        'Invoke-XboxOSNativeDismCommand'
+        'Test-XboxOSDismArgumentListMatchesAllowlist'
+        'Test-XboxOSContinuousIntegrationEnvironment'
         'Test-XboxOSSourceImagePrerequisites'
         'New-XboxOSDisposableWorkspace'
         'Assert-XboxOSDisposableWorkspaceOwnership'
+        'Assert-XboxOSPathOwnedAndSafe'
+        'ConvertFrom-XboxOSMountedImageInfoOutput'
         'Get-XboxOSDependencyCategoryEvidence'
         'New-XboxOSApprovalSigningPayload'
         'New-XboxOSApprovalSignature'
         'Test-XboxOSApprovalSignature'
         'New-XboxOSDisposableImagePreflight'
         'Invoke-XboxOSDisposableImagePreflightSimulate'
+        'Invoke-XboxOSDisposableImagePreflightLiveReadOnly'
         'Assert-XboxOSLiveReadOnlyPreflightAuthorization'
+        'Mount-XboxOSSourceIsoForReadOnlyPreflight'
+        'Dismount-XboxOSSourceIsoForReadOnlyPreflight'
         'Save-XboxOSDisposableImagePreflightReport'
     )
     CmdletsToExport   = @()
@@ -130,7 +140,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 4: disposable-image read-only preflight (simulation/mocks; live gated).'
+            ReleaseNotes = 'Milestone 4.1: real read-only DISM adapter + gated live lifecycle (CI remains simulation/mocks).'
         }
     }
 }
