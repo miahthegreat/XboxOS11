@@ -199,6 +199,11 @@ Supported, documented, reversible post-install gaming optimizations with exact r
 - Catalog: `config/gaming-tweaks.json`; applier/restorer: `postinstall/Set-GamingOptimizations.ps1`
 - Profile: optional `setup.postInstall.optimizations`; API catalog exposes `optimizations` and `neverChange`
 
-## M10: Recovery, maintenance, and release engineering
+## M10: Recovery, maintenance, and release engineering — complete
 
-Restore guidance and post-install rollback, versioned releases, reproducible packaging, changelog, and release automation.
+Single-source versioning (`VERSION` = 1.0.0), a recovery build record and `Restore-XboxOS11Components.ps1` on every image, release packaging with checksums and a manifest, a tag-triggered draft-release workflow, a changelog, and a product-first README.
+
+- Recovery: [recovery.md](recovery.md)
+- Release engineering: [release-engineering.md](release-engineering.md)
+- Readiness and remaining human steps: [v1-release-readiness.md](v1-release-readiness.md)
+- Changelog: [CHANGELOG.md](../CHANGELOG.md)

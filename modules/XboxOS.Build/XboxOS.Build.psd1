@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.7.0'
+    ModuleVersion     = '1.0.0'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -335,6 +335,9 @@
         'Write-XboxOSBuilderEvent'
         'ConvertFrom-XboxOSBuilderEventLine'
         'Get-XboxOSGamingTweakCatalog'
+        'Get-XboxOSToolkitVersion'
+        'Test-XboxOSReleaseVersionConsistency'
+        'New-XboxOSBuildRecord'
         'Get-XboxOSBuilderPreset'
         'Copy-XboxOSJsonObject'
         'New-XboxOSBuildProfile'
@@ -359,7 +362,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 7: Builder backend (presets, reusable build profiles, strict validation, component review, safe unattend generation, media overlay, JSON event protocol).'
+            ReleaseNotes = 'XboxOS11 1.0.0: native WinUI 3 Builder, profile-driven ISO builds, reversible gaming optimizations, recovery tooling, and release packaging. See CHANGELOG.md.'
         }
     }
 }

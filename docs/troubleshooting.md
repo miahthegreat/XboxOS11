@@ -89,3 +89,35 @@ Then remove the orphaned `artifacts/workspace/<buildId>/mount` folder if empty/u
 3. Use Settings → Gaming → Xbox mode
 4. Try `Win+F11`
 5. Do not expect handheld-only startup policies to apply automatically on desktop
+
+## Builder app
+
+### "The XboxOS11 toolkit could not be loaded"
+
+The app looks for `toolkit\` next to `XboxOS11.Builder.exe`, then the `XBOXOS11_TOOLKIT` environment variable, then parent folders (when run from the repository). Re-extract the release zip so `toolkit\` sits beside the exe.
+
+### "PowerShell was not found"
+
+Install PowerShell 7 (`winget install Microsoft.PowerShell`), or make sure Windows PowerShell (`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`) hasn't been removed.
+
+### "Read editions" or "Start" is disabled
+
+Both need administrator rights for a real build. Use **Restart as administrator** in the banner. Dry runs work without elevation.
+
+### App and toolkit versions differ
+
+The status bar shows both. Use the `toolkit\` folder that came in the same release zip as the app.
+
+### SmartScreen warning on first launch
+
+Release builds aren't code-signed yet. Check the download against `SHA256SUMS.txt`, then choose **More info › Run anyway**.
+
+### Validation errors
+
+Each error names the profile setting to fix (for example `output.directory must not be in a cloud-synchronized folder`). Protected components can't be selected, and unsupported settings (TPM/Secure Boot bypasses, Defender changes, product keys) can't be expressed. That's by design.
+
+## After installation
+
+- **First sign-in setup didn't run**: check `C:\ProgramData\XboxOS11\postinstall.log`. Run `%WINDIR%\Setup\Scripts\XboxOS11\Invoke-PostInstall.ps1` manually if needed.
+- **Launchers didn't install**: winget (App Installer) can take a few minutes to register after first sign-in. Run `Install-Launchers.ps1` from the same folder later.
+- **Undo changes**: see [recovery.md](recovery.md).

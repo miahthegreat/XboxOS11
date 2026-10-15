@@ -230,9 +230,21 @@ Describe 'XboxOS11 Milestone 7 builder backend' {
             (Get-Content -LiteralPath $eff2.ConfigurationPath -Raw | ConvertFrom-Json).target.edition | Should -Be 'Windows 11 Pro'
         }
 
-        It 'produces no overlay when unattend is disabled' {
+        It 'always stages the build record and recovery tools, but no unattend or first-logon files when disabled' {
             $eff = New-XboxOSBuilderEffectiveConfiguration -BuildProfile (& $script:NewProfile 'stock-safe') -WorkRoot (Join-Path $script:TempRoot 'eff3')
-            $eff.MediaOverlayDirectory | Should -BeNullOrEmpty
+            $check = Test-XboxOSMediaOverlay -Directory $eff.MediaOverlayDirectory
+            $check.valid | Should -BeTrue
+            $check.files | Should -Not -Contain 'autounattend.xml'
+            $check.files | Should -Contain 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\build-record.json'
+            $check.files | Should -Contain 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\Restore-XboxOS11Components.ps1'
+            $check.files | Should -Not -Contain 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\Invoke-PostInstall.ps1'
+            $record = Get-Content -LiteralPath (Join-Path $eff.MediaOverlayDirectory 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\build-record.json') -Raw | ConvertFrom-Json
+            $record.schemaVersion | Should -Be 'xboxos-build-record-v1'
+            $record.toolkitVersion | Should -Be (Get-XboxOSToolkitVersion)
+            $record.profileHash | Should -Be $eff.ProfileHash
+            @($record.removedApps).Count | Should -Be 0
+            @($record.disabledFeatures | ForEach-Object { $_.id }) | Should -Be @('Smb1')
+            $record.featurePayloadKept | Should -BeTrue
         }
 
         It 'rejects overlays that would replace boot or image files' {

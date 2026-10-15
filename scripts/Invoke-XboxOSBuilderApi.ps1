@@ -49,6 +49,7 @@ try {
         'catalog' {
             $data = [ordered]@{
                 engineVersion        = Get-XboxOSBuilderEngineVersion
+                toolkitVersion       = Get-XboxOSToolkitVersion
                 profileSchemaVersion = Get-XboxOSBuildProfileSchemaVersion
                 presets              = @(Get-XboxOSBuilderPreset | ForEach-Object {
                         [ordered]@{ id = $_.id; displayName = $_.displayName; description = $_.description; recommended = [bool]$_.recommended; order = [int]$_.order }

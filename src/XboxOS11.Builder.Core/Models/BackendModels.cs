@@ -5,6 +5,7 @@ namespace XboxOS11.Builder.Core.Models;
 public sealed class BuilderCatalog
 {
     public string EngineVersion { get; set; } = string.Empty;
+    public string ToolkitVersion { get; set; } = string.Empty;
     public string ProfileSchemaVersion { get; set; } = string.Empty;
     public List<PresetSummary> Presets { get; set; } = [];
     public List<string> Launchers { get; set; } = [];
