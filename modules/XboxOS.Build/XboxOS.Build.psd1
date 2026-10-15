@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.6.0'
+    ModuleVersion     = '0.6.1'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -196,6 +196,35 @@
         'Invoke-XboxOSExperimentPlanSimulate'
         'Save-XboxOSExperimentPlanReport'
         'Reset-XboxOSExperimentNonceRegistry'
+        'Get-XboxOSIsolatedLabEngineVersion'
+        'Get-XboxOSLabTopologySchemaVersion'
+        'Get-XboxOSLabIsolationSchemaVersion'
+        'Get-XboxOSLabOwnershipSchemaVersion'
+        'Get-XboxOSLabSnapshotSchemaVersion'
+        'Get-XboxOSLabTransactionSchemaVersion'
+        'Get-XboxOSLabEvidenceSchemaVersion'
+        'Get-XboxOSLabKeyPolicySchemaVersion'
+        'Get-XboxOSLabRealProvisioningEnabled'
+        'Get-XboxOSLabHypervisorCommandsInvoked'
+        'Assert-XboxOSIsolatedLabSafetyInvariants'
+        'Import-XboxOSLabTopologyCatalog'
+        'Test-XboxOSLabPathHasReparsePoint'
+        'Test-XboxOSLabInfrastructureBoundaries'
+        'Test-XboxOSLabVmIsolationPolicy'
+        'New-XboxOSLabOwnershipRecord'
+        'Test-XboxOSLabOwnershipRecord'
+        'New-XboxOSLabSnapshotRecord'
+        'Test-XboxOSLabSnapshotBinding'
+        'Test-XboxOSLabKeyPolicy'
+        'Assert-XboxOSLabTransactionTransition'
+        'New-XboxOSLabTransaction'
+        'Set-XboxOSLabTransactionState'
+        'Invoke-XboxOSLabSimulatedFailure'
+        'New-XboxOSLabFunctionalTestPlan'
+        'New-XboxOSLabEvidenceManifest'
+        'Invoke-XboxOSIsolatedLabSimulate'
+        'Save-XboxOSIsolatedLabReport'
+        'Reset-XboxOSLabNonceRegistry'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -205,7 +234,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 6A.1: harden readiness evidence binding, digests, allowlist, and workspace path validation.'
+            ReleaseNotes = 'Milestone 6B: isolated disposable-image lab infrastructure simulation (no provisioning, Layer D disabled).'
         }
     }
 }

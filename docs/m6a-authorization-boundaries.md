@@ -44,13 +44,13 @@ Catalog candidate readiness and effective readiness remain distinct fields (pres
 
 Authorization records bind: experiment content hash, plan hash, inventory fingerprint, ISO SHA256, operator id, layer, nonce, expiry. Replay of a prior nonce, expired consent, mismatched operator, forged signature, or allowlist change → fail closed / Invalidated.
 
-## Milestone 6B boundary (not implemented)
+## Milestone 6B boundary
 
-An eventual Milestone 6B disposable-image lab must:
+Milestone 6B implements **lab infrastructure simulation** only. It must:
 
-1. Keep Layer D disabled until a separately reviewed lab authorization gate exists.
-2. Mutate only owned disposable WIM paths (never source ISO or host OS).
-3. Require Layer B (+ Layer C when MissingEvidence) **and** an explicit 6B lab gate — never reuse M5 readiness or 6A planning approval as execution authorization.
-4. Preserve M1–M5 report baselines under `C:\XboxOS\Logs`.
+1. Keep Layer D disabled (structurally) until a separately reviewed execution gate exists.
+2. Never mutate source ISO or host OS; no writable DISM adapter.
+3. Require Layer B (+ Layer C when MissingEvidence) **and** an explicit future lab execution gate — never reuse M5 readiness or 6A planning approval as execution authorization.
+4. Preserve M1–M6A report baselines; write only under the `m6b` evidence namespace.
 
-Milestone 6B is **not** implemented here.
+See [m6b-lab-infrastructure-contracts.md](m6b-lab-infrastructure-contracts.md).

@@ -2064,5 +2064,6 @@ function Invoke-XboxOSMountCleanup {
 . (Join-Path $PSScriptRoot 'DisposableImagePreflight.ps1')
 . (Join-Path $PSScriptRoot 'ServicingReadiness.ps1')
 . (Join-Path $PSScriptRoot 'DisposableExperimentPlan.ps1')
+. (Join-Path $PSScriptRoot 'IsolatedLab.ps1')
 
 Export-ModuleMember -Function *

@@ -100,11 +100,18 @@ Baseline documentation: [m6a-completion-baseline.md](m6a-completion-baseline.md)
 
 **Planning complete ≠ execution authorized.** Writable servicing remains unauthorized.
 
-## M6B: Isolated disposable-image lab infrastructure (proposal only)
+## M6B: Isolated disposable-image lab infrastructure (simulation)
 
-Design-only proposal for isolated VM lab topology, disposable workspace ownership, ISO immutability, independent operator/risk authorization, trusted lab-key management, allowlists, integrity/rollback, evidence custody — without activating Layer D or implementing writable DISM.
+Simulation-only lab topology, boundary validation, VM isolation policy, ownership/snapshots, key-policy checks, integrity/recovery state machine, functional-test plan binding, and `m6b` evidence custody — without activating Layer D, provisioning real VMs, or implementing writable DISM.
 
-Proposal: [m6b-isolated-disposable-lab-design.md](m6b-isolated-disposable-lab-design.md). Not implemented.
+- Design parent: [m6b-isolated-disposable-lab-design.md](m6b-isolated-disposable-lab-design.md)
+- Contracts: [m6b-lab-infrastructure-contracts.md](m6b-lab-infrastructure-contracts.md)
+- Isolation: [m6b-vm-isolation-policy.md](m6b-vm-isolation-policy.md)
+- Integrity/recovery: [m6b-integrity-recovery.md](m6b-integrity-recovery.md)
+- Evidence: [m6b-evidence-custody.md](m6b-evidence-custody.md)
+- Unresolved risks: [m6b-unresolved-risks.md](m6b-unresolved-risks.md)
+- CLI: `scripts/Test-IsolatedLabReadiness.ps1`
+- Engine `6.1.0-b`; decision always **LabProvisioningBlocked** (or **RecoveryRequired** on injected failure); Layer D structurally disabled
 
 ## Later: Xbox mode integration
 

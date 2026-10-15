@@ -1,6 +1,6 @@
 # Milestone 6B — Isolated Disposable-Image Lab Infrastructure
 
-**Status:** Design proposal only. Not implemented. Not authorized.
+**Status:** Design parent. Simulation implementation lives in Milestone 6B contracts/docs and `IsolatedLab.ps1`. Real provisioning and Layer D remain unauthorized.
 
 This document proposes infrastructure for eventually conducting controlled Windows image experiments. It does **not** authorize writable DISM, Layer D activation, AppX removal, feature disablement, ISO/host mutation, or any real image operation.
 
