@@ -1,4 +1,11 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.0.0' }
+
+# Apply/restore tests write to a throwaway key under HKCU:\Software\XboxOS11Tests. Per CLAUDE.md they run only in
+# disposable environments: CI (GitHub Actions sets CI=true) or when a developer opts in explicitly.
+BeforeDiscovery {
+    $script:RegistryTestsAllowed = ($env:CI -eq 'true') -or ($env:XBOXOS11_ALLOW_REGISTRY_TESTS -eq '1')
+}
+
 Describe 'XboxOS11 Milestone 9 gaming optimizations (sandboxed registry)' {
     BeforeAll {
         $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
@@ -26,6 +33,14 @@ Describe 'XboxOS11 Milestone 9 gaming optimizations (sandboxed registry)' {
     AfterAll {
         Remove-Item -LiteralPath 'HKCU:\Software\XboxOS11Tests' -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $script:TempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    Context 'test environment' {
+        It 'always runs the registry apply/restore tests in GitHub Actions' {
+            if ($env:GITHUB_ACTIONS -eq 'true') {
+                ($env:CI -eq 'true') -or ($env:XBOXOS11_ALLOW_REGISTRY_TESTS -eq '1') | Should -BeTrue -Because 'CI must not silently skip registry safety tests'
+            }
+        }
     }
 
     Context 'catalog' {
@@ -56,7 +71,7 @@ Describe 'XboxOS11 Milestone 9 gaming optimizations (sandboxed registry)' {
         }
     }
 
-    Context 'apply and restore' {
+    Context 'apply and restore' -Skip:(-not $script:RegistryTestsAllowed) {
         It 'applies defaults, captures originals, and restores them exactly' {
             $sb = & $script:NewSandbox
             $gameBarKey = & $script:Reg $sb 'HKCU' 'Software\Microsoft\GameBar'
@@ -129,7 +144,7 @@ Describe 'XboxOS11 Milestone 9 gaming optimizations (sandboxed registry)' {
         }
     }
 
-    Context 'first-logon integration' {
+    Context 'first-logon integration' -Skip:(-not $script:RegistryTestsAllowed) {
         It 'applies profile optimizations through Invoke-PostInstall' {
             $sb = & $script:NewSandbox
             $dir = Join-Path $script:TempRoot ('post-' + [guid]::NewGuid().ToString('N'))
