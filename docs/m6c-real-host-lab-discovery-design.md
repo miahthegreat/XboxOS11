@@ -1,6 +1,6 @@
 # Milestone 6C — Read-Only Hypervisor and Host Lab Discovery
 
-**Status:** Design parent. Simulation/mock implementation lives in Milestone 6C contracts (`HostLabDiscovery.ps1`). Real-host enumeration and Layer D remain unauthorized.
+**Status:** Design parent. Simulation/mock implementation complete (PR #14 / `43b66b0`); see [m6c-completion-baseline.md](m6c-completion-baseline.md). Real-host enumeration remains unauthorized until separately approved Milestone 6D. Layer D remains unauthorized.
 
 This document proposes a separately gated, **read-only** process to inspect the actual Windows host and virtualization environment. It does **not** authorize VM provisioning, networking changes, VHD mutation, DISM writable servicing, Layer D activation, or any Windows image modification.
 
@@ -160,4 +160,4 @@ Milestone 6C may be accepted only when all of the following are true — still w
 3. Enumerating existing VMs/switches may expose sensitive names — evidence redaction policy needed.
 4. Operators may misread a successful discovery report as permission to provision — documentation and decision enums must remain explicit.
 
-This proposal does **not** authorize implementing Milestone 6C, running hypervisor commands, or enabling experimental mutation.
+Mocked Milestone 6C implementation is complete. This design parent still does **not** authorize live hypervisor enumeration, real-host inspection, provisioning, or experimental mutation — see proposed [m6d-authorized-readonly-host-inspection-design.md](m6d-authorized-readonly-host-inspection-design.md).
