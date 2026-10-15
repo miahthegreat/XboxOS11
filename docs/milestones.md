@@ -33,28 +33,37 @@ Completed:
 
 Baseline documentation: [m2-completion-baseline.md](m2-completion-baseline.md).
 
-## M3: Servicing execution safety (in progress — simulation only)
+## M3: Servicing execution safety (complete — simulation only)
 
 Approval contracts, inventory drift detection, dependency guards, and transactional state machine with mock backends. Real DISM mutation remains disabled.
+
+Completed:
 
 - Contracts: [m3-execution-safety-contracts.md](m3-execution-safety-contracts.md)
 - State machine: [m3-transaction-state-machine.md](m3-transaction-state-machine.md)
 - Implementation notes: [m3-implementation-notes.md](m3-implementation-notes.md)
+- Unresolved risks: [m3-unresolved-risks.md](m3-unresolved-risks.md)
 - CLI: `scripts/Test-ExecutionSafety.ps1` (simulation reports under `C:\XboxOS\Logs`)
-- `realDismExecutionEnabled` is always `false` (no enable switch)
+- Merged via PR #4 (`be7f21c`); `realDismExecutionEnabled` remains always `false`
 
-## M4: Xbox mode integration
+Baseline documentation: [m3-completion-baseline.md](m3-completion-baseline.md).
+
+## M4: Disposable image integration and read-only execution preflight (proposed — not started)
+
+Disposable WIM identity/integrity, signed approval design, independent drift checks, realistic dependency validation, read-only DISM adapter testing, and transactional preparation/cleanup — still no writable servicing. See prerequisites in [m3-completion-baseline.md](m3-completion-baseline.md).
+
+## M5: Xbox mode integration
 
 Supported Xbox FSE configuration, controller-first startup, and launcher integration—only after validating Microsoft-supported mechanisms on desktop hardware.
 
-## M5: Gaming performance
+## M6: Gaming performance
 
 Benchmark-driven service and startup optimization for Ryzen 7 7800X3D and Radeon RX 9070 XT, without disabling security for synthetic gains.
 
-## M6: Recovery and maintenance
+## M7: Recovery and maintenance
 
 Windows Update validation, recovery options, rollback mechanisms, and compatibility testing.
 
-## M7: Release engineering
+## M8: Release engineering
 
 Versioned build manifests, release documentation, automated validation, and reproducible local builds.

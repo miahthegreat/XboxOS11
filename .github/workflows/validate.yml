@@ -65,6 +65,7 @@ jobs:
             'docs/m3-transaction-state-machine.md',
             'docs/m3-implementation-notes.md',
             'docs/m3-unresolved-risks.md',
+            'docs/m3-completion-baseline.md',
             'modules/XboxOS.Build/ServicingPlan.ps1',
             'modules/XboxOS.Build/ExecutionSafety.ps1',
             'scripts/New-ServicingPlan.ps1',
