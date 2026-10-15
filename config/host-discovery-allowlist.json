@@ -1,10 +1,11 @@
 {
   "schemaVersion": "host-discovery-allowlist-v1",
-  "catalogVersion": "6.2.0-c",
+  "catalogVersion": "6.3.0-d",
   "notes": [
-    "Milestone 6C read-only discovery allowlist.",
-    "Default adapter mode is MockedSimulation; real-host execution is not enabled.",
-    "Any command not listed here is denied."
+    "Milestone 6C/6D read-only discovery allowlist.",
+    "Default adapter mode is MockedSimulation; live real-host execution is not enabled in CI.",
+    "Milestone 6D adds typed AuthorizedMockReadOnly / gated RealHostReadOnly interfaces using these operations.",
+    "Any command not listed here is denied. No generic shell executor."
   ],
   "allowedCategories": [
     "OsInformation",

@@ -1,6 +1,6 @@
 # Milestone 6D — Operator-Authorized Real-Host Discovery
 
-**Status:** Design proposal only. **Not implemented. Not authorized.**
+**Status:** Design parent. Implementation contracts live in `AuthorizedHostDiscovery.ps1` (engine `6.3.0-d`) with mocked CI only. **Live host inspection remains unauthorized / inactive.**
 
 This document proposes an optional, separately approved capability to perform **one bounded, read-only inspection** of a named Windows host and its virtualization environment. It does **not** authorize VM provisioning, networking changes, VHD mutation, DISM writable servicing, Layer D activation, or Windows image modification.
 
@@ -170,4 +170,4 @@ Terminal outcomes must keep lab provisioning blocked and Layer D disabled.
 3. Operators may treat a successful 6D run as isolation proof or provisioning permission — decision language must stay explicit.
 4. Partial host visibility can look “green” if Unknown/Unverified is not surfaced prominently.
 
-This proposal does **not** authorize implementing Milestone 6D, running live host-discovery commands, or enabling experimental mutation.
+Mocked Milestone 6D contracts are implemented. This design parent still does **not** authorize live host-discovery commands, provisioning, or experimental mutation.

@@ -132,12 +132,25 @@ Mocked, allowlisted, read-only discovery contracts for host/hypervisor inspectio
 
 **Framework complete ≠ permission to inspect a production host, provision VMs, or modify Windows images.**
 
-## M6D: Operator-authorized real-host discovery (proposed)
+## M6D: Operator-authorized real-host discovery (implementation; live inactive)
 
-Design-only proposal for optional, separately approved, bounded read-only inspection of a named host — still without provisioning, networking mutation, DISM writable servicing, or Layer D.
+Typed, allowlisted, operator-authorization contracts for future read-only host inspection — tested with mocks only. Live activation remains False; default CLI decision remains **HostDiscoveryBlocked**. No provisioning, networking mutation, DISM writable servicing, or Layer D.
 
 - Design: [m6d-authorized-readonly-host-inspection-design.md](m6d-authorized-readonly-host-inspection-design.md)
-- Not implemented; not authorized; no live host-discovery commands
+- Adapter: [m6d-readonly-host-adapter.md](m6d-readonly-host-adapter.md)
+- Authorization: [m6d-operator-authorization.md](m6d-operator-authorization.md)
+- Isolation evidence: [m6d-isolation-evidence.md](m6d-isolation-evidence.md)
+- Operational runbook (future manual): [m6d-operational-runbook.md](m6d-operational-runbook.md)
+- Unresolved risks: [m6d-unresolved-risks.md](m6d-unresolved-risks.md)
+- CLI: `scripts/Test-AuthorizedHostDiscovery.ps1` (default **HostDiscoveryBlocked**; mocked approval only with explicit dual switches)
+- Engine `6.3.0-d`; module `0.6.4`; evidence namespace **`m6d`**; `ActualIsolationVerified` remains false for mock evidence
+- Distinct `HostDiscoveryReal` approval layer (rejects M6C mock approvals and fixture test keys for live trust)
+
+**Implementation complete ≠ operational host inspection authorization.**
+
+## Product target: Native WinUI 3 Windows 11 ISO Builder
+
+Long-term end-user product (not implemented in M6D): a desktop application that imports a supported Windows 11 ISO, discovers editions, applies gaming-focused presets and component selection with dependency/safety warnings, integrates drivers, supports unattended setup options, exports a custom ISO, and persists importable JSON presets with build logs and integrity reports. Backend contracts in this repository are intended for later WinUI 3 / .NET frontend consumption.
 
 ## Later: Xbox mode integration
 
