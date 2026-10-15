@@ -342,6 +342,13 @@ public sealed partial class MainViewModel : ObservableObject
             StatusMessage = "Loading presets…";
 
             var catalog = await _backend.GetCatalogAsync();
+            var appVersion = typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "?";
+            BackendDescription = $"XboxOS11 {appVersion} · toolkit {catalog.ToolkitVersion} · {BackendDescription}";
+            if (!string.Equals(appVersion, catalog.ToolkitVersion, StringComparison.Ordinal))
+            {
+                ErrorMessage = $"The app ({appVersion}) and toolkit ({catalog.ToolkitVersion}) versions differ. Use the toolkit folder that shipped with this app.";
+            }
+
             Presets.Clear();
             foreach (var p in catalog.Presets.OrderBy(p => p.Order))
             {

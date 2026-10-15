@@ -146,6 +146,15 @@ jobs:
             'postinstall/Set-GamingOptimizations.ps1',
             'tests/GamingOptimizations.Tests.ps1',
             'docs/m9-gaming-performance.md',
+            'VERSION',
+            'CHANGELOG.md',
+            'postinstall/Restore-XboxOS11Components.ps1',
+            'scripts/New-XboxOSRelease.ps1',
+            'tests/Release.Tests.ps1',
+            'docs/recovery.md',
+            'docs/release-engineering.md',
+            'docs/v1-release-readiness.md',
+            '.github/workflows/release.yml',
             'README.md',
             'LICENSE'
           )

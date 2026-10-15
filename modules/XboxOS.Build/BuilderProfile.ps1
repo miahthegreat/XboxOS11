@@ -631,25 +631,31 @@ function New-XboxOSBuilderEffectiveConfiguration {
     $buildPath = Join-Path $full 'build.json'
     ($build | ConvertTo-Json -Depth 12) | Set-Content -LiteralPath $buildPath -Encoding UTF8
 
-    $overlay = $null
+    # Every image carries a build record and recovery tooling (Windows Setup copies sources\$OEM$\$$ to
+    # %WINDIR%), so what XboxOS11 changed can always be reviewed and undone on the installed PC.
+    $overlay = Join-Path $full 'media-overlay'
+    $scriptsRel = 'sources\$OEM$\$$\Setup\Scripts\XboxOS11'
+    $scripts = Join-Path $overlay $scriptsRel
+    New-Item -ItemType Directory -Path $scripts -Force | Out-Null
     $overlayFiles = @()
+    $postFiles = @('Restore-XboxOS11Components.ps1', 'Set-GamingOptimizations.ps1', 'Verify-System.ps1')
+    if ([bool]$BuildProfile.setup.unattend -and [bool]$BuildProfile.setup.postInstall.enabled) {
+        $postFiles += @('Invoke-PostInstall.ps1', 'Setup-Gaming.ps1', 'Install-Launchers.ps1')
+        ((New-XboxOSPostInstallOptions -BuildProfile $BuildProfile) | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $scripts 'postinstall.json') -Encoding UTF8
+        $overlayFiles += ($scriptsRel + '\postinstall.json')
+    }
+    foreach ($f in $postFiles) {
+        Copy-Item -LiteralPath (Join-Path $m.RepoRoot ('postinstall\' + $f)) -Destination (Join-Path $scripts $f) -Force
+        $overlayFiles += ($scriptsRel + '\' + $f)
+    }
+    Copy-Item -LiteralPath (Join-Path $m.RepoRoot 'config\gaming-tweaks.json') -Destination (Join-Path $scripts 'gaming-tweaks.json') -Force
+    $overlayFiles += ($scriptsRel + '\gaming-tweaks.json')
+    ((New-XboxOSBuildRecord -BuildProfile $BuildProfile -ProfileHash $hash -RepoRoot $m.RepoRoot) | ConvertTo-Json -Depth 8) |
+        Set-Content -LiteralPath (Join-Path $scripts 'build-record.json') -Encoding UTF8
+    $overlayFiles += ($scriptsRel + '\build-record.json')
     if ([bool]$BuildProfile.setup.unattend) {
-        $overlay = Join-Path $full 'media-overlay'
-        New-Item -ItemType Directory -Path $overlay -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $overlay 'autounattend.xml') -Value (New-XboxOSUnattendXml -BuildProfile $BuildProfile) -Encoding UTF8
-        $overlayFiles += 'autounattend.xml'
-        if ([bool]$BuildProfile.setup.postInstall.enabled) {
-            $scripts = Join-Path $overlay 'sources\$OEM$\$$\Setup\Scripts\XboxOS11'
-            New-Item -ItemType Directory -Path $scripts -Force | Out-Null
-            foreach ($f in @('Invoke-PostInstall.ps1', 'Set-GamingOptimizations.ps1', 'Setup-Gaming.ps1', 'Install-Launchers.ps1', 'Verify-System.ps1')) {
-                Copy-Item -LiteralPath (Join-Path $m.RepoRoot ('postinstall\' + $f)) -Destination (Join-Path $scripts $f) -Force
-                $overlayFiles += ('sources\$OEM$\$$\Setup\Scripts\XboxOS11\' + $f)
-            }
-            Copy-Item -LiteralPath (Join-Path $m.RepoRoot 'config\gaming-tweaks.json') -Destination (Join-Path $scripts 'gaming-tweaks.json') -Force
-            $overlayFiles += 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\gaming-tweaks.json'
-            ((New-XboxOSPostInstallOptions -BuildProfile $BuildProfile) | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $scripts 'postinstall.json') -Encoding UTF8
-            $overlayFiles += 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\postinstall.json'
-        }
+        $overlayFiles = @('autounattend.xml') + $overlayFiles
     }
     Export-XboxOSBuildProfile -BuildProfile $BuildProfile -Path (Join-Path $full 'profile.json') | Out-Null
 
@@ -660,6 +666,92 @@ function New-XboxOSBuilderEffectiveConfiguration {
         MediaOverlayFiles     = [string[]]$overlayFiles
         ProfileHash           = $hash
         Warnings              = $check.warnings
+    }
+}
+
+function Get-XboxOSToolkitVersion {
+    [CmdletBinding()]
+    param([string]$RepoRoot = $null)
+
+    if (-not $RepoRoot) { $RepoRoot = Get-XboxOSRepoRoot }
+    $path = Join-Path $RepoRoot 'VERSION'
+    if (-not (Test-Path -LiteralPath $path)) { return '0.0.0-dev' }
+    return (Get-Content -LiteralPath $path -Raw -Encoding UTF8).Trim()
+}
+
+function Test-XboxOSReleaseVersionConsistency {
+    <#
+    .SYNOPSIS
+      VERSION is the single source of truth; the module manifest, .NET props, and app manifest must match it.
+    #>
+    [CmdletBinding()]
+    param([string]$RepoRoot = $null)
+
+    if (-not $RepoRoot) { $RepoRoot = Get-XboxOSRepoRoot }
+    $version = Get-XboxOSToolkitVersion -RepoRoot $RepoRoot
+    $errors = New-Object System.Collections.Generic.List[string]
+    if ($version -notmatch '^\d+\.\d+\.\d+$') { [void]$errors.Add("VERSION '$version' is not MAJOR.MINOR.PATCH.") }
+
+    $psd = Import-PowerShellDataFile -LiteralPath (Join-Path $RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1')
+    if ([string]$psd.ModuleVersion -ne $version) { [void]$errors.Add("Module manifest ModuleVersion '$($psd.ModuleVersion)' != VERSION '$version'.") }
+
+    foreach ($props in @('src\Directory.Build.props', 'tests\dotnet\Directory.Build.props')) {
+        $path = Join-Path $RepoRoot $props
+        if (Test-Path -LiteralPath $path) {
+            $v = ([xml](Get-Content -LiteralPath $path -Raw)).Project.PropertyGroup.Version
+            if ([string]$v -ne $version) { [void]$errors.Add("$props Version '$v' != VERSION '$version'.") }
+        }
+    }
+    $appManifest = Join-Path $RepoRoot 'src\XboxOS11.Builder.App\app.manifest'
+    if (Test-Path -LiteralPath $appManifest) {
+        $v = ([xml](Get-Content -LiteralPath $appManifest -Raw)).assembly.assemblyIdentity.version
+        if ([string]$v -ne "$version.0") { [void]$errors.Add("app.manifest version '$v' != '$version.0'.") }
+    }
+    return [pscustomobject]@{ version = $version; consistent = [bool]($errors.Count -eq 0); errors = [string[]]@($errors.ToArray()) }
+}
+
+function New-XboxOSBuildRecord {
+    <#
+    .SYNOPSIS
+      Describes exactly what an image build changed, for the installed PC's recovery tooling.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$BuildProfile,
+        [Parameter(Mandatory)][string]$ProfileHash,
+        [string]$RepoRoot = $null
+    )
+
+    $m = Get-XboxOSBuilderManifestSet -RepoRoot $RepoRoot
+    $apps = @($m.RemoveApps.candidates | Where-Object { @($BuildProfile.apps.remove) -contains [string]$_.id } | ForEach-Object {
+            [ordered]@{ id = [string]$_.id; displayName = [string]$_.displayName; patterns = @($_.patterns) }
+        })
+    $features = @($m.DisableFeatures.candidates | Where-Object { @($BuildProfile.features.disable) -contains [string]$_.id } | ForEach-Object {
+            [ordered]@{ id = [string]$_.id; featureNames = @($_.featureNames) }
+        })
+    $post = $BuildProfile.setup.postInstall
+    return [ordered]@{
+        schemaVersion     = 'xboxos-build-record-v1'
+        toolkitVersion    = Get-XboxOSToolkitVersion -RepoRoot $m.RepoRoot
+        builderEngine     = $script:XboxOSBuilderEngineVersion
+        profileName       = [string]$BuildProfile.name
+        presetId          = [string]$BuildProfile.presetId
+        profileHash       = $ProfileHash
+        createdUtc        = [datetime]::UtcNow.ToString('o')
+        removedApps       = $apps
+        disabledFeatures  = $features
+        featurePayloadKept = -not [bool]$m.DisableFeatures.removePayload
+        driversIntegrated = [bool]$BuildProfile.drivers.enabled
+        updatesIntegrated = [bool]$BuildProfile.updates.enabled
+        unattend          = [bool]$BuildProfile.setup.unattend
+        postInstall       = [ordered]@{
+            enabled       = [bool]$post.enabled
+            gameMode      = [bool]$post.gameMode
+            hardwareAcceleratedGpuScheduling = [bool]$post.hardwareAcceleratedGpuScheduling
+            optimizations = @($(if ($post.PSObject.Properties['optimizations']) { $post.optimizations }))
+            launchers     = @($post.launchers)
+        }
+        recovery          = 'Run %WINDIR%\Setup\Scripts\XboxOS11\Restore-XboxOS11Components.ps1 as administrator.'
     }
 }
 
