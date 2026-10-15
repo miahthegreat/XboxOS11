@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   fix:
-    if: ${{ vars.AGENT_LOOP_ENABLED == 'true' }}
+    if: ${{ false }} # Security hold: disabled until a credentials-isolated Cursor execution design passes review
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
