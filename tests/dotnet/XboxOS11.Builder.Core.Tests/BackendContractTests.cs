@@ -100,8 +100,9 @@ public class BackendContractTests
         profile.Output.Directory = Path.Combine(tmp.Path, "out");
 
         var events = new List<BuildEvent>();
-        var outcome = await backend.RunBuildAsync(profile, dryRun: true, new SyncProgress<BuildEvent>(events.Add), null);
-        Assert.True(outcome.Succeeded, $"exit {outcome.ExitCode}");
+        var log = new List<string>();
+        var outcome = await backend.RunBuildAsync(profile, dryRun: true, new SyncProgress<BuildEvent>(events.Add), new SyncProgress<string>(log.Add));
+        Assert.True(outcome.Succeeded, $"exit {outcome.ExitCode}:\n{string.Join('\n', log.TakeLast(40))}");
         Assert.Contains(events, e => e.Type == "phase" && e.GetString("name") == "ExportIso" && e.GetString("status") == "succeeded");
     }
 }
