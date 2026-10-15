@@ -154,12 +154,13 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M3 completion baseline](docs/m3-completion-baseline.md)
 - [M4 disposable-image preflight contracts](docs/m4-disposable-image-preflight-contracts.md)
 - [M4 unresolved risks](docs/m4-unresolved-risks.md)
+- [M4 completion baseline](docs/m4-completion-baseline.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
 ## Roadmap
 
-**M1** Image build foundation → **M2** Unattended install → **M3** Xbox mode integration → **M4** Gaming performance → **M5** Recovery → **M6** Release engineering.
+**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → later Xbox mode / performance / recovery / release engineering.
 
 ## License
 

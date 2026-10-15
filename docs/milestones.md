@@ -48,28 +48,37 @@ Completed:
 
 Baseline documentation: [m3-completion-baseline.md](m3-completion-baseline.md).
 
-## M4: Disposable image integration and read-only execution preflight (in progress — simulation/mocks)
+## M4: Disposable image integration and read-only execution preflight (complete)
 
-Read-only DISM allowlist adapter, disposable workspace ownership, inventory/drift/dependency preflight, approval-auth design with test-key signatures. Live read-only ISO export/mount remains gated pending explicit operator approval after review.
+Read-only DISM allowlist adapter, disposable workspace ownership, owned registry-hive lifecycle, inventory/drift/dependency preflight, and operator-gated live read-only ISO export/mount. Writable servicing remains unauthorized.
+
+Completed:
 
 - Contracts: [m4-disposable-image-preflight-contracts.md](m4-disposable-image-preflight-contracts.md)
 - Implementation notes: [m4-implementation-notes.md](m4-implementation-notes.md)
 - Unresolved risks: [m4-unresolved-risks.md](m4-unresolved-risks.md)
-- CLI: `scripts/Test-DisposableImagePreflight.ps1` (default Mode=Simulation)
-- `realDismExecutionEnabled` remains always `false`
+- CLI: `scripts/Test-DisposableImagePreflight.ps1` (default Mode=Simulation; LiveReadOnly operator-gated)
+- Merged via PR #6 (`3c2a5d8`); live run `preflight-20261015034144569` lifecycle Completed / decision Blocked (dependencies)
+- `realDismExecutionEnabled` / `modifyingCommandsInvoked` / `executionAuthorized` remain `false`
 
-## M5: Xbox mode integration
+Baseline documentation: [m4-completion-baseline.md](m4-completion-baseline.md).
+
+## M5: Dependency evidence and servicing readiness (proposed — not started)
+
+Close dependency/authorization gaps before any writable image modification design. See proposed acceptance criteria in [m4-completion-baseline.md](m4-completion-baseline.md).
+
+## M6: Xbox mode integration
 
 Supported Xbox FSE configuration, controller-first startup, and launcher integration—only after validating Microsoft-supported mechanisms on desktop hardware.
 
-## M6: Gaming performance
+## M7: Gaming performance
 
 Benchmark-driven service and startup optimization for Ryzen 7 7800X3D and Radeon RX 9070 XT, without disabling security for synthetic gains.
 
-## M7: Recovery and maintenance
+## M8: Recovery and maintenance
 
 Windows Update validation, recovery options, rollback mechanisms, and compatibility testing.
 
-## M8: Release engineering
+## M9: Release engineering
 
 Versioned build manifests, release documentation, automated validation, and reproducible local builds.
