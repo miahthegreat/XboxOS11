@@ -48,9 +48,15 @@ Completed:
 
 Baseline documentation: [m3-completion-baseline.md](m3-completion-baseline.md).
 
-## M4: Disposable image integration and read-only execution preflight (proposed — not started)
+## M4: Disposable image integration and read-only execution preflight (in progress — simulation/mocks)
 
-Disposable WIM identity/integrity, signed approval design, independent drift checks, realistic dependency validation, read-only DISM adapter testing, and transactional preparation/cleanup — still no writable servicing. See prerequisites in [m3-completion-baseline.md](m3-completion-baseline.md).
+Read-only DISM allowlist adapter, disposable workspace ownership, inventory/drift/dependency preflight, approval-auth design with test-key signatures. Live read-only ISO export/mount remains gated pending explicit operator approval after review.
+
+- Contracts: [m4-disposable-image-preflight-contracts.md](m4-disposable-image-preflight-contracts.md)
+- Implementation notes: [m4-implementation-notes.md](m4-implementation-notes.md)
+- Unresolved risks: [m4-unresolved-risks.md](m4-unresolved-risks.md)
+- CLI: `scripts/Test-DisposableImagePreflight.ps1` (default Mode=Simulation)
+- `realDismExecutionEnabled` remains always `false`
 
 ## M5: Xbox mode integration
 

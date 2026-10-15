@@ -152,6 +152,8 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M3 transaction state machine](docs/m3-transaction-state-machine.md)
 - [M3 unresolved risks](docs/m3-unresolved-risks.md)
 - [M3 completion baseline](docs/m3-completion-baseline.md)
+- [M4 disposable-image preflight contracts](docs/m4-disposable-image-preflight-contracts.md)
+- [M4 unresolved risks](docs/m4-unresolved-risks.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
