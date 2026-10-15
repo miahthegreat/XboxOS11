@@ -104,6 +104,8 @@ jobs:
             'docs/m6b-evidence-custody.md',
             'docs/m6b-unresolved-risks.md',
             'docs/m6b-pssa-warning-review.md',
+            'docs/m6b-completion-baseline.md',
+            'docs/m6c-real-host-lab-discovery-design.md',
             'README.md',
             'LICENSE'
           )

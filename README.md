@@ -164,12 +164,17 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M6A authorization boundaries](docs/m6a-authorization-boundaries.md)
 - [M6A functional validation matrix](docs/m6a-functional-validation-matrix.md)
 - [M6A unresolved risks](docs/m6a-unresolved-risks.md)
+- [M6B lab infrastructure contracts](docs/m6b-lab-infrastructure-contracts.md)
+- [M6B completion baseline](docs/m6b-completion-baseline.md)
+- [M6C real-host lab discovery design](docs/m6c-real-host-lab-discovery-design.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
 ## Roadmap
 
-**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → later disposable lab / Xbox mode / performance / recovery / release engineering.
+**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → proposed **M6C** read-only host discovery → later Xbox mode / performance / recovery / release engineering.
+
+M6B acceptance is **not** permission to provision VMs or modify Windows images.
 
 ## License
 

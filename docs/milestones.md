@@ -100,9 +100,9 @@ Baseline documentation: [m6a-completion-baseline.md](m6a-completion-baseline.md)
 
 **Planning complete ≠ execution authorized.** Writable servicing remains unauthorized.
 
-## M6B: Isolated disposable-image lab infrastructure (simulation)
+## M6B: Isolated disposable-image lab infrastructure (simulation) — complete
 
-Simulation-only lab topology, boundary validation, VM isolation policy, ownership/snapshots, key-policy checks, integrity/recovery state machine, functional-test plan binding, and `m6b` evidence custody — without activating Layer D, provisioning real VMs, or implementing writable DISM.
+Simulation-only lab topology, boundary validation, VM isolation **policy**, ownership/snapshots, key-policy checks, integrity/recovery simulation, functional-test plan binding, and `m6b` evidence custody — without activating Layer D, provisioning real VMs, or implementing writable DISM.
 
 - Design parent: [m6b-isolated-disposable-lab-design.md](m6b-isolated-disposable-lab-design.md)
 - Contracts: [m6b-lab-infrastructure-contracts.md](m6b-lab-infrastructure-contracts.md)
@@ -112,8 +112,17 @@ Simulation-only lab topology, boundary validation, VM isolation policy, ownershi
 - Unresolved risks: [m6b-unresolved-risks.md](m6b-unresolved-risks.md)
 - CLI: `scripts/Test-IsolatedLabReadiness.ps1` (authoritative M1/M4+M5+M6A chain; inline only with explicit switches)
 - Engine `6.1.1-b`; decision always **LabProvisioningBlocked** (or **RecoveryRequired** on injected failure); Layer D structurally disabled
-- Isolation: `PolicyValidated` ≠ actual verification (`HypervisorNotInspected` / `NetworkIsolationNotVerified`)
+- Isolation: `PolicyValidated` ≠ actual verification (`HypervisorNotInspected` / `NetworkIsolationNotVerified` / `ActualIsolationVerified=False`)
 - PSSA review: [m6b-pssa-warning-review.md](m6b-pssa-warning-review.md)
+- Merged via PR #12 (`ca30aec`); completion baseline: [m6b-completion-baseline.md](m6b-completion-baseline.md)
+
+**Infrastructure complete ≠ permission to provision VMs or modify Windows images.**
+
+## M6C: Read-only hypervisor and host lab discovery (proposal only)
+
+Design-only proposal for separately gated, read-only inspection of the Windows host and virtualization environment — without provisioning, networking changes, DISM mutation, or Layer D.
+
+Proposal: [m6c-real-host-lab-discovery-design.md](m6c-real-host-lab-discovery-design.md). Not implemented.
 
 ## Later: Xbox mode integration
 
