@@ -63,20 +63,33 @@ Completed:
 
 Baseline documentation: [m4-completion-baseline.md](m4-completion-baseline.md).
 
-## M5: Dependency evidence and servicing readiness (in progress — analysis only)
+## M5: Dependency evidence and servicing readiness (complete — analysis only)
 
 Evidence-driven dependency graph, capability requirements, operation-specific readiness classifications, and servicing-readiness reports. No writable DISM.
+
+Completed:
 
 - Contracts: [m5-dependency-evidence-contracts.md](m5-dependency-evidence-contracts.md)
 - Future test strategy: [m5-future-modification-test-strategy.md](m5-future-modification-test-strategy.md)
 - Implementation notes: [m5-implementation-notes.md](m5-implementation-notes.md)
 - Unresolved risks: [m5-unresolved-risks.md](m5-unresolved-risks.md)
-- CLI: `scripts/Test-ServicingReadiness.ps1` (default non-elevated, non-mutating)
-- `executionAuthorized` / `servicingAuthorized` / `realDismExecutionEnabled` remain `false`
+- CLI: `scripts/Test-ServicingReadiness.ps1` (default authoritative inventory; `-Simulation` cannot produce production ReadyForReview)
+- Engine `5.1.0`; authoritative decision **Blocked**; all eight Eligible ops effective **MissingEvidence**
+- Merged via PR #8 (`9cb6f6f`); all four execution safety flags remain `false`
 
-## M6: Xbox mode integration
+Baseline documentation: [m5-completion-baseline.md](m5-completion-baseline.md).
 
-Supported Xbox FSE configuration, controller-first startup, and launcher integration—only after validating Microsoft-supported mechanisms on desktop hardware.
+**Implementation complete ≠ servicing ready.** Writable servicing remains unauthorized.
+
+## M6: Disposable-image experiment design and functional validation (proposal only)
+
+Design-only proposal for non-mutating experiment planning, explicit operator authorization, disposable-image-only mutation controls, scoped allowlists, snapshots/integrity, evidence-bound selection, reversible execution, isolated VM functional validation (Xbox FSE, Gaming Services, Store, controllers, audio, graphics, networking, Windows Update, recovery), post-test evidence, and rollback. MissingEvidence ops are never authorized merely because an experiment is disposable.
+
+Proposal: [m6-disposable-image-experiment-design.md](m6-disposable-image-experiment-design.md). Not implemented.
+
+## M6b / later: Xbox mode integration
+
+Supported Xbox FSE configuration, controller-first startup, and launcher integration—only after disposable-lab controls and Microsoft-supported mechanisms are validated on desktop hardware.
 
 ## M7: Gaming performance
 
