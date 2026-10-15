@@ -60,9 +60,17 @@ jobs:
             'docs/m2-operation-ordering-and-recovery.md',
             'docs/m2-implementation-notes.md',
             'docs/m2-canonical-plan-hash.md',
+            'docs/m2-completion-baseline.md',
+            'docs/m3-execution-safety-contracts.md',
+            'docs/m3-transaction-state-machine.md',
+            'docs/m3-implementation-notes.md',
+            'docs/m3-unresolved-risks.md',
             'modules/XboxOS.Build/ServicingPlan.ps1',
+            'modules/XboxOS.Build/ExecutionSafety.ps1',
             'scripts/New-ServicingPlan.ps1',
+            'scripts/Test-ExecutionSafety.ps1',
             'tests/ServicingPlan.Tests.ps1',
+            'tests/ExecutionSafety.Tests.ps1',
             'README.md',
             'LICENSE'
           )
