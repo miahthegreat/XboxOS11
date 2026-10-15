@@ -59,6 +59,12 @@ jobs:
         run: |
           curl -fsSL https://cursor.com/install | bash
           echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+      - name: Checkout trusted automation from default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: _trusted
+          persist-credentials: false
       - name: Agent fixes only ordinary source/docs
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
@@ -66,11 +72,12 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ inputs.pr }}
           REVIEWED_SHA: ${{ inputs.sha }}
-        run: python3 automation/run_cursor_fix.py
+        run: python3 _trusted/automation/run_cursor_fix.py
       - name: Reject protected edits, and publish only allowed changes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ steps.gate.outputs.branch }}
           EXPECTED_SHA: ${{ inputs.sha }}
         run: |
-          python3 automation/publish_fix.py
+          git -C _trusted reset --hard HEAD
+          python3 _trusted/automation/publish_fix.py
