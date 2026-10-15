@@ -1,27 +1,34 @@
-# GitHub-based Cursor ↔ OpenAI review loop
+# Cursor ↔ OpenAI GitHub Actions loop
 
-**Status: opt-in; not active until explicitly configured and merged.** Existing Validate CI is unchanged.
+**Status: draft, disabled by default.** Existing XboxOS11 validation is preserved.
 
-## Setup
+## Activation after security review and merge
+1. In GitHub Actions secrets configure `OPENAI_API_KEY` and `CURSOR_API_KEY`. The values are never committed.
+2. Keep Actions variable `AGENT_LOOP_ENABLED=false` until a harmless, operator-approved smoke test.
+3. Create the `agent-loop` PR label and apply it only to a same-repository, non-protected feature PR.
+4. Set `AGENT_LOOP_ENABLED=true` only for the smoke test; remove the label or turn it off to pause.
 
-1. Review and merge the automation PR after reviewing workflow security.
-2. In GitHub repository **Settings → Secrets and variables → Actions → Secrets**, add `OPENAI_API_KEY` and `CURSOR_API_KEY`. Never paste credentials into a PR or chat.
-3. Under **Variables**, set `AGENT_LOOP_ENABLED` to `true`. Set `AGENT_REVIEW_MODEL` if needed (default `gpt-5.2`).
-4. Apply the `agent-loop` label to a **same-repository feature PR** only when you want autonomous fixes. Create that label in Issues → Labels if absent.
-5. Open a normal PR; wait for existing Validate CI. A successful PR Validate triggers Agent Review, which posts machine-readable findings. If CHANGES_REQUESTED, the reviewer currently posts findings only. Automated Cursor fixes are deliberately disabled until the runner can isolate GitHub write credentials and trusted control files from agent execution.
+## Architecture and exact trust boundary
+1. Existing `Validate` completes successfully on an opted-in PR.
+2. `agent-review.yml`, operating solely from the **protected default branch**, reads the untrusted PR diff as data and posts a structured OpenAI review. It never checks out or executes PR code.
+3. For `CHANGES_REQUESTED`, it dispatches `agent-fix.yml`. Maximum five cycles.
+4. `generate-patch` has only `contents:read`, installs Cursor CLI, and generates an inert unified-diff artifact. There is **no GitHub write token in Cursor's environment**, no persisted checkout credentials, no git push.
+5. `publish-scoped-patch` is a **separate job and runner** holding `contents:write`. It checks out protected automation and the exact reviewed commit, validates the candidate via deterministic Git checks and a denylist, then commits/pushes allowed tracked regular-file modifications. **No generated PR code is executed** in this privileged job.
+6. Because commits created by `GITHUB_TOKEN` do not trigger normal PR/push workflows, the publisher explicitly dispatches `Validate` against the feature branch. A successful dispatch gets a fresh review.
+7. The loop stops on `APPROVED_FOR_HUMAN_REVIEW`, `NEEDS_HUMAN_REVIEW`, CI failures, missing credentials, policy violations, or cycle limit. No automatic merges.
 
-## Boundaries
+## Safeguards and limitations
+- No live DISM, image mutation, ISO generation, Hyper-V provisioning, read-only host inspection, VM/VHD/switch/network modifications, or Layer D activation.
+- Automated candidate changes are limited to **modifying existing regular text files** in permitted docs/modules/scripts/tests/config paths, with protected authorization and policy files excluded. New files, symlinks, renames, chmod, and protected edits require a human-driven PR.
+- Cursor itself is a remotely connected coding agent with `CURSOR_API_KEY` in its job: model or dependency compromise can still expose that key. GitHub write secrets are isolated by job, but **this is not a hardened network sandbox**. Use a dedicated limited Cursor key and consider egress controls for stronger isolation.
+- An OpenAI review is not an independent third-party security certification, nor an approval to merge or operate on a Windows host.
+- PR comments, patches, CI outputs, and source files are untrusted. Approval decisions fail closed if they cannot be verified.
+- A full two-agent end-to-end smoke test has **not yet been performed**. Secret-free tests cannot prove API key validity, Cursor write behavior, model compatibility, or live dispatch.
+- GitHub branch protection and required human review should be configured separately.
 
-- Only same-repository PRs with the explicit `agent-loop` label qualify.
-- Fork PRs are rejected. Workflows and reviewer code are checked out from the protected default branch, never from untrusted PR code with secrets.
-- Reviews use the GitHub API to read diff and CI provenance; no PR code is executed in reviewer.
-- Fixes run on ephemeral GitHub-hosted Linux, not your Windows computer. Agent instructions alone are not trusted; a deterministic diff gate rejects edits to workflow/automation/policy/safety files.
-- At most five CHANGES_REQUESTED cycles per PR. The Cursor fix job is currently hard-disabled, even when AGENT_LOOP_ENABLED=true. The bot never merges, provisions VMs, runs DISM, authorizes host inspection, or modifies Windows images.
-- Approval is **APPROVED_FOR_HUMAN_REVIEW**, never a substitute for your merge decision.
-- API failures result in no approval or fix dispatch.
-- Disable immediately by setting `AGENT_LOOP_ENABLED=false` or removing the PR label.
-- OpenAI and Cursor API usage can incur independent charges; monitor limits with both providers.
-
-## Limitations and follow-up review
-
-This GitHub workflow uses an OpenAI API reviewer, not the interactive ChatGPT session. Cursor CLI availability, permissions configuration, and workflow GitHub token permissions must be validated in an opt-in smoke test before relying on automation. Sensitive security/authorization files require manual work outside auto-fix scope. Platform branch-protection policies and required human approval should be set in GitHub settings; this connector cannot edit repository secrets or enforce rulesets.
+## Troubleshooting
+- Validate CI failed: fix manually, no review/fix starts.
+- Reviewer did not trigger: check `AGENT_LOOP_ENABLED`, PR label, head SHA, runner logs, secret validity.
+- Cursor returned no edits: review remains open; handle manually.
+- Publisher rejected patch: inspect safe gate output and perform protected changes in a manually reviewed PR.
+- Disable immediately by setting `AGENT_LOOP_ENABLED=false`; this prevents new review/fix jobs (does not cancel ones already started).
