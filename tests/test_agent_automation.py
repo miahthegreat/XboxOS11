@@ -40,7 +40,18 @@ class AgentAutomationSafetyTests(unittest.TestCase):
     def test_agent_script_no_github_write_token(self):
         data = source("automation/run_claude_fix.py")
         self.assertNotIn("GH_TOKEN", data)
-        self.assertNotIn("git push", data)
+        tree = ast.parse(data)
+        self.assertFalse(any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "subprocess"
+            and node.func.attr in ("Popen", "call", "check_call", "check_output", "run")
+            and node.args and isinstance(node.args[0], (ast.List, ast.Tuple))
+            and node.args[0].elts and isinstance(node.args[0].elts[0], ast.Constant)
+            and node.args[0].elts[0].value in ("git", "gh")
+            for node in ast.walk(tree)
+        ), "Agent script must not invoke git or gh subprocesses")
         self.assertIn("--allowedTools", data)
         self.assertNotIn("--dangerously-skip-permissions", data)
         self.assertIn("CLAUDE_CODE_OAUTH_TOKEN", data)
