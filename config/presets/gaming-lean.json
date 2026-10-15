@@ -55,7 +55,11 @@
         "enabled": true,
         "gameMode": true,
         "hardwareAcceleratedGpuScheduling": false,
-        "launchers": []
+        "launchers": [],
+        "optimizations": [
+          "WindowedGameOptimizations",
+          "BackgroundRecordingOff"
+        ]
       }
     },
     "output": {

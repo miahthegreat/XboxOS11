@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/XboxOS11.Builder.App/XboxOS11.Builder.App.csproj" />
+    <Project Path="src/XboxOS11.Builder.Core/XboxOS11.Builder.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/dotnet/">
+    <Project Path="tests/dotnet/XboxOS11.Builder.Core.Tests/XboxOS11.Builder.Core.Tests.csproj" />
+  </Folder>
+</Solution>

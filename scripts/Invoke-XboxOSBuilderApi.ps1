@@ -14,7 +14,7 @@
       validate     -ProfilePath [-ForBuild]     Validation errors / warnings
       review       -ProfilePath                 Dependency-aware component review
       unattend     -ProfilePath                 Generated autounattend.xml text
-      save-profile -ProfileJson -OutputPath     Validate and save profile JSON supplied by the client
+      save-profile (-ProfileJson | -ProfilePath) -OutputPath   Validate and save a client-supplied profile
       image-info   -SourceIso                   Editions in the ISO (read-only; requires elevation)
 #>
 [CmdletBinding()]
@@ -54,6 +54,13 @@ try {
                         [ordered]@{ id = $_.id; displayName = $_.displayName; description = $_.description; recommended = [bool]$_.recommended; order = [int]$_.order }
                     })
                 launchers            = @(Get-XboxOSBuilderLauncherCatalog)
+                optimizations        = @((Get-XboxOSGamingTweakCatalog).tweaks | Where-Object { -not $_.PSObject.Properties['profileField'] } | ForEach-Object {
+                        [ordered]@{
+                            id = [string]$_.id; title = [string]$_.title; description = [string]$_.description; scope = [string]$_.scope
+                            requiresRestart = [bool]$_.requiresRestart; defaultEnabled = [bool]$_.defaultEnabled; settingsPage = [string]$_.settingsPage
+                        }
+                    })
+                neverChange          = @((Get-XboxOSGamingTweakCatalog).neverChange | ForEach-Object { [ordered]@{ item = [string]$_.item; reason = [string]$_.reason } })
                 privacyOptions       = @('Minimal', 'Recommended')
                 defaultOutput        = 'C:\XboxOS\Output'
                 defaultProfileFolder = 'C:\XboxOS\Profiles'
@@ -77,8 +84,8 @@ try {
             $data = [ordered]@{ xml = New-XboxOSUnattendXml -BuildProfile (Import-XboxOSBuildProfile -Path $ProfilePath) }
         }
         'save-profile' {
-            if (-not $ProfileJson -or -not $OutputPath) { throw '-ProfileJson and -OutputPath are required.' }
-            $p = $ProfileJson | ConvertFrom-Json
+            if ((-not $ProfileJson -and -not $ProfilePath) -or -not $OutputPath) { throw '-ProfileJson or -ProfilePath, and -OutputPath, are required.' }
+            $p = if ($ProfilePath) { Import-XboxOSBuildProfile -Path $ProfilePath } else { $ProfileJson | ConvertFrom-Json }
             $check = Test-XboxOSBuildProfile -BuildProfile $p
             if (-not $check.valid) { throw ("Profile is invalid: " + ($check.errors -join '; ')) }
             $data = [ordered]@{ path = Export-XboxOSBuildProfile -BuildProfile $p -Path $OutputPath; warnings = @($check.warnings) }

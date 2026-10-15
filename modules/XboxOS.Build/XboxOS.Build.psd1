@@ -334,6 +334,7 @@
         'Get-XboxOSBuilderLauncherCatalog'
         'Write-XboxOSBuilderEvent'
         'ConvertFrom-XboxOSBuilderEventLine'
+        'Get-XboxOSGamingTweakCatalog'
         'Get-XboxOSBuilderPreset'
         'Copy-XboxOSJsonObject'
         'New-XboxOSBuildProfile'
