@@ -162,7 +162,7 @@ if ($DryRun) {
 $output = & $OscdimgPath @argList 2>&1
 $exit = $LASTEXITCODE
 $text = @($output | ForEach-Object { "$_" })
-$text | ForEach-Object { Write-XboxOSLog -Level Debug -Message $_ }
+$text | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { Write-XboxOSLog -Level Debug -Message $_ }
 
 if ($exit -ne 0) {
     throw "oscdimg failed with exit code $exit`n$($text -join "`n")"
