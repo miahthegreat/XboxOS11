@@ -203,6 +203,18 @@ Describe 'XboxOS11 Milestone 7 builder backend' {
             $opts.gameMode | Should -BeTrue
         }
 
+        It 'uses an exact edition name picked from the ISO as the target edition' {
+            $p = & $script:NewProfile
+            $p.source.editionPattern = 'Windows 11 Home'
+            $eff = New-XboxOSBuilderEffectiveConfiguration -BuildProfile $p -WorkRoot (Join-Path $script:TempRoot 'eff-edition')
+            $cfg = Get-Content -LiteralPath $eff.ConfigurationPath -Raw | ConvertFrom-Json
+            $cfg.target.edition | Should -Be 'Windows 11 Home'
+            $cfg.target.imageNamePattern | Should -Be 'Windows 11 Home'
+            $q = & $script:NewProfile
+            $eff2 = New-XboxOSBuilderEffectiveConfiguration -BuildProfile $q -WorkRoot (Join-Path $script:TempRoot 'eff-edition2')
+            (Get-Content -LiteralPath $eff2.ConfigurationPath -Raw | ConvertFrom-Json).target.edition | Should -Be 'Windows 11 Pro'
+        }
+
         It 'produces no overlay when unattend is disabled' {
             $eff = New-XboxOSBuilderEffectiveConfiguration -BuildProfile (& $script:NewProfile 'stock-safe') -WorkRoot (Join-Path $script:TempRoot 'eff3')
             $eff.MediaOverlayDirectory | Should -BeNullOrEmpty

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="XboxOS11.Builder.App.Views.PresetPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:XboxOS11.Builder.App.ViewModels">
+
+    <StackPanel Spacing="12">
+        <TextBlock Text="Choose a preset" Style="{StaticResource PageTitleStyle}" />
+        <TextBlock Style="{StaticResource PageSubtitleStyle}"
+                   Text="Presets are starting points. Any change on the next pages turns the profile into Custom. Every preset keeps the Microsoft Store, Xbox app, Gaming Services, Game Bar, Windows Update, and Microsoft Defender." />
+
+        <ListView ItemsSource="{x:Bind ViewModel.Presets}" SelectedItem="{x:Bind ViewModel.SelectedPreset, Mode=TwoWay}"
+                  SelectionMode="Single" IsEnabled="{x:Bind ViewModel.IsNotBusy, Mode=OneWay}">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                    <Setter Property="Margin" Value="0,0,0,8" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="vm:PresetItem">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="4">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{x:Bind DisplayName}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <Border Visibility="{x:Bind Recommended}" Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="4" Padding="6,1">
+                                    <TextBlock Text="Recommended" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{x:Bind Description}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="Current selection"
+                 Message="{x:Bind ViewModel.PresetLabel, Mode=OneWay}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="Back" Click="Back_Click" />
+            <Button Style="{StaticResource AccentButtonStyle}" Content="Next: review components" Click="Next_Click" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

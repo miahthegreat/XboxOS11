@@ -22,6 +22,7 @@ Target reference hardware: **AMD Ryzen 7 7800X3D** + **AMD Radeon RX 9070 XT** (
 |------|---------|
 | Build host | Windows 10/11 x64 |
 | Orchestration | PowerShell 7 recommended; Windows PowerShell 5.1 supported |
+| Builder app | Windows 10 19041+ / Windows 11, x64 or ARM64 (self-contained .NET 10 + Windows App SDK) |
 | Target image | Windows 11 Pro (release from verified metadata; baseline capture 26H2 / 26300.9457) |
 | Boot | UEFI + GPT |
 
@@ -84,6 +85,17 @@ Real ISO build:
   -Configuration '.\config\build.json' `
   -OutputDirectory 'C:\XboxOS\Output'
 ```
+
+## XboxOS11 Builder app
+
+`XboxOS11.Builder.exe` is a native WinUI 3 app for the whole workflow: pick an ISO, choose a preset, review components, set drivers and setup options, validate, and build, with live progress. It runs as a normal user for configuring and dry runs, and offers *Restart as administrator* for reading ISO editions and real builds.
+
+```powershell
+dotnet build src/XboxOS11.Builder.App -c Release -p:Platform=x64
+.\src\XboxOS11.Builder.App\bin\x64\Release\net10.0-windows10.0.22621.0\win-x64\XboxOS11.Builder.exe
+```
+
+See [docs/m8-winui-builder.md](docs/m8-winui-builder.md).
 
 ## Builder profiles (recommended)
 
@@ -194,6 +206,7 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M6E controlled live discovery design](docs/m6e-controlled-live-discovery-design.md)
 - [M6E controlled live discovery contracts](docs/m6e-controlled-live-discovery-contracts.md)
 - [M7 builder backend contracts](docs/m7-builder-backend-contracts.md)
+- [M8 WinUI 3 Builder](docs/m8-winui-builder.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
@@ -201,7 +214,7 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 
 **M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → **M6C** mocked host discovery → **M6D** authorized host-discovery contracts (live inactive) → **M6E** controlled live read-only discovery (Gate A) → **M7** Builder backend → **M8** native WinUI 3 Builder → **M9** gaming performance / Xbox mode → **M10** recovery and release engineering.
 
-**Product target:** Native WinUI 3 XboxOS11 Builder — select a supported Windows 11 ISO → choose a gaming preset or Custom → review dependency-aware component changes → configure drivers and installation options → validate the proposed build → produce a customized bootable ISO → save and reuse the build configuration. User-facing builder contracts stay separate from internal lab authorization. GUI, ISO production, and new servicing are not implemented in Milestone 6D/M6E design; backend contracts remain reusable for a future WinUI 3 / .NET frontend.
+**Product:** the native WinUI 3 XboxOS11 Builder (M8) drives the M7 backend: select a supported Windows 11 ISO → choose a gaming preset or Custom → review dependency-aware component changes → configure drivers and installation options → validate the proposed build → produce a customized bootable ISO → save and reuse the build configuration. User-facing builder contracts stay separate from internal lab authorization.
 
 M6D acceptance is **not** permission to inspect a production host, provision VMs, or modify Windows images.
 

@@ -565,6 +565,10 @@ function New-XboxOSBuilderEffectiveConfiguration {
 
     $build = Copy-XboxOSJsonObject -Value $m.Build
     $build.target.imageNamePattern = [string]$BuildProfile.source.editionPattern
+    if ([string]$BuildProfile.source.editionPattern -notmatch '[\*\?\[]') {
+        # An exact edition name (picked from the ISO) must also replace target.edition, which Import-Source matches first.
+        $build.target.edition = [string]$BuildProfile.source.editionPattern
+    }
     if ($null -ne $BuildProfile.source.imageIndex) { $build.target.sourceImageIndex = [int]$BuildProfile.source.imageIndex }
     $build.workspace.output = [string]$BuildProfile.output.directory
     $build.iso.label = [string]$BuildProfile.output.isoLabel

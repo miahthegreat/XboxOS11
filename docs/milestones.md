@@ -183,9 +183,13 @@ Presets, reusable build profiles, strict validation, dependency-aware component 
 - Post-install entrypoint: `postinstall/Invoke-PostInstall.ps1`
 - Builder engine `7.0.0`; module `0.7.0`
 
-## M8: Native WinUI 3 Builder application
+## M8: Native WinUI 3 Builder application — complete
 
-WinUI 3 / .NET desktop frontend over the M7 API: ISO selection and edition discovery, preset/custom selection, component review, driver and setup options, validation, live build progress, and profile save/load.
+WinUI 3 / .NET 10 desktop frontend over the M7 API: ISO selection and edition discovery, preset/custom selection, dependency-aware component review, driver and setup options, unattend preview, validation, live build progress with cancellation, and profile save/open/recent.
+
+- Design and verification: [m8-winui-builder.md](m8-winui-builder.md)
+- Projects: `src/XboxOS11.Builder.App` (WinUI 3, unpackaged), `src/XboxOS11.Builder.Core`, `tests/dotnet/XboxOS11.Builder.Core.Tests`
+- CI: `builder` job (xUnit + PowerShell contract tests, WinUI x64 build)
 
 ## M9: Gaming performance and Xbox mode
 
