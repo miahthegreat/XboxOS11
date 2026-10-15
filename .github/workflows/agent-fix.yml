@@ -1,0 +1,76 @@
+name: Agent Fix
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number"
+        required: true
+        type: string
+      sha:
+        description: "Reviewed HEAD SHA"
+        required: true
+        type: string
+permissions:
+  contents: write
+  pull-requests: read
+  issues: read
+concurrency:
+  group: agent-fix-${{ inputs.pr }}
+  cancel-in-progress: false
+jobs:
+  fix:
+    if: ${{ vars.AGENT_LOOP_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Verify trusted source and review marker
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr }}
+          REVIEWED_SHA: ${{ inputs.sha }}
+        run: python3 - <<'PY'
+          import os,json,urllib.request
+          repo=os.environ["REPOSITORY"]; n=int(os.environ["PR_NUMBER"]); sha=os.environ["REVIEWED_SHA"]
+          def api(path):
+            req=urllib.request.Request("https://api.github.com"+path,headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","User-Agent":"xboxos11-gate"})
+            with urllib.request.urlopen(req,timeout=30) as resp: return json.load(resp)
+          pr=api(f"/repos/{repo}/pulls/{n}")
+          assert pr["state"]=="open" and pr["head"]["sha"]==sha and pr["head"]["repo"]["full_name"]==repo, "Untrusted or stale PR"
+          assert "agent-loop" in [x["name"] for x in pr["labels"]], "Missing opt-in label"
+          assert pr["head"]["ref"] not in ("main","master") and not pr["head"]["ref"].startswith("automation/"), "Unsafe branch"
+          comments=api(f"/repos/{repo}/issues/{n}/comments?per_page=100")
+          marker=f"<!-- agent-review:{sha}:CHANGES_REQUESTED -->"
+          assert any(marker in c["body"] and c["user"]["login"]=="github-actions[bot]" for c in comments), "No trusted review for HEAD"
+          print(f"Validated PR #{n} at {sha}")
+          with open(os.environ["GITHUB_OUTPUT"],"a") as out: out.write(f"branch={pr['head']['ref']}\n")
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.gate.outputs.branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Ensure checkout matches approved SHA
+        env:
+          EXPECTED_SHA: ${{ inputs.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Install Cursor CLI
+        run: |
+          curl -fsSL https://cursor.com/install | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+      - name: Agent fixes only ordinary source/docs
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr }}
+          REVIEWED_SHA: ${{ inputs.sha }}
+        run: python3 automation/run_cursor_fix.py
+      - name: Reject protected edits, and publish only allowed changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.gate.outputs.branch }}
+          EXPECTED_SHA: ${{ inputs.sha }}
+        run: |
+          python3 automation/publish_fix.py
