@@ -65,6 +65,8 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           path: _trusted
           persist-credentials: false
+      - name: Exclude trusted checkout from candidate changes
+        run: echo "/_trusted/" >> .git/info/exclude
       - name: Agent fixes only ordinary source/docs
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
