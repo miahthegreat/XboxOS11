@@ -17,3 +17,5 @@ No DISM, WIM/ISO mutation, live host inspection, VM provisioning, or network rec
 ## Test outcome
 
 A successful review identifies and corrects any inaccurate description of the workflow, commits only a scoped documentation patch, and leaves this PR available for final human approval.
+
+<!-- Trigger: rerun Validate after operator enabled the Claude smoke-test loop. -->
