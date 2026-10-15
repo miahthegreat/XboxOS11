@@ -17,29 +17,38 @@ Completed:
 
 Baseline documentation: [m1-compatibility-baseline.md](m1-compatibility-baseline.md).
 
-## M2: Servicing plan engine and safety validation (in progress)
+## M2: Servicing plan engine and safety validation (complete)
 
 Deterministic, inventory-aware **plan-only** engine. No writable Windows image servicing.
 
+Completed:
+
 - Contracts: [m2-servicing-plan-contracts.md](m2-servicing-plan-contracts.md)
+- Canonical hash: [m2-canonical-plan-hash.md](m2-canonical-plan-hash.md) (`plan-hash-v1`)
 - Ordering / recovery: [m2-operation-ordering-and-recovery.md](m2-operation-ordering-and-recovery.md)
 - Implementation notes: [m2-implementation-notes.md](m2-implementation-notes.md)
 - CLI: `scripts/New-ServicingPlan.ps1` (dry-run reports under `C:\XboxOS\Logs`)
-- Statuses include Eligible, AlreadySatisfied, Absent, Protected, Ambiguous, Conflicting, Blocked, NotEvaluated
-- Writable DISM / `/Commit` remain unauthorized pending separate review and merge of this milestone
+- Statuses: Eligible, AlreadySatisfied, Absent, Protected, Ambiguous, Conflicting, Blocked, NotEvaluated
+- Merged via PR #2 (`9f076c8`); writable DISM / `/Commit` remain unauthorized
 
-## M3: Xbox mode integration
+Baseline documentation: [m2-completion-baseline.md](m2-completion-baseline.md).
+
+## M3: Servicing execution safety (proposed — not started)
+
+Approval-bound, drift-checked execution against disposable images only—transactional apply/recovery, never source-ISO mutation. See proposed scope in [m2-completion-baseline.md](m2-completion-baseline.md).
+
+## M4: Xbox mode integration
 
 Supported Xbox FSE configuration, controller-first startup, and launcher integration—only after validating Microsoft-supported mechanisms on desktop hardware.
 
-## M4: Gaming performance
+## M5: Gaming performance
 
 Benchmark-driven service and startup optimization for Ryzen 7 7800X3D and Radeon RX 9070 XT, without disabling security for synthetic gains.
 
-## M5: Recovery and maintenance
+## M6: Recovery and maintenance
 
 Windows Update validation, recovery options, rollback mechanisms, and compatibility testing.
 
-## M6: Release engineering
+## M7: Release engineering
 
 Versioned build manifests, release documentation, automated validation, and reproducible local builds.
