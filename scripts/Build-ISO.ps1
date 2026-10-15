@@ -97,7 +97,7 @@ try {
         if (-not $pre.Passed) {
             $blocking = @($pre.Failed | Where-Object {
                     -not (
-                        $DryRun -and $_.Name -in @('WindowsADK', 'Oscdimg', 'SourceISO', 'Administrator')
+                        $DryRun -and $_.Name -in @('WindowsADK', 'Oscdimg', 'SourceISO', 'Administrator', 'DiskSpace')
                     )
                 })
             if ($blocking.Count -gt 0) {
