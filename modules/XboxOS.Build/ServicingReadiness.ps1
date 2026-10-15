@@ -668,17 +668,17 @@ function Resolve-XboxOSCatalogOperationAssessment {
         [Parameter(Mandatory)]$Operation,
         [Parameter(Mandatory)]$EvidenceCatalog
     )
-    $matches = @()
+    $catalogMatches = @()
     foreach ($a in @($EvidenceCatalog.operationAssessments)) {
         if ([string]$a.manifestRuleId -ne [string]$Operation.manifestRuleId) { continue }
         if ([string]$a.operationType -ne [string]$Operation.operationType) { continue }
         if (Test-XboxOSWildcardMatch -Text ([string]$Operation.targetIdentity) -Pattern ([string]$a.targetIdentityPattern)) {
-            $matches += $a
+            $catalogMatches += $a
         }
     }
-    if ($matches.Count -eq 1) { return $matches[0] }
-    if ($matches.Count -gt 1) {
-        return [pscustomobject]@{ conflicting = $true; matches = $matches }
+    if ($catalogMatches.Count -eq 1) { return $catalogMatches[0] }
+    if ($catalogMatches.Count -gt 1) {
+        return [pscustomobject]@{ conflicting = $true; matches = $catalogMatches }
     }
     return $null
 }

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "lab-topology-v1",
+  "catalogVersion": "6.1.1-b",
+  "notes": [
+    "Milestone 6B lab topology. Default provider is Simulation.",
+    "Valid configuration is permission to plan infrastructure, not to create it.",
+    "No Hyper-V or other hypervisor is assumed installed or enabled."
+  ],
+  "provider": {
+    "kind": "Simulation",
+    "displayName": "Simulated hypervisor provider",
+    "hyperVOriented": true,
+    "requiresAdministrator": false,
+    "assumesHypervisorInstalled": false
+  },
+  "vm": {
+    "vmIdTemplate": "xboxos11-lab-{labId}",
+    "generation": 2,
+    "firmware": "UEFI",
+    "cpuCount": 4,
+    "memoryGiB": 8,
+    "diskGiB": 80,
+    "dedicatedDisposable": true,
+    "productionDomainMembership": false
+  },
+  "paths": {
+    "workspaceRoot": "C:\\XboxOS\\Lab\\Work",
+    "evidenceRoot": "C:\\XboxOS\\Lab\\Logs",
+    "virtualDiskRoot": "C:\\XboxOS\\Lab\\Vhd",
+    "sourceIsoPath": "C:\\XboxOS\\Sources\\Windows11_Client_x64_en-us_26300_9457.iso"
+  },
+  "network": {
+    "isolationMode": "IsolatedSwitch",
+    "productionBridgeAllowed": false,
+    "hostAdminSharesAllowed": false,
+    "unrestrictedSharedFoldersAllowed": false,
+    "inheritedProductionCredentialsAllowed": false,
+    "outboundAllowlist": [
+      "store.microsoft.com",
+      "xboxlive.com",
+      "login.live.com",
+      "update.microsoft.com"
+    ],
+    "offlineValidationDefault": true
+  },
+  "credentials": {
+    "guestCredentialMode": "EphemeralLabOnly",
+    "inheritHostCredentials": false,
+    "storeSecretsInRepo": false
+  },
+  "snapshots": {
+    "supportedPurposes": [
+      "PreExperimentBaseline",
+      "PostInfrastructureValidation",
+      "PreFunctionalValidation",
+      "RecoveryCheckpoint"
+    ],
+    "crossLabReuseForbidden": true
+  },
+  "cleanup": {
+    "globalDismCleanupForbidden": true,
+    "unloadUnrelatedHivesForbidden": true,
+    "ownedArtifactsOnly": true
+  }
+}

@@ -498,7 +498,9 @@ function Test-XboxOSExperimentWorkspaceConstraints {
                     [void]$errors.Add('Workspace must not be under the source-image parent directory.')
                 }
             }
-            catch { }
+            catch {
+                [void]$errors.Add(("Unable to evaluate workspace against source-image parent: {0}" -f $_.Exception.Message))
+            }
         }
         try {
             $wsUnderIso = Test-XboxOSPathEqualsOrUnder -Path $wsCanon -ParentPath $isoCanon
@@ -895,6 +897,52 @@ function Get-XboxOSExperimentPlanContentHash {
     )
 
     return Get-XboxOSUtf8Sha256Hex -Text (ConvertTo-XboxOSCanonicalJson -Value $CanonicalDocument)
+}
+
+function Get-XboxOSExperimentPlanContentHashFromPlan {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$ExperimentPlan
+    )
+
+    if (-not $ExperimentPlan.PSObject.Properties['disposableWorkspaceConstraints'] -or $null -eq $ExperimentPlan.disposableWorkspaceConstraints) {
+        throw 'Experiment plan missing disposableWorkspaceConstraints; cannot recompute content hash.'
+    }
+    $ws = $ExperimentPlan.disposableWorkspaceConstraints
+    $wsDigest = Get-XboxOSUtf8Sha256Hex -Text (ConvertTo-XboxOSCanonicalJson -Value ([ordered]@{
+                ownedWorkspaceIdentity = [string]$ws.ownedWorkspaceIdentity
+                ownedWimPath           = [string]$ws.ownedWimPath
+                ownedMountPath         = [string]$ws.ownedMountPath
+                sourceIsoImmutable     = [bool]$ws.sourceIsoImmutable
+            }))
+    $snapIds = @(
+        @($ExperimentPlan.requiredSnapshots) | ForEach-Object {
+            if ($_ -is [string]) { [string]$_ }
+            elseif ($_.PSObject.Properties['snapshotId']) { [string]$_.snapshotId }
+            else { [string]$_ }
+        }
+    )
+    $fields = [pscustomobject]@{
+        sourceIsoSha256           = [string]$ExperimentPlan.sourceIsoSha256
+        editionName               = [string]$ExperimentPlan.editionName
+        buildNumber               = [string]$ExperimentPlan.buildNumber
+        architecture              = [string]$ExperimentPlan.architecture
+        sourceIndex               = [string]$ExperimentPlan.sourceIndex
+        inventoryFingerprint      = [string]$ExperimentPlan.inventoryFingerprint
+        servicingPlanContentHash  = [string]$ExperimentPlan.servicingPlanContentHash
+        readinessReportIdentity   = $ExperimentPlan.readinessReportIdentity
+        readinessBindingDigest    = [string]$ExperimentPlan.readinessBindingDigest
+        git                       = $ExperimentPlan.git
+        operations                = @($ExperimentPlan.operations)
+        expectedScope             = [string]$ExperimentPlan.expectedScope
+        workspaceConstraintDigest = $wsDigest
+        requiredSnapshots         = $snapIds
+        requiredFunctionalTests   = @($ExperimentPlan.requiredFunctionalTests)
+        abortConditions           = @($ExperimentPlan.abortConditions)
+        recoveryRequirements      = @($ExperimentPlan.recoveryRequirements)
+    }
+    $canonical = Get-XboxOSExperimentPlanCanonicalDocument -PlanFields $fields
+    return Get-XboxOSExperimentPlanContentHash -CanonicalDocument $canonical
 }
 
 function New-XboxOSExperimentAuthorizationRecord {
