@@ -98,6 +98,10 @@ def main():
     result = json.loads(output)
     decision = result["decision"]
     if len(result["findings"]) > POLICY["maxFindings"]: decision="NEEDS_HUMAN_REVIEW"
+    if decision == "APPROVED_FOR_HUMAN_REVIEW" and result["findings"]:
+        decision = "NEEDS_HUMAN_REVIEW"
+    if any(f["file"] not in {item["filename"] for item in files} for f in result["findings"]):
+        decision = "NEEDS_HUMAN_REVIEW"
     # Recheck current PR HEAD before emitting an actionable review.
     current=api(f"/repos/{REPO}/pulls/{n}")
     if current["head"]["sha"] != SHA or current["state"] != "open":
