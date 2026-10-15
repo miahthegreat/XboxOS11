@@ -147,6 +147,7 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M2 servicing plan contracts](docs/m2-servicing-plan-contracts.md)
 - [M2 canonical plan hash](docs/m2-canonical-plan-hash.md)
 - [M2 operation ordering and recovery](docs/m2-operation-ordering-and-recovery.md)
+- [M2 completion baseline](docs/m2-completion-baseline.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
