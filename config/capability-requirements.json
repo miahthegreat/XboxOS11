@@ -1,0 +1,182 @@
+{
+  "schemaVersion": "capability-requirements-v1",
+  "description": "Protected Xbox/gaming capability requirements. Inventory presence is observation only and does not prove runtime readiness.",
+  "buildApplicability": {
+    "editionName": "Windows 11 Pro",
+    "buildNumber": "26300.9457",
+    "displayVersion": "26H2"
+  },
+  "capabilities": [
+    {
+      "id": "XboxFullScreenExperience",
+      "label": "Xbox Full Screen Experience",
+      "critical": true,
+      "inventoryObservable": false,
+      "notes": "OEM/unattend and post-install settings; not fully proven by provisioned AppX presence.",
+      "relatedAppxPatterns": ["Microsoft.GamingApp*", "Microsoft.Xbox*"],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": [
+        "https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-gaming-configuration-startuptogaminghome"
+      ]
+    },
+    {
+      "id": "XboxApplication",
+      "label": "Xbox application",
+      "critical": true,
+      "inventoryObservable": true,
+      "relatedAppxPatterns": ["Microsoft.GamingApp*", "Microsoft.XboxApp*"],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    },
+    {
+      "id": "GamingServices",
+      "label": "Gaming Services",
+      "critical": true,
+      "inventoryObservable": true,
+      "relatedAppxPatterns": ["Microsoft.GamingServices*"],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    },
+    {
+      "id": "MicrosoftStore",
+      "label": "Microsoft Store",
+      "critical": true,
+      "inventoryObservable": true,
+      "relatedAppxPatterns": ["Microsoft.WindowsStore*"],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    },
+    {
+      "id": "StorePurchaseLicensing",
+      "label": "Store purchase and licensing",
+      "critical": true,
+      "inventoryObservable": true,
+      "relatedAppxPatterns": ["Microsoft.StorePurchaseApp*", "Microsoft.WindowsStore*"],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    },
+    {
+      "id": "XboxIdentityAuthentication",
+      "label": "Xbox identity and authentication",
+      "critical": true,
+      "inventoryObservable": true,
+      "relatedAppxPatterns": ["Microsoft.XboxIdentityProvider*", "Microsoft.Xbox.TCUI*"],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    },
+    {
+      "id": "XboxGameBarOverlays",
+      "label": "Xbox Game Bar and overlays",
+      "critical": true,
+      "inventoryObservable": true,
+      "relatedAppxPatterns": ["Microsoft.XboxGamingOverlay*", "Microsoft.XboxGameOverlay*", "Microsoft.XboxSpeechToTextOverlay*"],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    },
+    {
+      "id": "XboxControllersGameInput",
+      "label": "Xbox controllers and GameInput",
+      "critical": true,
+      "inventoryObservable": false,
+      "relatedAppxPatterns": ["Microsoft.Xbox*"],
+      "relatedFeaturePatterns": [],
+      "notes": "XInput/GameInput stack is largely inbox; provisioned AppX presence is insufficient.",
+      "documentationRefs": []
+    },
+    {
+      "id": "BluetoothUsbControllers",
+      "label": "Bluetooth and USB controllers",
+      "critical": true,
+      "inventoryObservable": false,
+      "relatedAppxPatterns": [],
+      "relatedFeaturePatterns": [],
+      "notes": "Host/device stack; not validated by offline AppX inventory alone.",
+      "documentationRefs": []
+    },
+    {
+      "id": "GraphicsDirectX",
+      "label": "Graphics drivers and DirectX",
+      "critical": true,
+      "inventoryObservable": false,
+      "relatedAppxPatterns": [],
+      "relatedFeaturePatterns": ["DirectPlay"],
+      "notes": "Vendor GPU drivers are post-install; DirectX is largely inbox.",
+      "documentationRefs": []
+    },
+    {
+      "id": "AudioSpatial",
+      "label": "Audio and spatial audio",
+      "critical": true,
+      "inventoryObservable": false,
+      "relatedAppxPatterns": [],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    },
+    {
+      "id": "MediaFoundationPlayback",
+      "label": "Media Foundation and playback",
+      "critical": true,
+      "inventoryObservable": true,
+      "relatedAppxPatterns": [],
+      "relatedFeaturePatterns": ["MediaPlayback", "WindowsMediaPlayer"],
+      "documentationRefs": []
+    },
+    {
+      "id": "WindowsUpdate",
+      "label": "Windows Update",
+      "critical": true,
+      "inventoryObservable": false,
+      "relatedAppxPatterns": [],
+      "relatedFeaturePatterns": [],
+      "notes": "Servicing stack not fully represented as provisioned AppX.",
+      "documentationRefs": []
+    },
+    {
+      "id": "MicrosoftDefenderSecurity",
+      "label": "Microsoft Defender and Windows Security",
+      "critical": true,
+      "inventoryObservable": true,
+      "relatedAppxPatterns": ["Microsoft.SecHealthUI*"],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    },
+    {
+      "id": "Networking",
+      "label": "Networking",
+      "critical": true,
+      "inventoryObservable": false,
+      "relatedAppxPatterns": [],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    },
+    {
+      "id": "AntiCheatCompatibility",
+      "label": "Anti-cheat compatibility",
+      "critical": true,
+      "inventoryObservable": false,
+      "relatedAppxPatterns": [],
+      "relatedFeaturePatterns": [],
+      "notes": "Kernel/security expectations; never inferred from AppX names.",
+      "documentationRefs": []
+    },
+    {
+      "id": "SteamAndLaunchers",
+      "label": "Steam and other gaming launchers",
+      "critical": false,
+      "inventoryObservable": false,
+      "relatedAppxPatterns": [],
+      "relatedFeaturePatterns": [],
+      "notes": "Post-install only per compatibility.postInstallOnly.",
+      "documentationRefs": []
+    },
+    {
+      "id": "WindowsServicingRecovery",
+      "label": "Windows servicing and recovery",
+      "critical": true,
+      "inventoryObservable": false,
+      "relatedAppxPatterns": [],
+      "relatedFeaturePatterns": [],
+      "documentationRefs": []
+    }
+  ]
+}

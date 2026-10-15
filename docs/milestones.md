@@ -63,9 +63,16 @@ Completed:
 
 Baseline documentation: [m4-completion-baseline.md](m4-completion-baseline.md).
 
-## M5: Dependency evidence and servicing readiness (proposed — not started)
+## M5: Dependency evidence and servicing readiness (in progress — analysis only)
 
-Close dependency/authorization gaps before any writable image modification design. See proposed acceptance criteria in [m4-completion-baseline.md](m4-completion-baseline.md).
+Evidence-driven dependency graph, capability requirements, operation-specific readiness classifications, and servicing-readiness reports. No writable DISM.
+
+- Contracts: [m5-dependency-evidence-contracts.md](m5-dependency-evidence-contracts.md)
+- Future test strategy: [m5-future-modification-test-strategy.md](m5-future-modification-test-strategy.md)
+- Implementation notes: [m5-implementation-notes.md](m5-implementation-notes.md)
+- Unresolved risks: [m5-unresolved-risks.md](m5-unresolved-risks.md)
+- CLI: `scripts/Test-ServicingReadiness.ps1` (default non-elevated, non-mutating)
+- `executionAuthorized` / `servicingAuthorized` / `realDismExecutionEnabled` remain `false`
 
 ## M6: Xbox mode integration
 

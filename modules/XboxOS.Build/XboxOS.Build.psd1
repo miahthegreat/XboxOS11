@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.4.0'
+    ModuleVersion     = '0.5.0'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -142,6 +142,28 @@
         'Mount-XboxOSSourceIsoForReadOnlyPreflight'
         'Dismount-XboxOSSourceIsoForReadOnlyPreflight'
         'Save-XboxOSDisposableImagePreflightReport'
+        'Get-XboxOSServicingReadinessEngineVersion'
+        'Get-XboxOSDependencyEvidenceSchemaVersion'
+        'Get-XboxOSCapabilityRequirementsSchemaVersion'
+        'Get-XboxOSServicingReadinessReportSchemaVersion'
+        'Get-XboxOSEvidenceQualitySchemaVersion'
+        'New-XboxOSInventoryProvenance'
+        'Get-XboxOSReportTraceability'
+        'Resolve-XboxOSImageArchitectureMetadata'
+        'Import-XboxOSDependencyEvidenceCatalog'
+        'Import-XboxOSCapabilityRequirementsCatalog'
+        'Test-XboxOSEvidenceFreshness'
+        'Test-XboxOSEvidenceContradiction'
+        'Test-XboxOSDependencyEvidenceCatalog'
+        'Get-XboxOSRelatedEvidenceRecords'
+        'Resolve-XboxOSCatalogOperationAssessment'
+        'Resolve-XboxOSOperationComponentNodeId'
+        'Get-XboxOSOperationDependencyClosure'
+        'New-XboxOSDependencyGraph'
+        'Get-XboxOSCapabilityInspectionResult'
+        'Invoke-XboxOSOperationReadinessEvaluation'
+        'New-XboxOSServicingReadinessAssessment'
+        'Save-XboxOSServicingReadinessReport'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -151,7 +173,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 4.1.2: unique owned registry hive mounts with verified unload before WIM cleanup success.'
+            ReleaseNotes = 'Milestone 5.1.0: harden dependency graph traversal, catalog validation, and authoritative vs simulation inventory modes.'
         }
     }
 }
