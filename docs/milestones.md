@@ -81,21 +81,30 @@ Baseline documentation: [m5-completion-baseline.md](m5-completion-baseline.md).
 
 **Implementation complete ≠ servicing ready.** Writable servicing remains unauthorized.
 
-## M6A: Disposable-image experiment planning and authorization simulation (in progress)
+## M6A: Disposable-image experiment planning and authorization simulation (complete)
 
 Deterministic, fail-closed experiment planning and authorization simulation. No writable DISM. No WIM create/mount.
+
+Completed:
 
 - Contracts: [m6a-experiment-planning-contracts.md](m6a-experiment-planning-contracts.md)
 - Authorization boundaries: [m6a-authorization-boundaries.md](m6a-authorization-boundaries.md)
 - Functional validation matrix: [m6a-functional-validation-matrix.md](m6a-functional-validation-matrix.md)
 - Unresolved risks: [m6a-unresolved-risks.md](m6a-unresolved-risks.md)
 - Design parent: [m6-disposable-image-experiment-design.md](m6-disposable-image-experiment-design.md)
-- CLI: `scripts/Test-DisposableExperimentPlan.ps1` (default non-elevated; decision always `BlockedForExecution`)
-- Engine `6.0.1-a`; readiness binding digest + fail-closed external report validation; all six safety/mutation flags remain `false`
+- CLI: `scripts/Test-DisposableExperimentPlan.ps1` (ExternalValidated default; InlineSimulation only with explicit switches)
+- Engine `6.0.1-a`; decision always **BlockedForExecution**; Layer D structurally disabled
+- Merged via PR #10 (`c69cc58`); all six safety/mutation flags remain `false`
 
-## M6B: Disposable-image lab (not started)
+Baseline documentation: [m6a-completion-baseline.md](m6a-completion-baseline.md).
 
-Separately authorized disposable-image mutation lab. Must not modify source ISO or host OS. Not implemented in Milestone 6A.
+**Planning complete ≠ execution authorized.** Writable servicing remains unauthorized.
+
+## M6B: Isolated disposable-image lab infrastructure (proposal only)
+
+Design-only proposal for isolated VM lab topology, disposable workspace ownership, ISO immutability, independent operator/risk authorization, trusted lab-key management, allowlists, integrity/rollback, evidence custody — without activating Layer D or implementing writable DISM.
+
+Proposal: [m6b-isolated-disposable-lab-design.md](m6b-isolated-disposable-lab-design.md). Not implemented.
 
 ## Later: Xbox mode integration
 
