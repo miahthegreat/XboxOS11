@@ -117,4 +117,4 @@ See [m6a-unresolved-risks.md](m6a-unresolved-risks.md):
 | Does simulated consent/risk acceptance enable Layer D? | **No** |
 | Does disposability promote MissingEvidence to VerifiedSafe? | **No** |
 
-Milestone 6B design proposal (documentation only): [m6b-isolated-disposable-lab-design.md](m6b-isolated-disposable-lab-design.md).
+Milestone 6B is complete (simulation only): [m6b-completion-baseline.md](m6b-completion-baseline.md). Proposed next phase: [m6c-real-host-lab-discovery-design.md](m6c-real-host-lab-discovery-design.md).
