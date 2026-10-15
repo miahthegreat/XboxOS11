@@ -64,6 +64,31 @@
                     <CheckBox Content="Turn on Game Mode" IsChecked="{x:Bind ViewModel.GameMode, Mode=TwoWay}" />
                     <CheckBox Content="Hardware-accelerated GPU scheduling (takes effect after the GPU driver is installed)"
                               IsChecked="{x:Bind ViewModel.HardwareAcceleratedGpuScheduling, Mode=TwoWay}" />
+                    <TextBlock Text="Gaming optimizations (reversible)" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Optimizations}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:OptimizationItem">
+                                <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="{x:Bind Title}">
+                                    <StackPanel>
+                                        <TextBlock Text="{x:Bind Title}" />
+                                        <TextBlock Text="{x:Bind Description}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Text="{x:Bind Detail}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                    </StackPanel>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Original values are recorded; undo any time with Set-GamingOptimizations.ps1 -Restore." />
+                    <Expander Header="Never changed by XboxOS11" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.NeverChanged}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{x:Bind}" TextWrapping="Wrap" Margin="0,0,0,6" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Expander>
                     <TextBlock Text="Install game launchers with winget" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
                     <ItemsRepeater ItemsSource="{x:Bind ViewModel.Launchers}">
                         <ItemsRepeater.Layout>

@@ -54,6 +54,11 @@
         "hardwareAcceleratedGpuScheduling": false,
         "launchers": [
           "Xbox"
+        ],
+        "optimizations": [
+          "WindowedGameOptimizations",
+          "VariableRefreshRate",
+          "BackgroundRecordingOff"
         ]
       }
     },

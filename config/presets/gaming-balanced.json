@@ -54,6 +54,10 @@
         "hardwareAcceleratedGpuScheduling": false,
         "launchers": [
           "Steam"
+        ],
+        "optimizations": [
+          "WindowedGameOptimizations",
+          "BackgroundRecordingOff"
         ]
       }
     },

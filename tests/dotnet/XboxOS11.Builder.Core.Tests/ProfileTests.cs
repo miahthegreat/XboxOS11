@@ -38,7 +38,7 @@ public class ProfileTests
         Assert.True(json["source"]!.AsObject().ContainsKey("imageIndex"));
         Assert.Null(json["source"]!["imageIndex"]);
         Assert.Equal(
-            ["enabled", "gameMode", "hardwareAcceleratedGpuScheduling", "launchers"],
+            ["enabled", "gameMode", "hardwareAcceleratedGpuScheduling", "launchers", "optimizations"],
             json["setup"]!["postInstall"]!.AsObject().Select(kv => kv.Key).ToArray());
     }
 
@@ -87,6 +87,10 @@ public class ProfileTests
         editor.SetLauncher("Epic", true);
         editor.SetLauncher("Epic", true);
         Assert.Single(editor.Profile.Setup.PostInstall.Launchers, l => l == "Epic");
+        editor.SetOptimization("VariableRefreshRate", true);
+        editor.SetOptimization("WindowedGameOptimizations", false);
+        Assert.Contains("VariableRefreshRate", editor.Profile.Setup.PostInstall.Optimizations);
+        Assert.DoesNotContain("WindowedGameOptimizations", editor.Profile.Setup.PostInstall.Optimizations);
     }
 
     [Fact]

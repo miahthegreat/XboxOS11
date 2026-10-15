@@ -75,6 +75,7 @@ public sealed class PostInstallOptions
     public bool GameMode { get; set; } = true;
     public bool HardwareAcceleratedGpuScheduling { get; set; }
     public List<string> Launchers { get; set; } = [];
+    public List<string> Optimizations { get; set; } = [];
 }
 
 public sealed class OutputOptions

@@ -54,6 +54,13 @@ try {
                         [ordered]@{ id = $_.id; displayName = $_.displayName; description = $_.description; recommended = [bool]$_.recommended; order = [int]$_.order }
                     })
                 launchers            = @(Get-XboxOSBuilderLauncherCatalog)
+                optimizations        = @((Get-XboxOSGamingTweakCatalog).tweaks | Where-Object { -not $_.PSObject.Properties['profileField'] } | ForEach-Object {
+                        [ordered]@{
+                            id = [string]$_.id; title = [string]$_.title; description = [string]$_.description; scope = [string]$_.scope
+                            requiresRestart = [bool]$_.requiresRestart; defaultEnabled = [bool]$_.defaultEnabled; settingsPage = [string]$_.settingsPage
+                        }
+                    })
+                neverChange          = @((Get-XboxOSGamingTweakCatalog).neverChange | ForEach-Object { [ordered]@{ item = [string]$_.item; reason = [string]$_.reason } })
                 privacyOptions       = @('Minimal', 'Recommended')
                 defaultOutput        = 'C:\XboxOS\Output'
                 defaultProfileFolder = 'C:\XboxOS\Profiles'

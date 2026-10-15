@@ -137,16 +137,18 @@ Invoke-Pester -Path .\tests
 
 GitHub Actions (`.github/workflows/validate.yml`) validates JSON, repository structure, PSScriptAnalyzer, and unit tests. CI never downloads or publishes Windows ISOs.
 
-## Post-install scripts (Milestone 1 stubs)
+## Post-install scripts
 
 | Script | Purpose |
 |--------|---------|
-| `postinstall/Setup-Gaming.ps1` | Idempotent Game Mode helpers |
+| `postinstall/Set-GamingOptimizations.ps1` | Reversible gaming optimizations (`-List`, `-UseDefaults`, `-Restore`) |
+| `postinstall/Setup-Gaming.ps1` | Game Mode / HAGS compatibility wrapper |
+| `postinstall/Invoke-PostInstall.ps1` | First-logon entrypoint staged by the Builder |
 | `postinstall/Setup-XboxMode.ps1` | Conservative Xbox mode docs + optional unattend snippet |
 | `postinstall/Install-Launchers.ps1` | Opt-in winget launcher installs |
 | `postinstall/Verify-System.ps1` | Dependency presence report |
 
-These are **not** executed automatically during Windows Setup in M1.
+When a Builder profile enables first sign-in setup, the Builder stages these scripts on the ISO and `Invoke-PostInstall.ps1` runs once at first logon. Otherwise run them manually. Gaming optimizations record original values; undo with `Set-GamingOptimizations.ps1 -Restore`.
 
 ## Restoring stock Windows
 
@@ -207,6 +209,7 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M6E controlled live discovery contracts](docs/m6e-controlled-live-discovery-contracts.md)
 - [M7 builder backend contracts](docs/m7-builder-backend-contracts.md)
 - [M8 WinUI 3 Builder](docs/m8-winui-builder.md)
+- [M9 gaming performance and Xbox mode](docs/m9-gaming-performance.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 

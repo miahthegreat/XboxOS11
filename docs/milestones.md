@@ -191,9 +191,13 @@ WinUI 3 / .NET 10 desktop frontend over the M7 API: ISO selection and edition di
 - Projects: `src/XboxOS11.Builder.App` (WinUI 3, unpackaged), `src/XboxOS11.Builder.Core`, `tests/dotnet/XboxOS11.Builder.Core.Tests`
 - CI: `builder` job (xUnit + PowerShell contract tests, WinUI x64 build)
 
-## M9: Gaming performance and Xbox mode
+## M9: Gaming performance and Xbox mode — complete
 
-Supported, reversible post-install gaming configuration and Xbox mode verification for Ryzen 7 7800X3D / Radeon RX 9070 XT class hardware, without disabling security for synthetic gains.
+Supported, documented, reversible post-install gaming optimizations with exact restore, X3D/Radeon-aware verification, and Builder/App integration. Power plan, Game Bar, and security features are explicitly never changed.
+
+- Design and verification: [m9-gaming-performance.md](m9-gaming-performance.md)
+- Catalog: `config/gaming-tweaks.json`; applier/restorer: `postinstall/Set-GamingOptimizations.ps1`
+- Profile: optional `setup.postInstall.optimizations`; API catalog exposes `optimizations` and `neverChange`
 
 ## M10: Recovery, maintenance, and release engineering
 

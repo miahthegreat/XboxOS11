@@ -119,6 +119,19 @@ public sealed class ProfileEditor
         Changed();
     }
 
+    public void SetOptimization(string id, bool selected)
+    {
+        var list = Profile.Setup.PostInstall.Optimizations;
+        var has = list.Contains(id, StringComparer.OrdinalIgnoreCase);
+        if (selected == has)
+        {
+            return;
+        }
+
+        if (selected) { list.Add(id); } else { list.RemoveAll(x => x.Equals(id, StringComparison.OrdinalIgnoreCase)); }
+        Changed();
+    }
+
     /// <summary>Turning unattend off also turns off the options that depend on it (the backend would reject them).</summary>
     public void SetUnattend(bool enabled)
     {
