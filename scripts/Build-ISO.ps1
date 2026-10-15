@@ -20,7 +20,13 @@ param(
 
     [switch]$SkipPrerequisites,
 
-    [switch]$KeepWorkspaceOnSuccess
+    [switch]$KeepWorkspaceOnSuccess,
+
+    # Builder: files copied onto the ISO tree before export (autounattend.xml and sources\$OEM$ only).
+    [string]$MediaOverlayDirectory,
+
+    # Builder: emit machine-readable XBOXOS-EVENT progress lines for the native frontend.
+    [switch]$EmitEvents
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +45,7 @@ function Invoke-Phase {
     Write-Host ''
     Write-Host "=== Phase: $Name ===" -ForegroundColor Cyan
     Write-XboxOSLog -Level Information -Message "Starting phase: $Name"
+    if ($EmitEvents) { $null = Write-XboxOSBuilderEvent -Type phase -Data @{ name = $Name; status = 'started' } }
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $Error.Clear()
     try {
@@ -61,6 +68,7 @@ function Invoke-Phase {
             Result   = $result
         })
         Write-XboxOSLog -Level Information -Message "Phase succeeded: $Name"
+        if ($EmitEvents) { $null = Write-XboxOSBuilderEvent -Type phase -Data @{ name = $Name; status = 'succeeded'; seconds = [int]$sw.Elapsed.TotalSeconds } }
         return $result
     }
     catch {
@@ -73,6 +81,7 @@ function Invoke-Phase {
             Result   = $null
         })
         Write-XboxOSLog -Level Error -Message "Phase failed: $Name - $($_.Exception.Message)"
+        if ($EmitEvents) { $null = Write-XboxOSBuilderEvent -Type phase -Data @{ name = $Name; status = 'failed'; message = $_.Exception.Message } }
         throw
     }
 }
@@ -99,6 +108,13 @@ try {
     }
 
     $Context = New-XboxOSBuildContext -ConfigurationPath $Configuration -SourceISO $SourceISO -OutputDirectory $OutputDirectory -DryRun:$DryRun
+    if ($MediaOverlayDirectory) {
+        $overlayCheck = Test-XboxOSMediaOverlay -Directory $MediaOverlayDirectory
+        if (-not $overlayCheck.valid) {
+            throw ("Media overlay rejected:`n - " + ($overlayCheck.errors -join "`n - "))
+        }
+    }
+    $Context | Add-Member -NotePropertyName MediaOverlayDirectory -NotePropertyValue $MediaOverlayDirectory -Force
     $dismPath = Find-XboxOSDism
     $phases = $Context.Configuration.Raw.phases
 

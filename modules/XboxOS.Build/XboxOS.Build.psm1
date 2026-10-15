@@ -2068,5 +2068,6 @@ function Invoke-XboxOSMountCleanup {
 . (Join-Path $PSScriptRoot 'HostLabDiscovery.ps1')
 . (Join-Path $PSScriptRoot 'AuthorizedHostDiscovery.ps1')
 . (Join-Path $PSScriptRoot 'ControlledLiveDiscovery.ps1')
+. (Join-Path $PSScriptRoot 'BuilderProfile.ps1')
 
 Export-ModuleMember -Function *

@@ -161,9 +161,9 @@ Gate A controls for a real-host read-only adapter: durable cross-process replay 
 
 ## Product target: Native WinUI 3 XboxOS11 Builder
 
-Long-term end-user product (not implemented in M6D/M6E design): a desktop application that imports a supported Windows 11 ISO, discovers editions, applies gaming-focused presets and component selection with dependency/safety warnings, integrates drivers, supports unattended setup options, exports a custom ISO, and persists importable JSON presets with build logs and integrity reports.
+A desktop application that imports a supported Windows 11 ISO, discovers editions, applies gaming presets or custom component selection with dependency/safety warnings, integrates drivers, configures unattended setup, exports a custom ISO, and saves reusable JSON profiles with build logs.
 
-Intended user workflow (separate from lab authorization architecture):
+User workflow (separate from lab authorization architecture):
 
 1. Select a supported Windows 11 ISO
 2. Choose a prebuilt gaming preset or Custom
@@ -173,20 +173,24 @@ Intended user workflow (separate from lab authorization architecture):
 6. Produce a customized bootable ISO
 7. Save and reuse the build configuration
 
-Backend contracts in this repository are intended for later WinUI 3 / .NET frontend consumption. GUI, ISO production, and new servicing are out of scope for M6D/M6E design.
+## M7: Builder backend — complete
 
-## Later: Xbox mode integration
+Presets, reusable build profiles, strict validation, dependency-aware component review, safe unattend generation, profile-driven builds with a media overlay, first-logon post-install, and a JSON API/event protocol for the native frontend.
 
-Supported Xbox FSE configuration, controller-first startup, and launcher integration—only after disposable-lab controls and Microsoft-supported mechanisms are validated on desktop hardware.
+- Contracts: [m7-builder-backend-contracts.md](m7-builder-backend-contracts.md)
+- CLIs: `scripts/Invoke-XboxOSBuild.ps1` (profile-driven build, `-DryRun`, `-EmitEvents`), `scripts/Invoke-XboxOSBuilderApi.ps1` (frontend API)
+- Presets: `config/presets/` (`gaming-balanced`, `gaming-lean`, `handheld-xbox-mode`, `stock-safe`)
+- Post-install entrypoint: `postinstall/Invoke-PostInstall.ps1`
+- Builder engine `7.0.0`; module `0.7.0`
 
-## M7: Gaming performance
+## M8: Native WinUI 3 Builder application
 
-Benchmark-driven service and startup optimization for Ryzen 7 7800X3D and Radeon RX 9070 XT, without disabling security for synthetic gains.
+WinUI 3 / .NET desktop frontend over the M7 API: ISO selection and edition discovery, preset/custom selection, component review, driver and setup options, validation, live build progress, and profile save/load.
 
-## M8: Recovery and maintenance
+## M9: Gaming performance and Xbox mode
 
-Windows Update validation, recovery options, rollback mechanisms, and compatibility testing.
+Supported, reversible post-install gaming configuration and Xbox mode verification for Ryzen 7 7800X3D / Radeon RX 9070 XT class hardware, without disabling security for synthetic gains.
 
-## M9: Release engineering
+## M10: Recovery, maintenance, and release engineering
 
-Versioned build manifests, release documentation, automated validation, and reproducible local builds.
+Restore guidance and post-install rollback, versioned releases, reproducible packaging, changelog, and release automation.

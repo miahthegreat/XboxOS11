@@ -20,7 +20,12 @@ Import-Module $modulePath -Force
 
 $adk = Find-XboxOSAdkTools
 if (-not $OscdimgPath) { $OscdimgPath = $adk.Oscdimg }
-if (-not $OscdimgPath -or -not (Test-Path -LiteralPath $OscdimgPath)) {
+if ($DryRun -and (-not $OscdimgPath -or -not (Test-Path -LiteralPath $OscdimgPath))) {
+    # A dry run never invokes oscdimg; report the planned command without requiring ADK.
+    Write-XboxOSLog -Level Warning -Message 'DryRun: oscdimg.exe (Windows ADK Deployment Tools) not found; a real build will require it.'
+    $OscdimgPath = 'oscdimg.exe'
+}
+elseif (-not $OscdimgPath -or -not (Test-Path -LiteralPath $OscdimgPath)) {
     throw @'
 oscdimg.exe was not found. Install Windows ADK Deployment Tools:
 https://learn.microsoft.com/windows-hardware/get-started/adk-install
@@ -85,6 +90,26 @@ if (-not $DryRun) {
             '/FileSize:4096'
         ) | Out-Null
         Remove-Item -LiteralPath $destWim -Force
+    }
+}
+
+$overlayDir = $null
+if ($Context.PSObject.Properties.Name -contains 'MediaOverlayDirectory' -and $Context.MediaOverlayDirectory) {
+    $overlayDir = [string]$Context.MediaOverlayDirectory
+    $overlayCheck = Test-XboxOSMediaOverlay -Directory $overlayDir
+    if (-not $overlayCheck.valid) {
+        throw ("Media overlay rejected:`n - " + ($overlayCheck.errors -join "`n - "))
+    }
+    if ($DryRun) {
+        Write-XboxOSLog -Level Information -Message ("DryRun: would copy media overlay files: {0}" -f ($overlayCheck.files -join ', '))
+    }
+    else {
+        foreach ($rel in $overlayCheck.files) {
+            $dest = Join-Path $sourceTree $rel
+            New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $overlayDir $rel) -Destination $dest -Force
+        }
+        Write-XboxOSLog -Level Information -Message ("Copied {0} media overlay file(s) onto the ISO tree." -f @($overlayCheck.files).Count)
     }
 }
 

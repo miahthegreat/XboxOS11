@@ -130,6 +130,13 @@ jobs:
             'scripts/New-ControlledLiveDiscoverySigningKey.ps1',
             'tests/ControlledLiveDiscovery.Tests.ps1',
             'docs/m6e-controlled-live-discovery-contracts.md',
+            'modules/XboxOS.Build/BuilderProfile.ps1',
+            'scripts/Invoke-XboxOSBuild.ps1',
+            'scripts/Invoke-XboxOSBuilderApi.ps1',
+            'postinstall/Invoke-PostInstall.ps1',
+            'config/presets/gaming-balanced.json',
+            'tests/BuilderProfile.Tests.ps1',
+            'docs/m7-builder-backend-contracts.md',
             'README.md',
             'LICENSE'
           )
