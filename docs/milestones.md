@@ -33,9 +33,15 @@ Completed:
 
 Baseline documentation: [m2-completion-baseline.md](m2-completion-baseline.md).
 
-## M3: Servicing execution safety (proposed — not started)
+## M3: Servicing execution safety (in progress — simulation only)
 
-Approval-bound, drift-checked execution against disposable images only—transactional apply/recovery, never source-ISO mutation. See proposed scope in [m2-completion-baseline.md](m2-completion-baseline.md).
+Approval contracts, inventory drift detection, dependency guards, and transactional state machine with mock backends. Real DISM mutation remains disabled.
+
+- Contracts: [m3-execution-safety-contracts.md](m3-execution-safety-contracts.md)
+- State machine: [m3-transaction-state-machine.md](m3-transaction-state-machine.md)
+- Implementation notes: [m3-implementation-notes.md](m3-implementation-notes.md)
+- CLI: `scripts/Test-ExecutionSafety.ps1` (simulation reports under `C:\XboxOS\Logs`)
+- `realDismExecutionEnabled` is always `false` (no enable switch)
 
 ## M4: Xbox mode integration
 

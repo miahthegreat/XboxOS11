@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.2.1'
+    ModuleVersion     = '0.3.0'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -78,6 +78,31 @@
         'Get-XboxOSPlanContentHash'
         'Get-XboxOSUtf8Sha256Hex'
         'ConvertTo-XboxOSCanonicalJson'
+        'Get-XboxOSExecutionSafetyEngineVersion'
+        'Get-XboxOSApprovalSchemaVersion'
+        'Get-XboxOSDriftSchemaVersion'
+        'Get-XboxOSDependencySchemaVersion'
+        'Get-XboxOSTransactionSchemaVersion'
+        'Get-XboxOSRealDismExecutionEnabled'
+        'Assert-XboxOSExecutionSafetyInvariants'
+        'New-XboxOSApprovalRecord'
+        'Save-XboxOSApprovalRecord'
+        'Test-XboxOSApprovalValidity'
+        'Set-XboxOSApprovalState'
+        'Get-XboxOSApprovalBindingDocument'
+        'Get-XboxOSApprovalBindingHash'
+        'Test-XboxOSInventoryDrift'
+        'Test-XboxOSDependencySafety'
+        'New-XboxOSMockServicingBackend'
+        'New-XboxOSServicingTransaction'
+        'Set-XboxOSTransactionState'
+        'Invoke-XboxOSTransactionPreflight'
+        'Invoke-XboxOSTransactionApplyApproval'
+        'Invoke-XboxOSTransactionSimulate'
+        'Invoke-XboxOSTransactionRecover'
+        'Save-XboxOSExecutionSafetyReport'
+        'New-XboxOSAuditEvent'
+        'Assert-XboxOSTransactionTransition'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -87,7 +112,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 2: deterministic servicing plan engine (plan-only).'
+            ReleaseNotes = 'Milestone 3: execution safety architecture (simulation only; real DISM disabled).'
         }
     }
 }

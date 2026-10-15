@@ -148,6 +148,9 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M2 canonical plan hash](docs/m2-canonical-plan-hash.md)
 - [M2 operation ordering and recovery](docs/m2-operation-ordering-and-recovery.md)
 - [M2 completion baseline](docs/m2-completion-baseline.md)
+- [M3 execution safety contracts](docs/m3-execution-safety-contracts.md)
+- [M3 transaction state machine](docs/m3-transaction-state-machine.md)
+- [M3 unresolved risks](docs/m3-unresolved-risks.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 

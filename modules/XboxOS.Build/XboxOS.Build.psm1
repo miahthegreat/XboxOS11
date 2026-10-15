@@ -2053,5 +2053,6 @@ function Invoke-XboxOSMountCleanup {
 }
 
 . (Join-Path $PSScriptRoot 'ServicingPlan.ps1')
+. (Join-Path $PSScriptRoot 'ExecutionSafety.ps1')
 
 Export-ModuleMember -Function *
