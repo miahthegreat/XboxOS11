@@ -3,9 +3,12 @@
 .SYNOPSIS
     Milestone 6A disposable-image experiment planning and authorization simulation.
 .DESCRIPTION
-    Builds a bound experiment plan from authoritative inventory + M5 readiness,
+    Builds a bound experiment plan from authoritative inventory + validated M5 readiness,
     evaluates allowlists, simulates operator/risk records, and always ends
     BlockedForExecution. Never enables writable DISM or creates/mounts a WIM.
+
+    Default mode requires an existing readiness JSON and fail-closes on mismatch/missing.
+    Inline assessment generation requires -Simulation -AllowInlineSimulationReadiness.
 #>
 [CmdletBinding()]
 param(
@@ -18,6 +21,7 @@ param(
     [string]$ProposedWorkspaceRoot = 'C:\XboxOS\Work\experiment-m6a-sim',
     [string]$FunctionalValidationPath,
     [switch]$Simulation,
+    [switch]$AllowInlineSimulationReadiness,
     [switch]$SkipOperatorConsent,
     [switch]$SkipRiskAcceptance
 )
@@ -38,7 +42,11 @@ if (-not $FunctionalValidationPath) {
     $FunctionalValidationPath = Join-Path $RepoRoot 'config\functional-validation-matrix.json'
 }
 
-Write-Host '=== XboxOS11 Milestone 6A experiment planning (simulation only) ===' -ForegroundColor Cyan
+if ($AllowInlineSimulationReadiness -and -not $Simulation) {
+    throw '-AllowInlineSimulationReadiness requires -Simulation and never substitutes evidence in default authoritative mode.'
+}
+
+Write-Host '=== XboxOS11 Milestone 6A.1 experiment planning (simulation only) ===' -ForegroundColor Cyan
 Write-Host ("Engine: {0}" -f (Get-XboxOSExperimentPlanEngineVersion))
 Write-Host ("Real DISM enabled: {0}" -f (Get-XboxOSRealDismExecutionEnabled))
 Write-Host ("Experimental mutation enabled: {0}" -f (Get-XboxOSExperimentalMutationEnabled))
@@ -53,10 +61,14 @@ $fvCatalog = Import-XboxOSFunctionalValidationCatalog -Path $FunctionalValidatio
 
 $compatReport = $null
 $inventoryProvenance = $null
+$evidenceMode = 'ExternalValidated'
+$requireAuthProv = $true
 $readinessPathUsed = $ReadinessJsonPath
 
-if ($Simulation) {
-    Write-Host 'Mode: Simulation (fixture-derived inventory).' -ForegroundColor Yellow
+if ($Simulation -and $AllowInlineSimulationReadiness) {
+    Write-Host 'Mode: Explicit inline simulation readiness (fixture-derived; not externally validated).' -ForegroundColor Yellow
+    $evidenceMode = 'InlineSimulation'
+    $requireAuthProv = $false
     $fixtures = Join-Path $RepoRoot 'tests\Fixtures'
     $appx = @(
         ConvertFrom-XboxOSDismProvisionedAppxListOutput -Output (Get-Content (Join-Path $fixtures 'dism-get-appx-26300.9457.txt')) |
@@ -90,14 +102,15 @@ if ($Simulation) {
         -VerificationLevel Unverified `
         -SourcePath (Join-Path $fixtures 'dism-get-*-26300.9457.txt') `
         -FallbackMode Simulation `
-        -Notes @('Explicit -Simulation mode for M6A.')
+        -Notes @('Explicit -AllowInlineSimulationReadiness. Not an externally validated readiness report.')
     $readinessPathUsed = '(inline-simulation-readiness)'
 }
 elseif (Test-Path -LiteralPath $CompatJsonPath) {
+    Write-Host 'Mode: Authoritative inventory + externally validated readiness report required.'
     $inventory = Import-XboxOSInventoryFromCompatReport -Path $CompatJsonPath
     $compatReport = Get-Content -LiteralPath $CompatJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ([string]$inventory.verificationStatus -ne 'Authoritative') {
-        throw ("Authoritative inventory required; got '{0}'. Use -Simulation for fixtures." -f $inventory.verificationStatus)
+        throw ("Authoritative inventory required; got '{0}'. Use -Simulation -AllowInlineSimulationReadiness for fixtures." -f $inventory.verificationStatus)
     }
     $inventoryProvenance = New-XboxOSInventoryProvenance `
         -SourceType Authoritative `
@@ -107,7 +120,7 @@ elseif (Test-Path -LiteralPath $CompatJsonPath) {
         -Notes @('Authoritative M1/M4 compatibility inventory.')
 }
 else {
-    throw ("Authoritative inventory not found: {0}. Use -Simulation for fixture-derived evaluation." -f $CompatJsonPath)
+    throw ("Authoritative inventory not found: {0}. Use -Simulation -AllowInlineSimulationReadiness for fixture-derived evaluation." -f $CompatJsonPath)
 }
 
 $plan = New-XboxOSServicingPlan `
@@ -116,22 +129,10 @@ $plan = New-XboxOSServicingPlan `
     -DisableFeaturesManifest $disableFeatures `
     -CompatibilityManifest $compatibility
 
-# Prefer live M5 report when present and hashes match; otherwise build inline assessment.
 $readiness = $null
-if (-not $Simulation -and (Test-Path -LiteralPath $ReadinessJsonPath)) {
-    $readyFile = Get-Content -LiteralPath $ReadinessJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ([string]$readyFile.planContentHash -eq [string]$plan.contentHash -and
-        [string]$readyFile.inventoryFingerprint -eq [string]$plan.inventoryFingerprint) {
-        $readiness = $readyFile
-        Write-Host ("Bound M5 readiness report: {0}" -f $ReadinessJsonPath)
-    }
-    else {
-        Write-Warning 'Existing M5 readiness report hash mismatch; rebuilding inline assessment.'
-        $readinessPathUsed = '(inline-rebuilt-readiness)'
-    }
-}
+$readinessBindingDigest = $null
 
-if ($null -eq $readiness) {
+if ($evidenceMode -eq 'InlineSimulation') {
     $readiness = New-XboxOSServicingReadinessAssessment `
         -Plan $plan `
         -Inventory $inventory `
@@ -141,6 +142,34 @@ if ($null -eq $readiness) {
         -CompatReport $compatReport `
         -InventoryProvenance $inventoryProvenance `
         -RepoRoot $RepoRoot
+    $bind = Test-XboxOSReadinessReportBinding `
+        -Report $readiness `
+        -Plan $plan `
+        -EvidenceMode InlineSimulation
+    if (-not $bind.valid) {
+        throw ("Inline simulation readiness failed internal consistency checks: {0}" -f ($bind.errors -join '; '))
+    }
+    $readinessBindingDigest = $bind.readinessBindingDigest
+    Write-Host 'Evidence: InlineSimulation (explicitly labeled; not externally validated).' -ForegroundColor Yellow
+}
+else {
+    if (-not (Test-Path -LiteralPath $ReadinessJsonPath)) {
+        throw ("Readiness report missing (fail closed): {0}. Provide a validated M5 report or use -Simulation -AllowInlineSimulationReadiness." -f $ReadinessJsonPath)
+    }
+    $readyFile = Get-Content -LiteralPath $ReadinessJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $bind = Test-XboxOSReadinessReportBinding `
+        -Report $readyFile `
+        -Plan $plan `
+        -EvidenceMode ExternalValidated `
+        -RequireAuthoritativeProvenance
+    if (-not $bind.valid) {
+        throw ("Readiness report rejected (fail closed; no silent rebuild): {0}" -f ($bind.errors -join '; '))
+    }
+    $readiness = $readyFile
+    $readinessBindingDigest = $bind.readinessBindingDigest
+    $readinessPathUsed = $ReadinessJsonPath
+    Write-Host ("Evidence: ExternalValidated report bound: {0}" -f $ReadinessJsonPath)
+    Write-Host ("Readiness binding digest: {0}" -f $readinessBindingDigest)
 }
 
 $eligibleIds = @(
@@ -166,12 +195,16 @@ $report = Invoke-XboxOSExperimentPlanSimulate `
     -ReadinessAssessment $readiness `
     -RequestedOperationIds $eligibleIds `
     -FunctionalValidationCatalog $fvCatalog `
+    -CompatibilityManifest $compatibility `
     -RepoRoot $RepoRoot `
     -OperatorId $OperatorId `
     -ProposedWorkspaceRoot $ProposedWorkspaceRoot `
     -ReadinessReportPath $readinessPathUsed `
+    -EvidenceMode $evidenceMode `
+    -ReadinessBindingDigest $readinessBindingDigest `
     -PrivateKeyPemPath $priv `
     -PublicKeyPemPath $pub `
+    -RequireAuthoritativeProvenance:$requireAuthProv `
     -SimulateOperatorConsent:(-not $SkipOperatorConsent) `
     -SimulateRiskAcceptance:(-not $SkipRiskAcceptance)
 
@@ -184,6 +217,8 @@ $paths = Save-XboxOSExperimentPlanReport `
 Write-Host ''
 Write-Host ("Decision:                 {0}" -f $report.decision)
 Write-Host ("Transaction state:        {0}" -f $report.transactionState)
+Write-Host ("Evidence mode:            {0}" -f $report.evidenceMode)
+Write-Host ("Readiness binding digest: {0}" -f $report.readinessBindingDigest)
 if ($report.experimentPlan) {
     Write-Host ("Experiment id:            {0}" -f $report.experimentPlan.experimentId)
     Write-Host ("Experiment content hash:  {0}" -f $report.experimentPlan.contentHash)

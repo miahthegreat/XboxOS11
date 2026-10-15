@@ -82,9 +82,10 @@ Describe 'XboxOS11 Milestone 6A experiment planning and authorization simulation
         Reset-XboxOSExperimentNonceRegistry
     }
 
-    It 'reports Milestone 6A engine and schema versions' {
-        Get-XboxOSExperimentPlanEngineVersion | Should -Be '6.0.0-a'
+    It 'reports Milestone 6A.1 engine and schema versions' {
+        Get-XboxOSExperimentPlanEngineVersion | Should -Be '6.0.1-a'
         Get-XboxOSExperimentPlanSchemaVersion | Should -Be 'experiment-plan-v1'
+        Get-XboxOSReadinessBindingDigestSchemaVersion | Should -Be 'readiness-binding-digest-v1'
         Get-XboxOSExperimentalMutationEnabled | Should -BeFalse
         Get-XboxOSExperimentalExecutionAuthorized | Should -BeFalse
         Get-XboxOSRealDismExecutionEnabled | Should -BeFalse
@@ -107,8 +108,10 @@ Describe 'XboxOS11 Milestone 6A experiment planning and authorization simulation
             -ReadinessAssessment $script:Readiness `
             -RequestedOperationIds $script:EligibleIds `
             -FunctionalValidationCatalog $script:FvCatalog `
+            -CompatibilityManifest $script:Compatibility `
             -RepoRoot $script:RepoRoot `
             -ProposedWorkspaceRoot (Join-Path $script:TempRoot 'ws') `
+            -EvidenceMode InlineSimulation `
             -PrivateKeyPemPath $script:PrivKey `
             -PublicKeyPemPath $script:PubKey `
             -SimulateOperatorConsent `
@@ -116,6 +119,8 @@ Describe 'XboxOS11 Milestone 6A experiment planning and authorization simulation
 
         $report.decision | Should -Be 'BlockedForExecution'
         $report.transactionState | Should -Be 'BlockedForExecution'
+        $report.evidenceMode | Should -Be 'InlineSimulation'
+        $report.readinessBindingDigest | Should -Match '^[0-9A-F]{64}$'
         @($report.experimentPlan.operations).Count | Should -Be 8
         $report.executionAuthorized | Should -BeFalse
         $report.servicingAuthorized | Should -BeFalse
@@ -126,21 +131,26 @@ Describe 'XboxOS11 Milestone 6A experiment planning and authorization simulation
         foreach ($op in $report.experimentPlan.operations) {
             $op.executionAuthorized | Should -BeFalse
             $op.effectiveReadiness | Should -Be 'MissingEvidence'
+            $op.dependencyClosureCompleteness | Should -Be 'Incomplete'
         }
     }
 
     It 'produces deterministic experiment plan content hashes' {
+        $digest = Get-XboxOSReadinessBindingDigest -ReadinessAssessment $script:Readiness
         $allow = Test-XboxOSExperimentOperationAllowlist `
             -Plan $script:Plan `
             -ReadinessAssessment $script:Readiness `
-            -RequestedOperationIds $script:EligibleIds
+            -RequestedOperationIds $script:EligibleIds `
+            -CompatibilityManifest $script:Compatibility `
+            -ExpectedReadinessBindingDigest $digest
         $ws = Test-XboxOSExperimentWorkspaceConstraints `
             -ProposedWorkspaceRoot (Join-Path $script:TempRoot 'ws-hash') `
             -SourceIsoPath 'C:\XboxOS\Sources\Windows11_Client_x64_en-us_26300_9457.iso'
-        $p1 = New-XboxOSExperimentPlan -Plan $script:Plan -ReadinessAssessment $script:Readiness -AllowlistResult $allow -WorkspaceConstraints $ws -FunctionalValidationCatalog $script:FvCatalog -RepoRoot $script:RepoRoot
-        $p2 = New-XboxOSExperimentPlan -Plan $script:Plan -ReadinessAssessment $script:Readiness -AllowlistResult $allow -WorkspaceConstraints $ws -FunctionalValidationCatalog $script:FvCatalog -RepoRoot $script:RepoRoot
+        $p1 = New-XboxOSExperimentPlan -Plan $script:Plan -ReadinessAssessment $script:Readiness -AllowlistResult $allow -WorkspaceConstraints $ws -FunctionalValidationCatalog $script:FvCatalog -RepoRoot $script:RepoRoot -EvidenceMode InlineSimulation -ReadinessBindingDigest $digest
+        $p2 = New-XboxOSExperimentPlan -Plan $script:Plan -ReadinessAssessment $script:Readiness -AllowlistResult $allow -WorkspaceConstraints $ws -FunctionalValidationCatalog $script:FvCatalog -RepoRoot $script:RepoRoot -EvidenceMode InlineSimulation -ReadinessBindingDigest $digest
         $p1.contentHash | Should -Be $p2.contentHash
         $p1.contentHash | Should -Match '^[0-9A-F]{64}$'
+        $p1.readinessBindingDigest | Should -Be $digest
     }
 
     It 'rejects unknown operations and wildcards' {
@@ -153,18 +163,54 @@ Describe 'XboxOS11 Milestone 6A experiment planning and authorization simulation
         $r2.errors -join ' ' | Should -Match 'Wildcard'
     }
 
-    It 'rejects protected Xbox/Gaming Services style selections when plan status is Protected' {
-        $protected = @($script:Plan.operations | Where-Object status -eq 'Protected' | Select-Object -First 1)
-        if ($protected.Count -eq 0) {
-            Set-ItResult -Skipped -Because 'No Protected operations in fixture plan'
-            return
+    It 'rejects protected Xbox identities even when plan status is forged Eligible' {
+        # Historical skip reason: fixture M2 plans do not emit status=Protected for removable candidates
+        # (protected packages are filtered earlier). This test forges Eligible + protected identity instead.
+        $forgedId = 'appx:XboxTCUI:Microsoft.Xbox.TCUI_1.0.0.0_neutral__8wekyb3d8bbwe'
+        $forgedOp = [pscustomobject]@{
+            operationId    = $forgedId
+            targetIdentity = 'Microsoft.Xbox.TCUI_1.0.0.0_neutral__8wekyb3d8bbwe'
+            operationType  = 'RemoveProvisionedAppx'
+            status         = 'Eligible'
+        }
+        $forgedReady = [pscustomobject]@{
+            operationId               = $forgedId
+            targetIdentity            = 'Microsoft.Xbox.TCUI_1.0.0.0_neutral__8wekyb3d8bbwe'
+            planStatus                = 'Eligible'
+            readiness                 = 'MissingEvidence'
+            catalogCandidateReadiness = 'MissingEvidence'
+            dependencyClosure         = [pscustomobject]@{ completeness = 'Incomplete' }
+            affectedCapabilities      = @('capability:XboxIdentity')
+        }
+        $planClone = [pscustomobject]@{
+            contentHash           = $script:Plan.contentHash
+            inventoryFingerprint  = $script:Plan.inventoryFingerprint
+            sourceImage           = $script:Plan.sourceImage
+            operations            = @($script:Plan.operations) + @($forgedOp)
+        }
+        $readyClone = [pscustomobject]@{
+            planContentHash         = $script:Readiness.planContentHash
+            inventoryFingerprint    = $script:Readiness.inventoryFingerprint
+            sourceImage             = $script:Readiness.sourceImage
+            inventoryProvenance     = $script:Readiness.inventoryProvenance
+            operationAssessments    = @($script:Readiness.operationAssessments) + @($forgedReady)
+            catalogValidation       = $script:Readiness.catalogValidation
+            engineVersion           = $script:Readiness.engineVersion
+            reportSchemaVersion     = $script:Readiness.reportSchemaVersion
+            decision                = $script:Readiness.decision
+            realDismExecutionEnabled = $false
+            modifyingCommandsInvoked = $false
+            executionAuthorized      = $false
+            servicingAuthorized      = $false
+            git                     = $script:Readiness.git
         }
         $r = Test-XboxOSExperimentOperationAllowlist `
-            -Plan $script:Plan `
-            -ReadinessAssessment $script:Readiness `
-            -RequestedOperationIds @([string]$protected[0].operationId)
+            -Plan $planClone `
+            -ReadinessAssessment $readyClone `
+            -RequestedOperationIds @($forgedId) `
+            -CompatibilityManifest $script:Compatibility
         $r.valid | Should -BeFalse
-        $r.errors -join ' ' | Should -Match 'Protected'
+        $r.errors -join ' ' | Should -Match 'Protected identity'
     }
 
     It 'rejects plan hash and inventory fingerprint mismatches' {
@@ -198,13 +244,25 @@ Describe 'XboxOS11 Milestone 6A experiment planning and authorization simulation
             -ProposedWorkspaceRoot 'C:\Users\user\OneDrive\Work\exp' `
             -SourceIsoPath 'C:\XboxOS\Sources\test.iso'
         $onedrive.valid | Should -BeFalse
-        $onedrive.errors -join ' ' | Should -Match 'OneDrive'
+        $onedrive.errors -join ' ' | Should -Match 'OneDrive|sync'
 
         $trav = Test-XboxOSExperimentWorkspaceConstraints `
             -ProposedWorkspaceRoot 'C:\XboxOS\Work\..\..\Windows\System32' `
             -SourceIsoPath 'C:\XboxOS\Sources\test.iso'
         $trav.valid | Should -BeFalse
-        $trav.errors -join ' ' | Should -Match 'traversal'
+        ($trav.errors -join ' ') | Should -Match 'traversal|Windows'
+
+        $rel = Test-XboxOSExperimentWorkspaceConstraints `
+            -ProposedWorkspaceRoot 'Work\exp' `
+            -SourceIsoPath 'C:\XboxOS\Sources\test.iso'
+        $rel.valid | Should -BeFalse
+        $rel.errors -join ' ' | Should -Match 'Relative'
+
+        $unc = Test-XboxOSExperimentWorkspaceConstraints `
+            -ProposedWorkspaceRoot '\\server\share\exp' `
+            -SourceIsoPath 'C:\XboxOS\Sources\test.iso'
+        $unc.valid | Should -BeFalse
+        $unc.errors -join ' ' | Should -Match 'UNC'
 
         $hostImg = Test-XboxOSExperimentWorkspaceConstraints `
             -ProposedWorkspaceRoot 'C:\XboxOS\Work\exp' `
@@ -404,8 +462,10 @@ Describe 'XboxOS11 Milestone 6A experiment planning and authorization simulation
             -ReadinessAssessment $script:Readiness `
             -RequestedOperationIds $script:EligibleIds `
             -FunctionalValidationCatalog $script:FvCatalog `
+            -CompatibilityManifest $script:Compatibility `
             -RepoRoot $script:RepoRoot `
             -ProposedWorkspaceRoot (Join-Path $script:TempRoot 'ws-report') `
+            -EvidenceMode InlineSimulation `
             -SimulateOperatorConsent `
             -SimulateRiskAcceptance
 
@@ -455,5 +515,117 @@ Describe 'XboxOS11 Milestone 6A experiment planning and authorization simulation
             -ExpectedOperationIds @($script:EligibleIds[0])
         $v.validForSimulation | Should -BeFalse
         $v.grantsExecutionAuthorization | Should -BeFalse
+    }
+
+    It 'fail-closes readiness binding on plan hash, inventory, ISO, schema, and provenance forgeries' {
+        $bindOk = Test-XboxOSReadinessReportBinding -Report $script:Readiness -Plan $script:Plan -EvidenceMode InlineSimulation
+        $bindOk.valid | Should -BeTrue
+        $digest = $bindOk.readinessBindingDigest
+
+        $badPlanHash = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $badPlanHash.planContentHash = ('0' * 64)
+        $r1 = Test-XboxOSReadinessReportBinding -Report $badPlanHash -Plan $script:Plan -EvidenceMode InlineSimulation
+        $r1.valid | Should -BeFalse
+        $r1.errors -join ' ' | Should -Match 'planContentHash'
+
+        $badFp = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $badFp.inventoryFingerprint = ('1' * 64)
+        $r2 = Test-XboxOSReadinessReportBinding -Report $badFp -Plan $script:Plan -EvidenceMode InlineSimulation
+        $r2.valid | Should -BeFalse
+        $r2.errors -join ' ' | Should -Match 'inventoryFingerprint'
+
+        $badIso = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $badIso.sourceImage.isoSha256 = ('2' * 64)
+        $r3 = Test-XboxOSReadinessReportBinding -Report $badIso -Plan $script:Plan -EvidenceMode InlineSimulation
+        $r3.valid | Should -BeFalse
+        $r3.errors -join ' ' | Should -Match 'isoSha256|ISO'
+
+        $badSchema = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $badSchema.reportSchemaVersion = 'servicing-readiness-v0'
+        $r4 = Test-XboxOSReadinessReportBinding -Report $badSchema -Plan $script:Plan -EvidenceMode ExternalValidated -RequireAuthoritativeProvenance
+        $r4.valid | Should -BeFalse
+        $r4.errors -join ' ' | Should -Match 'schema'
+
+        $forgedProv = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $forgedProv.inventoryProvenance.sourceType = 'Authoritative'
+        $forgedProv.inventoryProvenance.verificationLevel = 'Authoritative'
+        # Still FixtureDerived content; ExternalValidated with RequireAuthoritative accepts labels, but plan hash match alone is not enough to claim trust — digest notes document this.
+        $r5 = Test-XboxOSReadinessReportBinding -Report $forgedProv -Plan $script:Plan -EvidenceMode ExternalValidated -RequireAuthoritativeProvenance
+        # Labels pass; ensure digest still differs from original when other fields unchanged... provenance fields are in digest so digest changes.
+        $r5.valid | Should -BeTrue
+        $r5.readinessBindingDigest | Should -Not -Be $digest
+        $r5.authenticatesReport | Should -BeFalse
+    }
+
+    It 'rejects modified readiness, missing/duplicate ops, bad catalog, and digest mismatch' {
+        $mod = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $mod.operationAssessments[0].readiness = 'VerifiedSafeForConsideration'
+        $rMod = Test-XboxOSReadinessReportBinding -Report $mod -Plan $script:Plan -EvidenceMode InlineSimulation
+        # Binding still structurally valid, but digest must change vs original
+        $origDigest = Get-XboxOSReadinessBindingDigest -ReadinessAssessment $script:Readiness
+        $modDigest = Get-XboxOSReadinessBindingDigest -ReadinessAssessment $mod
+        $modDigest | Should -Not -Be $origDigest
+        $allowMod = Test-XboxOSExperimentOperationAllowlist `
+            -Plan $script:Plan `
+            -ReadinessAssessment $mod `
+            -RequestedOperationIds $script:EligibleIds `
+            -CompatibilityManifest $script:Compatibility `
+            -ExpectedReadinessBindingDigest $origDigest
+        $allowMod.valid | Should -BeFalse
+        $allowMod.errors -join ' ' | Should -Match 'binding digest'
+
+        $missing = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $missing.operationAssessments = @($missing.operationAssessments | Select-Object -Skip 1)
+        $rMiss = Test-XboxOSReadinessReportBinding -Report $missing -Plan $script:Plan -EvidenceMode InlineSimulation
+        $rMiss.valid | Should -BeFalse
+        $rMiss.errors -join ' ' | Should -Match 'missing from readiness'
+
+        $dup = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $dup.operationAssessments = @($dup.operationAssessments[0], $dup.operationAssessments[0]) + @($dup.operationAssessments | Select-Object -Skip 1)
+        $rDup = Test-XboxOSReadinessReportBinding -Report $dup -Plan $script:Plan -EvidenceMode InlineSimulation
+        $rDup.valid | Should -BeFalse
+        $rDup.errors -join ' ' | Should -Match 'Duplicate'
+
+        $badCat = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $badCat.catalogValidation.valid = $false
+        $rCat = Test-XboxOSReadinessReportBinding -Report $badCat -Plan $script:Plan -EvidenceMode InlineSimulation
+        $rCat.valid | Should -BeFalse
+        $rCat.errors -join ' ' | Should -Match 'Catalog validation'
+
+        $badImg = $script:Readiness | ConvertTo-Json -Depth 14 | ConvertFrom-Json
+        $badImg.sourceImage.editionName = 'Windows 11 Home'
+        $rImg = Test-XboxOSReadinessReportBinding -Report $badImg -Plan $script:Plan -EvidenceMode InlineSimulation
+        $rImg.valid | Should -BeFalse
+        $rImg.errors -join ' ' | Should -Match 'editionName|edition'
+    }
+
+    It 'labels inline simulation distinctly and keeps all six safety flags False' {
+        $bind = Test-XboxOSReadinessReportBinding -Report $script:Readiness -Plan $script:Plan -EvidenceMode InlineSimulation
+        $bind.evidenceMode | Should -Be 'InlineSimulation'
+        $bind.notes -join ' ' | Should -Match 'InlineSimulation'
+        $report = Invoke-XboxOSExperimentPlanSimulate `
+            -Plan $script:Plan `
+            -ReadinessAssessment $script:Readiness `
+            -RequestedOperationIds $script:EligibleIds `
+            -FunctionalValidationCatalog $script:FvCatalog `
+            -CompatibilityManifest $script:Compatibility `
+            -ProposedWorkspaceRoot (Join-Path $script:TempRoot 'ws-inline') `
+            -EvidenceMode InlineSimulation `
+            -SimulateOperatorConsent `
+            -SimulateRiskAcceptance
+        $report.evidenceMode | Should -Be 'InlineSimulation'
+        $report.experimentPlan.evidenceMode | Should -Be 'InlineSimulation'
+        foreach ($flag in @('realDismExecutionEnabled', 'modifyingCommandsInvoked', 'executionAuthorized', 'servicingAuthorized', 'experimentalMutationEnabled', 'experimentalExecutionAuthorized')) {
+            $report.$flag | Should -BeFalse
+        }
+    }
+
+    It 'CLI script fail-closes without silent rebuild and requires AllowInlineSimulationReadiness for fixtures' {
+        $cli = Get-Content -LiteralPath (Join-Path $script:RepoRoot 'scripts\Test-DisposableExperimentPlan.ps1') -Raw
+        $cli | Should -Match 'AllowInlineSimulationReadiness'
+        $cli | Should -Match 'fail closed'
+        $cli | Should -Not -Match 'rebuilding inline assessment'
+        $cli | Should -Match 'ExternalValidated'
+        $cli | Should -Match 'InlineSimulation'
     }
 }

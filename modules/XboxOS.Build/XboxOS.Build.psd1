@@ -172,9 +172,14 @@
         'Get-XboxOSExperimentTransactionSchemaVersion'
         'Get-XboxOSFunctionalValidationSchemaVersion'
         'Get-XboxOSExperimentPlanHashSchemaVersion'
+        'Get-XboxOSReadinessBindingDigestSchemaVersion'
         'Get-XboxOSExperimentalMutationEnabled'
         'Get-XboxOSExperimentalExecutionAuthorized'
         'Assert-XboxOSExperimentSafetyInvariants'
+        'Test-XboxOSExperimentPathIsUnsafeShape'
+        'Get-XboxOSReadinessBindingCanonicalDocument'
+        'Get-XboxOSReadinessBindingDigest'
+        'Test-XboxOSReadinessReportBinding'
         'Import-XboxOSFunctionalValidationCatalog'
         'Test-XboxOSExperimentWorkspaceConstraints'
         'Test-XboxOSExperimentOperationAllowlist'
@@ -200,7 +205,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 6A: disposable-image experiment planning and authorization simulation (no writable DISM).'
+            ReleaseNotes = 'Milestone 6A.1: harden readiness evidence binding, digests, allowlist, and workspace path validation.'
         }
     }
 }

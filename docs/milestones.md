@@ -91,7 +91,7 @@ Deterministic, fail-closed experiment planning and authorization simulation. No 
 - Unresolved risks: [m6a-unresolved-risks.md](m6a-unresolved-risks.md)
 - Design parent: [m6-disposable-image-experiment-design.md](m6-disposable-image-experiment-design.md)
 - CLI: `scripts/Test-DisposableExperimentPlan.ps1` (default non-elevated; decision always `BlockedForExecution`)
-- Engine `6.0.0-a`; all six safety/mutation flags remain `false`
+- Engine `6.0.1-a`; readiness binding digest + fail-closed external report validation; all six safety/mutation flags remain `false`
 
 ## M6B: Disposable-image lab (not started)
 

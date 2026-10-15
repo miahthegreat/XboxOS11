@@ -8,7 +8,8 @@ Milestone 6A provides deterministic, fail-closed experiment **planning** and aut
 
 | Artifact | Value |
 |----------|-------|
-| Experiment engine | `6.0.0-a` |
+| Experiment engine | `6.0.1-a` |
+| Readiness binding digest | `readiness-binding-digest-v1` |
 | Experiment plan schema | `experiment-plan-v1` |
 | Allowlist schema | `experiment-allowlist-v1` |
 | Authorization layer schema | `experiment-auth-layer-v1` |
@@ -65,6 +66,20 @@ No reachable writable-execution transition in Milestone 6A. Terminal planning ou
 | M3 | Binding-hash discipline; `Assert-XboxOSExecutionSafetyInvariants` |
 | M4 | Path ownership / OneDrive / ISO immutability constraints; test PEM signing helpers |
 | M5 | `operationAssessments`, catalog vs effective readiness, inventory provenance |
+
+## Readiness evidence binding (6A.1)
+
+External readiness JSON must pass `Test-XboxOSReadinessReportBinding` before use. Hash agreement alone is insufficient.
+
+A **readiness binding digest** (`readiness-binding-digest-v1`) covers safety-critical M5 fields (source identity, inventory fingerprint, plan hash, provenance, operation IDs/targets, effective readiness, closures, capability impacts, catalog validation, safety flags). The digest is recorded in the experiment plan, included in the experiment content hash, and bound into simulated authorization records.
+
+| Concept | Meaning |
+|---------|---------|
+| Content integrity (digest) | Detects tampering of bound fields |
+| Provenance verification | Authoritative vs InlineSimulation labeling + source checks |
+| Trusted signatures | Future/lab keys; digest alone does **not** authenticate a report |
+
+Default CLI fail-closes if the readiness report is missing or fails validation (no silent inline rebuild). Explicit `-Simulation -AllowInlineSimulationReadiness` generates an **InlineSimulation** assessment that is clearly labeled and never presented as ExternalValidated.
 
 ## CLI
 

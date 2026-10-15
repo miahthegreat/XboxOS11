@@ -1,7 +1,7 @@
 # Milestone 6A — Disposable-image experiment planning and authorization simulation.
 # Analysis / simulation only. No writable DISM. No WIM create/mount.
 
-$script:XboxOSExperimentPlanEngineVersion = '6.0.0-a'
+$script:XboxOSExperimentPlanEngineVersion = '6.0.1-a'
 $script:XboxOSExperimentPlanSchemaVersion = 'experiment-plan-v1'
 $script:XboxOSExperimentAllowlistSchemaVersion = 'experiment-allowlist-v1'
 $script:XboxOSExperimentAuthLayerSchemaVersion = 'experiment-auth-layer-v1'
@@ -9,6 +9,12 @@ $script:XboxOSExperimentSnapshotSchemaVersion = 'experiment-snapshot-v1'
 $script:XboxOSExperimentTransactionSchemaVersion = 'experiment-transaction-v1'
 $script:XboxOSFunctionalValidationSchemaVersion = 'functional-validation-v1'
 $script:XboxOSExperimentPlanHashSchemaVersion = 'experiment-plan-hash-v1'
+$script:XboxOSReadinessBindingDigestSchemaVersion = 'readiness-binding-digest-v1'
+$script:XboxOSSupportedReadinessReportSchemas = @('servicing-readiness-v1')
+$script:XboxOSSupportedReadinessEngineVersions = @('5.1.0')
+$script:XboxOSKnownReadinessClassifications = @(
+    'VerifiedSafeForConsideration', 'KnownUnsafe', 'MissingEvidence', 'ConflictingEvidence', 'Unsupported', 'NotApplicable'
+)
 
 $script:XboxOSExperimentTransactionStates = @(
     'Planned',
@@ -60,9 +66,320 @@ function Get-XboxOSExperimentSnapshotSchemaVersion { return $script:XboxOSExperi
 function Get-XboxOSExperimentTransactionSchemaVersion { return $script:XboxOSExperimentTransactionSchemaVersion }
 function Get-XboxOSFunctionalValidationSchemaVersion { return $script:XboxOSFunctionalValidationSchemaVersion }
 function Get-XboxOSExperimentPlanHashSchemaVersion { return $script:XboxOSExperimentPlanHashSchemaVersion }
+function Get-XboxOSReadinessBindingDigestSchemaVersion { return $script:XboxOSReadinessBindingDigestSchemaVersion }
 
 function Get-XboxOSExperimentalMutationEnabled { return $false }
 function Get-XboxOSExperimentalExecutionAuthorized { return $false }
+
+function Test-XboxOSExperimentPathIsUnsafeShape {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        [void]$errors.Add('Path is empty.')
+        return [pscustomobject]@{ valid = $false; errors = [string[]]@($errors.ToArray()); canonical = $null }
+    }
+    $trimmed = $Path.Trim()
+    if ($trimmed -match '[\*\?]') {
+        [void]$errors.Add('Wildcard path characters are forbidden.')
+    }
+    if ($trimmed -match '(^|\\)\.\.(\\|&|$)') {
+        [void]$errors.Add('Path traversal (.. ) is forbidden.')
+    }
+    if (-not [System.IO.Path]::IsPathRooted($trimmed)) {
+        [void]$errors.Add('Relative paths are forbidden; an absolute rooted path is required.')
+    }
+    if ($trimmed -match '^\\\\') {
+        [void]$errors.Add('UNC and device paths are forbidden unless explicitly designed and validated.')
+    }
+    if ($trimmed -match '(?i)^[A-Za-z]:\\?$') {
+        [void]$errors.Add('Root-directory workspaces are forbidden.')
+    }
+
+    $canonical = $null
+    if ($errors.Count -eq 0) {
+        try {
+            $canonical = Get-XboxOSCanonicalPath -Path $trimmed
+        }
+        catch {
+            [void]$errors.Add(("Path normalization failed: {0}" -f $_.Exception.Message))
+        }
+    }
+    if ($canonical -and ($canonical -match '(?i)^[A-Za-z]:\\?$')) {
+        [void]$errors.Add('Normalized path resolves to a drive root; forbidden.')
+    }
+
+    return [pscustomobject]@{
+        valid     = [bool]($errors.Count -eq 0)
+        errors    = [string[]]@($errors.ToArray())
+        canonical = $canonical
+    }
+}
+
+function Get-XboxOSReadinessBindingCanonicalDocument {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$ReadinessAssessment
+    )
+
+    $src = $ReadinessAssessment.sourceImage
+    $prov = $ReadinessAssessment.inventoryProvenance
+    $catalog = $ReadinessAssessment.catalogValidation
+    $ops = @(
+        @($ReadinessAssessment.operationAssessments) |
+            Sort-Object operationId |
+            ForEach-Object {
+                $closure = 'Unknown'
+                if ($_.PSObject.Properties['dependencyClosure'] -and $_.dependencyClosure -and $_.dependencyClosure.PSObject.Properties['completeness']) {
+                    $closure = [string]$_.dependencyClosure.completeness
+                }
+                $caps = @(
+                    if ($_.PSObject.Properties['affectedCapabilities']) {
+                        @($_.affectedCapabilities | ForEach-Object { [string]$_ } | Sort-Object)
+                    }
+                    else { @() }
+                )
+                [ordered]@{
+                    operationId                   = [string]$_.operationId
+                    targetIdentity                = $(if ($_.PSObject.Properties['targetIdentity']) { [string]$_.targetIdentity } else { '' })
+                    planStatus                    = $(if ($_.PSObject.Properties['planStatus']) { [string]$_.planStatus } else { '' })
+                    effectiveReadiness            = $(if ($_.PSObject.Properties['readiness']) { [string]$_.readiness } else { '' })
+                    catalogCandidateReadiness     = $(if ($_.PSObject.Properties['catalogCandidateReadiness']) { [string]$_.catalogCandidateReadiness } else { '' })
+                    dependencyClosureCompleteness = $closure
+                    affectedCapabilities          = $caps
+                }
+            }
+    )
+
+    return [ordered]@{
+        digestSchemaVersion    = Get-XboxOSReadinessBindingDigestSchemaVersion
+        reportSchemaVersion    = $(if ($ReadinessAssessment.PSObject.Properties['reportSchemaVersion']) { [string]$ReadinessAssessment.reportSchemaVersion } else { '' })
+        engineVersion          = [string]$ReadinessAssessment.engineVersion
+        decision               = [string]$ReadinessAssessment.decision
+        inventoryFingerprint   = [string]$ReadinessAssessment.inventoryFingerprint
+        planContentHash        = [string]$ReadinessAssessment.planContentHash
+        sourceImage            = [ordered]@{
+            isoSha256      = $(if ($src -and $src.PSObject.Properties['isoSha256']) { [string]$src.isoSha256 } else { '' })
+            editionName    = $(if ($src -and $src.PSObject.Properties['editionName']) { [string]$src.editionName } else { '' })
+            buildNumber    = $(if ($src -and $src.PSObject.Properties['buildNumber']) { [string]$src.buildNumber } else { '' })
+            sourceIndex    = $(if ($src -and $src.PSObject.Properties['sourceIndex']) { [string]$src.sourceIndex } else { '' })
+            architecture   = $(if ($src -and $src.PSObject.Properties['architecture']) { [string]$src.architecture } else { 'Unknown' })
+        }
+        inventoryProvenance    = [ordered]@{
+            sourceType         = $(if ($prov -and $prov.PSObject.Properties['sourceType']) { [string]$prov.sourceType } else { '' })
+            verificationLevel  = $(if ($prov -and $prov.PSObject.Properties['verificationLevel']) { [string]$prov.verificationLevel } else { '' })
+            sourcePath         = $(if ($prov -and $prov.PSObject.Properties['sourcePath']) { [string]$prov.sourcePath } else { '' })
+            allowsReadyForReview = $(if ($prov -and $prov.PSObject.Properties['allowsReadyForReview']) { [bool]$prov.allowsReadyForReview } else { $false })
+        }
+        catalogValidation      = [ordered]@{
+            valid         = $(if ($catalog -and $catalog.PSObject.Properties['valid']) { [bool]$catalog.valid } else { $false })
+            affectsSafety = $(if ($catalog -and $catalog.PSObject.Properties['affectsSafety']) { [bool]$catalog.affectsSafety } else { $true })
+        }
+        operationAssessments   = $ops
+        safetyFlags            = [ordered]@{
+            realDismExecutionEnabled = $(if ($ReadinessAssessment.PSObject.Properties['realDismExecutionEnabled']) { [bool]$ReadinessAssessment.realDismExecutionEnabled } else { $true })
+            modifyingCommandsInvoked = $(if ($ReadinessAssessment.PSObject.Properties['modifyingCommandsInvoked']) { [bool]$ReadinessAssessment.modifyingCommandsInvoked } else { $true })
+            executionAuthorized      = $(if ($ReadinessAssessment.PSObject.Properties['executionAuthorized']) { [bool]$ReadinessAssessment.executionAuthorized } else { $true })
+            servicingAuthorized      = $(if ($ReadinessAssessment.PSObject.Properties['servicingAuthorized']) { [bool]$ReadinessAssessment.servicingAuthorized } else { $true })
+        }
+    }
+}
+
+function Get-XboxOSReadinessBindingDigest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$ReadinessAssessment
+    )
+
+    $doc = Get-XboxOSReadinessBindingCanonicalDocument -ReadinessAssessment $ReadinessAssessment
+    return Get-XboxOSUtf8Sha256Hex -Text (ConvertTo-XboxOSCanonicalJson -Value $doc)
+}
+
+function Test-XboxOSReadinessReportBinding {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Report,
+        [Parameter(Mandatory)][object]$Plan,
+        [ValidateSet('ExternalValidated', 'InlineSimulation')]
+        [string]$EvidenceMode = 'ExternalValidated',
+        [switch]$RequireAuthoritativeProvenance
+    )
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    $notes = New-Object System.Collections.Generic.List[string]
+
+    if ($EvidenceMode -eq 'InlineSimulation') {
+        [void]$notes.Add('InlineSimulation evidence is explicitly labeled and is not an externally validated readiness report.')
+    }
+
+    $schema = if ($Report.PSObject.Properties['reportSchemaVersion']) { [string]$Report.reportSchemaVersion } else { '' }
+    if ($script:XboxOSSupportedReadinessReportSchemas -notcontains $schema) {
+        [void]$errors.Add(("Unsupported readiness report schema '{0}'." -f $schema))
+    }
+    $engine = if ($Report.PSObject.Properties['engineVersion']) { [string]$Report.engineVersion } else { '' }
+    if ($script:XboxOSSupportedReadinessEngineVersions -notcontains $engine) {
+        [void]$errors.Add(("Unsupported readiness engine version '{0}'." -f $engine))
+    }
+
+    if (-not $Report.PSObject.Properties['git'] -or $null -eq $Report.git) {
+        [void]$errors.Add('Readiness report missing git traceability.')
+    }
+    else {
+        $gitSha = if ($Report.git.PSObject.Properties['gitCommitSha']) { [string]$Report.git.gitCommitSha } else { '' }
+        if ([string]::IsNullOrWhiteSpace($gitSha) -or $gitSha -eq 'Unknown') {
+            [void]$errors.Add('Readiness report git commit SHA is missing or Unknown.')
+        }
+    }
+
+    if (-not $Report.PSObject.Properties['inventoryProvenance'] -or $null -eq $Report.inventoryProvenance) {
+        [void]$errors.Add('Readiness report missing inventoryProvenance.')
+    }
+    else {
+        $prov = $Report.inventoryProvenance
+        $srcType = if ($prov.PSObject.Properties['sourceType']) { [string]$prov.sourceType } else { '' }
+        $verLevel = if ($prov.PSObject.Properties['verificationLevel']) { [string]$prov.verificationLevel } else { '' }
+        if ($RequireAuthoritativeProvenance -or $EvidenceMode -eq 'ExternalValidated') {
+            if ($srcType -ne 'Authoritative' -or $verLevel -ne 'Authoritative') {
+                [void]$errors.Add(("Authoritative inventory provenance required for {0} evidence; got sourceType={1} verificationLevel={2}." -f $EvidenceMode, $srcType, $verLevel))
+            }
+        }
+        if ($EvidenceMode -eq 'InlineSimulation' -and $srcType -eq 'Authoritative' -and -not $RequireAuthoritativeProvenance) {
+            [void]$notes.Add('InlineSimulation assessment unexpectedly claims Authoritative provenance; treat as simulation-labeled only.')
+        }
+        # Never infer trust from a forged Authoritative label alone when hashes later mismatch.
+    }
+
+    if ([string]$Report.inventoryFingerprint -ne [string]$Plan.inventoryFingerprint) {
+        [void]$errors.Add('Readiness inventoryFingerprint does not match bound M2 plan.')
+    }
+    if ([string]$Report.planContentHash -ne [string]$Plan.contentHash) {
+        [void]$errors.Add('Readiness planContentHash does not match bound M2 plan contentHash.')
+    }
+
+    $planSrc = $Plan.sourceImage
+    $repSrc = if ($Report.PSObject.Properties['sourceImage']) { $Report.sourceImage } else { $null }
+    if ($null -eq $repSrc) {
+        [void]$errors.Add('Readiness report missing sourceImage identity.')
+    }
+    else {
+        foreach ($pair in @(
+                @{ n = 'isoSha256'; p = $(if ($planSrc.PSObject.Properties['isoSha256']) { [string]$planSrc.isoSha256 } else { '' }); r = $(if ($repSrc.PSObject.Properties['isoSha256']) { [string]$repSrc.isoSha256 } else { '' }) },
+                @{ n = 'editionName'; p = $(if ($planSrc.PSObject.Properties['editionName']) { [string]$planSrc.editionName } else { '' }); r = $(if ($repSrc.PSObject.Properties['editionName']) { [string]$repSrc.editionName } else { '' }) },
+                @{ n = 'buildNumber'; p = $(if ($planSrc.PSObject.Properties['buildNumber']) { [string]$planSrc.buildNumber } else { '' }); r = $(if ($repSrc.PSObject.Properties['buildNumber']) { [string]$repSrc.buildNumber } else { '' }) },
+                @{ n = 'sourceIndex'; p = $(if ($planSrc.PSObject.Properties['sourceIndex']) { [string]$planSrc.sourceIndex } else { '' }); r = $(if ($repSrc.PSObject.Properties['sourceIndex']) { [string]$repSrc.sourceIndex } else { '' }) }
+            )) {
+            if ([string]::IsNullOrWhiteSpace($pair.r)) {
+                [void]$errors.Add(("Readiness sourceImage.{0} is missing." -f $pair.n))
+            }
+            elseif ($pair.p -ne $pair.r) {
+                [void]$errors.Add(("Source image {0} mismatch between plan and readiness report." -f $pair.n))
+            }
+        }
+        $arch = if ($repSrc.PSObject.Properties['architecture']) { [string]$repSrc.architecture } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($arch) -and $arch -ne 'Unknown') {
+            $planArch = if ($planSrc.PSObject.Properties['architecture'] -and $null -ne $planSrc.architecture) { [string]$planSrc.architecture } else { '' }
+            if (-not [string]::IsNullOrWhiteSpace($planArch) -and $planArch -ne 'Unknown' -and $planArch -ne $arch) {
+                [void]$errors.Add('Authoritative architecture mismatch between plan and readiness report.')
+            }
+        }
+    }
+
+    if (-not $Report.PSObject.Properties['catalogValidation'] -or $null -eq $Report.catalogValidation) {
+        [void]$errors.Add('Readiness report missing catalogValidation.')
+    }
+    else {
+        if (-not [bool]$Report.catalogValidation.valid) {
+            [void]$errors.Add('Catalog validation status is not valid.')
+        }
+        if ($Report.catalogValidation.PSObject.Properties['affectsSafety'] -and [bool]$Report.catalogValidation.affectsSafety) {
+            [void]$errors.Add('Catalog validation affectsSafety=true is unexpected for a usable readiness report.')
+        }
+    }
+
+    foreach ($flag in @('realDismExecutionEnabled', 'modifyingCommandsInvoked', 'executionAuthorized', 'servicingAuthorized')) {
+        if (-not $Report.PSObject.Properties[$flag]) {
+            [void]$errors.Add(("Readiness report missing safety flag '{0}'." -f $flag))
+        }
+        elseif ([bool]$Report.$flag) {
+            [void]$errors.Add(("Readiness report safety flag '{0}' must be False." -f $flag))
+        }
+    }
+
+    if (-not $Report.PSObject.Properties['operationAssessments'] -or @($Report.operationAssessments).Count -eq 0) {
+        [void]$errors.Add('Readiness report has no operationAssessments.')
+    }
+    else {
+        $seen = @{}
+        foreach ($a in @($Report.operationAssessments)) {
+            $oid = if ($a.PSObject.Properties['operationId']) { [string]$a.operationId } else { '' }
+            if ([string]::IsNullOrWhiteSpace($oid)) {
+                [void]$errors.Add('Readiness assessment missing operationId.')
+                continue
+            }
+            if ($seen.ContainsKey($oid)) {
+                [void]$errors.Add(("Duplicate readiness operation record: {0}" -f $oid))
+            }
+            else {
+                $seen[$oid] = $true
+            }
+
+            $planStatus = if ($a.PSObject.Properties['planStatus']) { [string]$a.planStatus } else { '' }
+            # Safety-critical completeness is required for Eligible assessments; other statuses may be sparse.
+            if ($planStatus -eq 'Eligible') {
+                $eff = if ($a.PSObject.Properties['readiness']) { [string]$a.readiness } else { '' }
+                if ([string]::IsNullOrWhiteSpace($eff) -or $script:XboxOSKnownReadinessClassifications -notcontains $eff) {
+                    [void]$errors.Add(("Unknown or missing readiness classification for {0}: '{1}'." -f $oid, $eff))
+                }
+                $tid = if ($a.PSObject.Properties['targetIdentity']) { [string]$a.targetIdentity } else { '' }
+                if ([string]::IsNullOrWhiteSpace($tid)) {
+                    [void]$errors.Add(("Missing targetIdentity for readiness operation {0}." -f $oid))
+                }
+                if (-not $a.PSObject.Properties['dependencyClosure'] -or $null -eq $a.dependencyClosure -or
+                    -not $a.dependencyClosure.PSObject.Properties['completeness'] -or
+                    [string]::IsNullOrWhiteSpace([string]$a.dependencyClosure.completeness)) {
+                    [void]$errors.Add(("Missing dependency closure completeness for {0}." -f $oid))
+                }
+            }
+            elseif ($a.PSObject.Properties['readiness']) {
+                $eff = [string]$a.readiness
+                if (-not [string]::IsNullOrWhiteSpace($eff) -and $script:XboxOSKnownReadinessClassifications -notcontains $eff) {
+                    [void]$errors.Add(("Unknown readiness classification for {0}: '{1}'." -f $oid, $eff))
+                }
+            }
+        }
+
+        # Eligible plan ops must all appear in readiness
+        foreach ($op in @($Plan.operations | Where-Object { [string]$_.status -eq 'Eligible' })) {
+            $oid = [string]$op.operationId
+            if (-not $seen.ContainsKey($oid)) {
+                [void]$errors.Add(("Eligible plan operation missing from readiness report: {0}" -f $oid))
+            }
+        }
+    }
+
+    # Matching hashes alone never authenticate a report.
+    [void]$notes.Add('Content digest/hash agreement is integrity evidence only; it is not a trusted signature and does not replace provenance verification.')
+
+    $digest = $null
+    if ($errors.Count -eq 0) {
+        $digest = Get-XboxOSReadinessBindingDigest -ReadinessAssessment $Report
+    }
+
+    return [pscustomobject]@{
+        valid                      = [bool]($errors.Count -eq 0)
+        errors                     = [string[]]@($errors.ToArray())
+        notes                      = [string[]]@($notes.ToArray())
+        evidenceMode               = $EvidenceMode
+        readinessBindingDigest     = $digest
+        digestSchemaVersion        = Get-XboxOSReadinessBindingDigestSchemaVersion
+        authenticatesReport        = $false
+        notesOnDigest              = @(
+            'A readiness binding digest provides content integrity over safety-critical fields.'
+            'It does not authenticate the report by itself; provenance verification and (future) trusted signatures remain distinct.'
+        )
+    }
+}
 
 function Assert-XboxOSExperimentSafetyInvariants {
     [CmdletBinding()]
@@ -134,32 +451,65 @@ function Test-XboxOSExperimentWorkspaceConstraints {
         [Parameter(Mandatory)][string]$SourceIsoPath,
         [string]$HostOsImagePath = $null,
         [string]$OwnerId = 'sim-operator',
-        [switch]$AllowOneDrive
+        # Simulation-scoped override only; never becomes execution authorization.
+        [switch]$AllowOneDriveForSimulationOnly
     )
 
     $errors = New-Object System.Collections.Generic.List[string]
     $warnings = New-Object System.Collections.Generic.List[string]
 
-    if ([string]::IsNullOrWhiteSpace($ProposedWorkspaceRoot)) {
-        [void]$errors.Add('ProposedWorkspaceRoot is required.')
+    $wsShape = Test-XboxOSExperimentPathIsUnsafeShape -Path $ProposedWorkspaceRoot
+    if (-not $wsShape.valid) {
+        foreach ($e in @($wsShape.errors)) { [void]$errors.Add(("Workspace: {0}" -f $e)) }
     }
-    else {
-        if ($ProposedWorkspaceRoot -match '\.\.') {
-            [void]$errors.Add('Workspace path traversal (.. ) is forbidden.')
+    $isoShape = Test-XboxOSExperimentPathIsUnsafeShape -Path $SourceIsoPath
+    if (-not $isoShape.valid) {
+        foreach ($e in @($isoShape.errors)) { [void]$errors.Add(("Source ISO: {0}" -f $e)) }
+    }
+
+    $wsCanon = $wsShape.canonical
+    $isoCanon = $isoShape.canonical
+
+    if ($wsCanon) {
+        if (-not $AllowOneDriveForSimulationOnly -and (Test-XboxOSCloudSynchronizedPath -Path $wsCanon)) {
+            [void]$errors.Add('Workspace must be outside OneDrive and other prohibited sync locations.')
         }
-        if (-not $AllowOneDrive -and ($ProposedWorkspaceRoot -match '(?i)OneDrive')) {
-            [void]$errors.Add('Workspace must be outside OneDrive.')
+        elseif ($AllowOneDriveForSimulationOnly -and (Test-XboxOSCloudSynchronizedPath -Path $wsCanon)) {
+            [void]$warnings.Add('AllowOneDriveForSimulationOnly is simulation-scoped and never authorizes execution.')
         }
-        if ($ProposedWorkspaceRoot -match '(?i)\\Windows\\|\\Windows$') {
-            [void]$errors.Add('Workspace must not target host Windows directories.')
+
+        $winRoot = $env:SystemRoot
+        if ([string]::IsNullOrWhiteSpace($winRoot)) { $winRoot = 'C:\Windows' }
+        try {
+            if (Test-XboxOSPathEqualsOrUnder -Path $wsCanon -ParentPath $winRoot) {
+                [void]$errors.Add('Workspace must not target host Windows directories.')
+            }
+        }
+        catch {
+            [void]$errors.Add('Unable to validate workspace against host Windows directory.')
         }
     }
 
-    if ([string]::IsNullOrWhiteSpace($SourceIsoPath)) {
-        [void]$errors.Add('SourceIsoPath is required.')
-    }
-    elseif ($SourceIsoPath -match '\.\.') {
-        [void]$errors.Add('Source ISO path traversal is forbidden.')
+    if ($isoCanon -and $wsCanon) {
+        $isoParent = Split-Path -Parent $isoCanon
+        if (-not [string]::IsNullOrWhiteSpace($isoParent)) {
+            try {
+                if (Test-XboxOSPathEqualsOrUnder -Path $wsCanon -ParentPath $isoParent) {
+                    [void]$errors.Add('Workspace must not be under the source-image parent directory.')
+                }
+            }
+            catch { }
+        }
+        try {
+            $wsUnderIso = Test-XboxOSPathEqualsOrUnder -Path $wsCanon -ParentPath $isoCanon
+            $isoUnderWs = Test-XboxOSPathEqualsOrUnder -Path $isoCanon -ParentPath $wsCanon
+            if ($wsUnderIso -or $isoUnderWs) {
+                [void]$errors.Add('Workspace/source path overlap is forbidden.')
+            }
+        }
+        catch {
+            [void]$errors.Add('Unable to evaluate workspace/source path overlap.')
+        }
     }
 
     if ($HostOsImagePath) {
@@ -167,9 +517,9 @@ function Test-XboxOSExperimentWorkspaceConstraints {
     }
 
     # Simulation-only ownership token (no filesystem create/mount).
-    $ownedWim = if ($ProposedWorkspaceRoot) { Join-Path $ProposedWorkspaceRoot 'install-pro-disposable.wim' } else { '' }
-    $ownedMount = if ($ProposedWorkspaceRoot) { Join-Path $ProposedWorkspaceRoot 'mount' } else { '' }
-    $tokenMaterial = '{0}|{1}|{2}' -f $OwnerId, $ProposedWorkspaceRoot, $ownedWim
+    $ownedWim = if ($wsCanon) { Join-Path $wsCanon 'install-pro-disposable.wim' } else { '' }
+    $ownedMount = if ($wsCanon) { Join-Path $wsCanon 'mount' } else { '' }
+    $tokenMaterial = '{0}|{1}|{2}' -f $OwnerId, $wsCanon, $ownedWim
     $ownershipToken = Get-XboxOSUtf8Sha256Hex -Text $tokenMaterial
 
     $valid = [bool]($errors.Count -eq 0)
@@ -178,8 +528,10 @@ function Test-XboxOSExperimentWorkspaceConstraints {
         valid                      = $valid
         errors                     = [string[]]@($errors.ToArray())
         warnings                   = [string[]]@($warnings.ToArray())
+        canonicalWorkspaceRoot     = $wsCanon
+        canonicalSourceIsoPath     = $isoCanon
         sourceIsoImmutable         = $true
-        workspaceOutsideOneDrive   = -not ($ProposedWorkspaceRoot -match '(?i)OneDrive')
+        workspaceOutsideOneDrive   = if ($wsCanon) { -not (Test-XboxOSCloudSynchronizedPath -Path $wsCanon) } else { $false }
         ownedWorkspaceIdentity     = $ownershipToken
         ownedWimPath               = $ownedWim
         ownedMountPath             = $ownedMount
@@ -190,9 +542,11 @@ function Test-XboxOSExperimentWorkspaceConstraints {
         staleMountOwnershipForbidden = $true
         untrackedHiveOwnershipForbidden = $true
         filesystemMutationPerformed = $false
+        allowOneDriveSimulationScopedOnly = [bool]$AllowOneDriveForSimulationOnly
         notes                      = @(
             'Constraint evaluation only. Milestone 6A does not create or mount a WIM.'
             'Source ISO is treated as immutable; production installation media must not be modified.'
+            'Path checks use rooted normalization; permissive OneDrive override is simulation-scoped only.'
         )
     }
 }
@@ -203,9 +557,12 @@ function Test-XboxOSExperimentOperationAllowlist {
         [Parameter(Mandatory)][object]$Plan,
         [Parameter(Mandatory)][object]$ReadinessAssessment,
         [Parameter(Mandatory)][string[]]$RequestedOperationIds,
+        [object]$CompatibilityManifest = $null,
         [string]$ExpectedInventoryFingerprint = $null,
         [string]$ExpectedPlanContentHash = $null,
-        [string]$ExpectedIsoSha256 = $null
+        [string]$ExpectedIsoSha256 = $null,
+        [string]$ExpectedReadinessBindingDigest = $null,
+        [switch]$RequireAuthoritativeProvenance
     )
 
     $errors = New-Object System.Collections.Generic.List[string]
@@ -215,8 +572,27 @@ function Test-XboxOSExperimentOperationAllowlist {
         [void]$errors.Add('Deny-by-default: RequestedOperationIds must be non-empty for selection evaluation.')
     }
 
+    $dupReq = @($RequestedOperationIds | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    if ($dupReq.Count -gt 0) {
+        [void]$errors.Add(("Duplicate or conflicting requested operation IDs: {0}" -f ($dupReq -join ', ')))
+    }
+
     if ($RequestedOperationIds | Where-Object { $_ -match '[\*\?]' }) {
         [void]$errors.Add('Wildcard-only approvals are rejected.')
+    }
+
+    if ($RequireAuthoritativeProvenance) {
+        $prov = if ($ReadinessAssessment.PSObject.Properties['inventoryProvenance']) { $ReadinessAssessment.inventoryProvenance } else { $null }
+        if ($null -eq $prov -or [string]$prov.sourceType -ne 'Authoritative' -or [string]$prov.verificationLevel -ne 'Authoritative') {
+            [void]$errors.Add('Missing or invalid authoritative inventory provenance on readiness assessment.')
+        }
+    }
+
+    if ($ExpectedReadinessBindingDigest) {
+        $actualDigest = Get-XboxOSReadinessBindingDigest -ReadinessAssessment $ReadinessAssessment
+        if ($actualDigest -ne $ExpectedReadinessBindingDigest) {
+            [void]$errors.Add('Changed readiness binding digest relative to expected value.')
+        }
     }
 
     $planFp = [string]$Plan.inventoryFingerprint
@@ -244,6 +620,11 @@ function Test-XboxOSExperimentOperationAllowlist {
         if ($iso -ne $ExpectedIsoSha256) {
             [void]$errors.Add('Source ISO identity mismatch.')
         }
+        if ($ReadinessAssessment.PSObject.Properties['sourceImage'] -and $ReadinessAssessment.sourceImage -and
+            $ReadinessAssessment.sourceImage.PSObject.Properties['isoSha256'] -and
+            [string]$ReadinessAssessment.sourceImage.isoSha256 -ne $ExpectedIsoSha256) {
+            [void]$errors.Add('Source ISO identity mismatch between readiness report and expected ISO.')
+        }
     }
 
     $edition = ''
@@ -255,14 +636,41 @@ function Test-XboxOSExperimentOperationAllowlist {
     if ([string]::IsNullOrWhiteSpace($edition) -or [string]::IsNullOrWhiteSpace($build)) {
         [void]$errors.Add('Unrecognized Windows image identity: edition/build missing.')
     }
+    if ($ReadinessAssessment.PSObject.Properties['sourceImage'] -and $ReadinessAssessment.sourceImage) {
+        $rEdition = if ($ReadinessAssessment.sourceImage.PSObject.Properties['editionName']) { [string]$ReadinessAssessment.sourceImage.editionName } else { '' }
+        $rBuild = if ($ReadinessAssessment.sourceImage.PSObject.Properties['buildNumber']) { [string]$ReadinessAssessment.sourceImage.buildNumber } else { '' }
+        if ($rEdition -ne $edition -or $rBuild -ne $build) {
+            [void]$errors.Add('Source image edition/build mismatch between plan and readiness.')
+        }
+    }
 
     $planOps = @{}
     foreach ($op in @($Plan.operations)) {
-        $planOps[[string]$op.operationId] = $op
+        $oid = [string]$op.operationId
+        if ($planOps.ContainsKey($oid)) {
+            [void]$errors.Add(("Duplicate or conflicting plan operation IDs: {0}" -f $oid))
+        }
+        $planOps[$oid] = $op
     }
     $readyOps = @{}
     foreach ($a in @($ReadinessAssessment.operationAssessments)) {
-        $readyOps[[string]$a.operationId] = $a
+        $oid = [string]$a.operationId
+        if ($readyOps.ContainsKey($oid)) {
+            [void]$errors.Add(("Duplicate readiness operation records: {0}" -f $oid))
+        }
+        $readyOps[$oid] = $a
+    }
+
+    $protectedAppx = @()
+    $neverDisable = @()
+    if ($CompatibilityManifest) {
+        $protectedAppx = @(Get-XboxOSProtectedAppxPatterns -CompatibilityManifest $CompatibilityManifest)
+        if ($CompatibilityManifest.PSObject.Properties['protectedFeatureNamePatterns']) {
+            $neverDisable = @($CompatibilityManifest.protectedFeatureNamePatterns)
+        }
+        elseif ($CompatibilityManifest.PSObject.Properties['neverDisableFeaturePatterns']) {
+            $neverDisable = @($CompatibilityManifest.neverDisableFeaturePatterns)
+        }
     }
 
     foreach ($id in @($RequestedOperationIds | Select-Object -Unique)) {
@@ -280,10 +688,30 @@ function Test-XboxOSExperimentOperationAllowlist {
             [void]$errors.Add(("Unsupported operation type '{0}' for {1}." -f $op.operationType, $id))
             continue
         }
+        if ([string]$op.status -ne 'Eligible') {
+            [void]$errors.Add(("Non-Eligible plan operation rejected: {0} status={1}" -f $id, $op.status))
+            continue
+        }
         if ([string]$op.status -eq 'Protected') {
             [void]$errors.Add(("Protected component rejected: {0}" -f $id))
             continue
         }
+
+        # Protected identities rejected even if plan status was forged to Eligible.
+        if ($CompatibilityManifest) {
+            $isProtected = $false
+            if ([string]$op.operationType -eq 'RemoveProvisionedAppx' -and $protectedAppx.Count -gt 0) {
+                $isProtected = [bool](Test-XboxOSPackageProtected -PackageName $target -ProtectedPatterns $protectedAppx)
+            }
+            elseif ([string]$op.operationType -eq 'DisableOptionalFeature') {
+                $isProtected = [bool](Test-XboxOSFeatureProtected -FeatureName $target -NeverDisable $neverDisable)
+            }
+            if ($isProtected) {
+                [void]$errors.Add(("Protected identity rejected regardless of plan status: {0}" -f $id))
+                continue
+            }
+        }
+
         if (-not $readyOps.ContainsKey($id)) {
             [void]$errors.Add(("Operation absent from bound readiness report: {0}" -f $id))
             continue
@@ -294,6 +722,15 @@ function Test-XboxOSExperimentOperationAllowlist {
             [void]$errors.Add(("Target identity mismatch for {0}: plan='{1}' readiness='{2}'." -f $id, $target, $readyTarget))
             continue
         }
+        $eff = if ($ra.PSObject.Properties['readiness']) { [string]$ra.readiness } else { '' }
+        if ([string]::IsNullOrWhiteSpace($eff) -or $script:XboxOSKnownReadinessClassifications -notcontains $eff) {
+            [void]$errors.Add(("Unknown readiness classification for {0}: '{1}'." -f $id, $eff))
+            continue
+        }
+        if ($eff -eq 'KnownUnsafe') {
+            [void]$errors.Add(("Conflicting protected-component / KnownUnsafe assessment rejected: {0}" -f $id))
+            continue
+        }
 
         [void]$selected.Add([pscustomobject]@{
                 operationId                 = [string]$op.operationId
@@ -301,7 +738,7 @@ function Test-XboxOSExperimentOperationAllowlist {
                 operationType               = [string]$op.operationType
                 planStatus                  = [string]$op.status
                 catalogCandidateReadiness   = $(if ($ra.PSObject.Properties['catalogCandidateReadiness']) { [string]$ra.catalogCandidateReadiness } else { '' })
-                effectiveReadiness          = $(if ($ra.PSObject.Properties['readiness']) { [string]$ra.readiness } else { '' })
+                effectiveReadiness          = $eff
                 dependencyClosureCompleteness = $(
                     if ($ra.PSObject.Properties['dependencyClosure'] -and $ra.dependencyClosure -and $ra.dependencyClosure.PSObject.Properties['completeness']) {
                         [string]$ra.dependencyClosure.completeness
@@ -331,7 +768,8 @@ function Test-XboxOSExperimentOperationAllowlist {
         selectionAuthorizesExecution = $false
         notes                        = [string[]]@(
             'Selecting an operation for an experiment never authorizes its execution.'
-            'Only exact operationId + targetIdentity matches from the bound M2 plan are considered.'
+            'Only exact Eligible operationId + targetIdentity matches from the bound M2 plan are considered.'
+            'Protected compatibility identities are rejected even if plan status is forged.'
         )
     }
 }
@@ -434,7 +872,10 @@ function Get-XboxOSExperimentPlanCanonicalDocument {
             engineVersion        = [string]$PlanFields.readinessReportIdentity.engineVersion
             planContentHash      = [string]$PlanFields.readinessReportIdentity.planContentHash
             inventoryFingerprint = [string]$PlanFields.readinessReportIdentity.inventoryFingerprint
+            evidenceMode         = [string]$PlanFields.readinessReportIdentity.evidenceMode
         }
+        readinessBindingDigest     = [string]$PlanFields.readinessBindingDigest
+        readinessBindingDigestSchemaVersion = Get-XboxOSReadinessBindingDigestSchemaVersion
         gitCommitSha               = [string]$PlanFields.git.gitCommitSha
         gitDirty                   = [string]$PlanFields.git.gitDirty
         operations                 = $ops
@@ -468,6 +909,7 @@ function New-XboxOSExperimentAuthorizationRecord {
         [Parameter(Mandatory)][string]$SourceIsoSha256,
         [Parameter(Mandatory)][string]$OperatorId,
         [Parameter(Mandatory)][string[]]$OperationIds,
+        [string]$ReadinessBindingDigest = '',
         [datetime]$IssuedUtc = [datetime]::UtcNow,
         [datetime]$ExpiresUtc = [datetime]::UtcNow.AddHours(8),
         [string]$Decision = 'Recorded',
@@ -499,6 +941,7 @@ function New-XboxOSExperimentAuthorizationRecord {
         servicingPlanContentHash = $ServicingPlanContentHash
         inventoryFingerprint     = $InventoryFingerprint
         sourceIsoSha256          = $SourceIsoSha256
+        readinessBindingDigest   = [string]$ReadinessBindingDigest
         operatorId               = $OperatorId
         operationIds             = @($OperationIds | Sort-Object)
         issuedUtc                = $IssuedUtc.ToUniversalTime().ToString('o')
@@ -558,6 +1001,7 @@ function Test-XboxOSExperimentAuthorizationRecord {
         [Parameter(Mandatory)][string]$InventoryFingerprint,
         [Parameter(Mandatory)][string]$SourceIsoSha256,
         [Parameter(Mandatory)][string]$OperatorId,
+        [string]$ExpectedReadinessBindingDigest = '',
         [datetime]$AsOfUtc = [datetime]::UtcNow,
         [string]$PublicKeyPemPath = $null,
         [string[]]$ExpectedOperationIds = @()
@@ -582,6 +1026,7 @@ function Test-XboxOSExperimentAuthorizationRecord {
     }
 
     $b = $Record.binding
+    $boundDigest = if ($b.PSObject.Properties['readinessBindingDigest']) { [string]$b.readinessBindingDigest } else { '' }
     $recomputed = Get-XboxOSUtf8Sha256Hex -Text (ConvertTo-XboxOSCanonicalJson -Value ([ordered]@{
                 authLayerSchemaVersion   = [string]$b.authLayerSchemaVersion
                 layer                    = [string]$b.layer
@@ -589,6 +1034,7 @@ function Test-XboxOSExperimentAuthorizationRecord {
                 servicingPlanContentHash = [string]$b.servicingPlanContentHash
                 inventoryFingerprint     = [string]$b.inventoryFingerprint
                 sourceIsoSha256          = [string]$b.sourceIsoSha256
+                readinessBindingDigest   = $boundDigest
                 operatorId               = [string]$b.operatorId
                 operationIds             = @($b.operationIds | Sort-Object)
                 issuedUtc                = [string]$b.issuedUtc
@@ -611,6 +1057,9 @@ function Test-XboxOSExperimentAuthorizationRecord {
     }
     if ([string]$b.sourceIsoSha256 -ne $SourceIsoSha256) {
         [void]$errors.Add('Source ISO identity mismatch.')
+    }
+    if ($ExpectedReadinessBindingDigest -and $boundDigest -ne $ExpectedReadinessBindingDigest) {
+        [void]$errors.Add('Changed readiness binding digest relative to authorization record.')
     }
     if ([string]$b.operatorId -ne $OperatorId) {
         [void]$errors.Add('Mismatched operator identity.')
@@ -772,7 +1221,10 @@ function New-XboxOSExperimentPlan {
         [Parameter(Mandatory)][object]$FunctionalValidationCatalog,
         [string]$RepoRoot = $null,
         [string]$ExpectedScope = 'disposable-lab-analysis-only',
-        [string]$ReadinessReportPath = ''
+        [string]$ReadinessReportPath = '',
+        [ValidateSet('ExternalValidated', 'InlineSimulation')]
+        [string]$EvidenceMode = 'ExternalValidated',
+        [string]$ReadinessBindingDigest = ''
     )
 
     Assert-XboxOSExecutionSafetyInvariants
@@ -847,12 +1299,17 @@ function New-XboxOSExperimentPlan {
                 sourceIsoImmutable     = [bool]$WorkspaceConstraints.sourceIsoImmutable
             }))
 
+    if (-not $ReadinessBindingDigest) {
+        $ReadinessBindingDigest = Get-XboxOSReadinessBindingDigest -ReadinessAssessment $ReadinessAssessment
+    }
+
     $readinessIdentity = [pscustomobject]@{
         sourcePath           = $ReadinessReportPath
         decision             = [string]$ReadinessAssessment.decision
         engineVersion        = [string]$ReadinessAssessment.engineVersion
         planContentHash      = [string]$ReadinessAssessment.planContentHash
         inventoryFingerprint = [string]$ReadinessAssessment.inventoryFingerprint
+        evidenceMode         = $EvidenceMode
     }
 
     # Stale evidence: readiness decision Failed, or provenance missing
@@ -865,22 +1322,23 @@ function New-XboxOSExperimentPlan {
 
     $ops = @($AllowlistResult.selectedOperations)
     $fields = [pscustomobject]@{
-        sourceIsoSha256          = $iso
-        editionName              = $edition
-        buildNumber              = $build
-        architecture             = $arch
-        sourceIndex              = $index
-        inventoryFingerprint     = [string]$Plan.inventoryFingerprint
-        servicingPlanContentHash = [string]$Plan.contentHash
-        readinessReportIdentity  = $readinessIdentity
-        git                      = $git
-        operations               = $ops
-        expectedScope            = $ExpectedScope
+        sourceIsoSha256           = $iso
+        editionName               = $edition
+        buildNumber               = $build
+        architecture              = $arch
+        sourceIndex               = $index
+        inventoryFingerprint      = [string]$Plan.inventoryFingerprint
+        servicingPlanContentHash  = [string]$Plan.contentHash
+        readinessReportIdentity   = $readinessIdentity
+        readinessBindingDigest    = $ReadinessBindingDigest
+        git                       = $git
+        operations                = $ops
+        expectedScope             = $ExpectedScope
         workspaceConstraintDigest = $wsDigest
-        requiredSnapshots        = @($snapshots | ForEach-Object { $_.snapshotId })
-        requiredFunctionalTests  = $requiredTests
-        abortConditions          = $abort
-        recoveryRequirements     = $recovery
+        requiredSnapshots         = @($snapshots | ForEach-Object { $_.snapshotId })
+        requiredFunctionalTests   = $requiredTests
+        abortConditions           = $abort
+        recoveryRequirements      = $recovery
     }
 
     $canonical = Get-XboxOSExperimentPlanCanonicalDocument -PlanFields $fields
@@ -901,6 +1359,9 @@ function New-XboxOSExperimentPlan {
         inventoryFingerprint       = [string]$Plan.inventoryFingerprint
         servicingPlanContentHash   = [string]$Plan.contentHash
         readinessReportIdentity    = $readinessIdentity
+        readinessBindingDigest     = $ReadinessBindingDigest
+        readinessBindingDigestSchemaVersion = Get-XboxOSReadinessBindingDigestSchemaVersion
+        evidenceMode               = $EvidenceMode
         git                        = $git
         operations                 = $ops
         expectedScope              = $ExpectedScope
@@ -930,6 +1391,8 @@ function New-XboxOSExperimentPlan {
         notes                              = @(
             'Milestone 6A experiment plan: analysis/simulation only.'
             'All selected operations may be planned; none are authorized for execution.'
+            'Readiness binding digest is content integrity only; it does not authenticate the report alone.'
+            ("Evidence mode: {0}" -f $EvidenceMode)
         )
     }
 }
@@ -941,19 +1404,28 @@ function Invoke-XboxOSExperimentPlanSimulate {
         [Parameter(Mandatory)][object]$ReadinessAssessment,
         [Parameter(Mandatory)][string[]]$RequestedOperationIds,
         [Parameter(Mandatory)][object]$FunctionalValidationCatalog,
+        [object]$CompatibilityManifest = $null,
         [string]$RepoRoot = $null,
         [string]$OperatorId = 'sim-operator',
         [string]$ProposedWorkspaceRoot = 'C:\XboxOS\Work\experiment-m6a-sim',
         [string]$SourceIsoPath = 'C:\XboxOS\Sources\Windows11_Client_x64_en-us_26300_9457.iso',
         [string]$ReadinessReportPath = '',
+        [ValidateSet('ExternalValidated', 'InlineSimulation')]
+        [string]$EvidenceMode = 'InlineSimulation',
+        [string]$ReadinessBindingDigest = '',
         [string]$PrivateKeyPemPath = $null,
         [string]$PublicKeyPemPath = $null,
+        [switch]$RequireAuthoritativeProvenance,
         [switch]$SimulateOperatorConsent,
         [switch]$SimulateRiskAcceptance,
         [switch]$AttemptMissingEvidenceExecution
     )
 
     Assert-XboxOSExperimentSafetyInvariants
+
+    if (-not $ReadinessBindingDigest) {
+        $ReadinessBindingDigest = Get-XboxOSReadinessBindingDigest -ReadinessAssessment $ReadinessAssessment
+    }
 
     $isoExpected = ''
     if ($Plan.sourceImage -and $Plan.sourceImage.PSObject.Properties['isoSha256']) {
@@ -964,9 +1436,12 @@ function Invoke-XboxOSExperimentPlanSimulate {
         -Plan $Plan `
         -ReadinessAssessment $ReadinessAssessment `
         -RequestedOperationIds $RequestedOperationIds `
+        -CompatibilityManifest $CompatibilityManifest `
         -ExpectedInventoryFingerprint ([string]$Plan.inventoryFingerprint) `
         -ExpectedPlanContentHash ([string]$Plan.contentHash) `
-        -ExpectedIsoSha256 $isoExpected
+        -ExpectedIsoSha256 $isoExpected `
+        -ExpectedReadinessBindingDigest $ReadinessBindingDigest `
+        -RequireAuthoritativeProvenance:$RequireAuthoritativeProvenance
 
     $ws = Test-XboxOSExperimentWorkspaceConstraints `
         -ProposedWorkspaceRoot $ProposedWorkspaceRoot `
@@ -992,7 +1467,9 @@ function Invoke-XboxOSExperimentPlanSimulate {
             -WorkspaceConstraints $ws `
             -FunctionalValidationCatalog $FunctionalValidationCatalog `
             -RepoRoot $RepoRoot `
-            -ReadinessReportPath $ReadinessReportPath
+            -ReadinessReportPath $ReadinessReportPath `
+            -EvidenceMode $EvidenceMode `
+            -ReadinessBindingDigest $ReadinessBindingDigest
 
         $tx = New-XboxOSExperimentTransaction -ExperimentId $experimentPlan.experimentId -ContentHash $experimentPlan.contentHash
         $null = Set-XboxOSExperimentTransactionState -Transaction $tx -To 'AwaitingOperatorReview' -Note 'Plan constructed'
@@ -1005,6 +1482,7 @@ function Invoke-XboxOSExperimentPlanSimulate {
             -SourceIsoSha256 $experimentPlan.sourceIsoSha256 `
             -OperatorId $OperatorId `
             -OperationIds @($experimentPlan.operations | ForEach-Object { $_.operationId }) `
+            -ReadinessBindingDigest $ReadinessBindingDigest `
             -Decision 'Planned' `
             -PrivateKeyPemPath $PrivateKeyPemPath
         if ($PublicKeyPemPath -and $planningRec.signatureBase64) {
@@ -1016,6 +1494,7 @@ function Invoke-XboxOSExperimentPlanSimulate {
                 -InventoryFingerprint $experimentPlan.inventoryFingerprint `
                 -SourceIsoSha256 $experimentPlan.sourceIsoSha256 `
                 -OperatorId $OperatorId `
+                -ExpectedReadinessBindingDigest $ReadinessBindingDigest `
                 -PublicKeyPemPath $PublicKeyPemPath `
                 -ExpectedOperationIds @($experimentPlan.operations | ForEach-Object { $_.operationId })
             $planningRec.signatureValid = $vr.signatureValid
@@ -1035,6 +1514,7 @@ function Invoke-XboxOSExperimentPlanSimulate {
                 -SourceIsoSha256 $experimentPlan.sourceIsoSha256 `
                 -OperatorId $OperatorId `
                 -OperationIds @($experimentPlan.operations | ForEach-Object { $_.operationId }) `
+                -ReadinessBindingDigest $ReadinessBindingDigest `
                 -Decision 'ConsentRecorded' `
                 -ClaimApprovedTrue `
                 -PrivateKeyPemPath $PrivateKeyPemPath
@@ -1047,6 +1527,7 @@ function Invoke-XboxOSExperimentPlanSimulate {
                     -InventoryFingerprint $experimentPlan.inventoryFingerprint `
                     -SourceIsoSha256 $experimentPlan.sourceIsoSha256 `
                     -OperatorId $OperatorId `
+                    -ExpectedReadinessBindingDigest $ReadinessBindingDigest `
                     -PublicKeyPemPath $PublicKeyPemPath `
                     -ExpectedOperationIds @($experimentPlan.operations | ForEach-Object { $_.operationId })
                 $consent.signatureValid = $vr.signatureValid
@@ -1081,6 +1562,7 @@ function Invoke-XboxOSExperimentPlanSimulate {
                     -SourceIsoSha256 $experimentPlan.sourceIsoSha256 `
                     -OperatorId $OperatorId `
                     -OperationIds @($experimentPlan.operations | ForEach-Object { $_.operationId }) `
+                    -ReadinessBindingDigest $ReadinessBindingDigest `
                     -Decision 'RiskAcceptanceSimulated' `
                     -ClaimApprovedTrue `
                     -PrivateKeyPemPath $PrivateKeyPemPath
@@ -1103,6 +1585,8 @@ function Invoke-XboxOSExperimentPlanSimulate {
         engineVersion                      = Get-XboxOSExperimentPlanEngineVersion
         decision                           = $decision
         transactionState                   = $state
+        evidenceMode                       = $EvidenceMode
+        readinessBindingDigest             = $ReadinessBindingDigest
         experimentPlan                     = $experimentPlan
         allowlist                          = $allow
         workspaceConstraints               = $ws
@@ -1123,6 +1607,8 @@ function Invoke-XboxOSExperimentPlanSimulate {
         notes                              = @(
             'All eight Eligible operations may be planned for analysis, but none may be authorized for execution.'
             'Simulation outcomes never enable writable DISM or experimental mutation.'
+            'Readiness binding digest is content integrity only; not a trusted signature.'
+            ("Evidence mode: {0}" -f $EvidenceMode)
         )
     }
 
