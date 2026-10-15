@@ -2,7 +2,7 @@
 
 ## Residual risks (fail closed today)
 
-1. **No real hypervisor validation** — Topology and isolation are simulation-tested only. Hyper-V (or other) provisioning paths remain unimplemented and unauthorized.
+1. **No real hypervisor validation** — Isolation policy may be `PolicyValidated` while `HypervisorNotInspected` / `NetworkIsolationNotVerified` remain true. Hyper-V provisioning paths remain unimplemented and unauthorized.
 2. **Layer D still disabled** — Lab key policy validates future requirements but cannot authorize writable image mutation.
 3. **GPU / controller / anti-cheat evidence** — Marked `EnvironmentLimited`; physical or passthrough environments are not established.
 4. **Online Microsoft service tests** — Store, Xbox auth, and Windows Update remain `MissingEvidence` until a reviewed online connectivity profile exists.

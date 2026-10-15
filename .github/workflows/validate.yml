@@ -103,6 +103,7 @@ jobs:
             'docs/m6b-integrity-recovery.md',
             'docs/m6b-evidence-custody.md',
             'docs/m6b-unresolved-risks.md',
+            'docs/m6b-pssa-warning-review.md',
             'README.md',
             'LICENSE'
           )

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "lab-topology-v1",
-  "catalogVersion": "6.1.0-b",
+  "catalogVersion": "6.1.1-b",
   "notes": [
     "Milestone 6B lab topology. Default provider is Simulation.",
     "Valid configuration is permission to plan infrastructure, not to create it.",

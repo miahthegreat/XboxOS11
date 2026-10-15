@@ -1,6 +1,6 @@
 # Milestone 6B — VM Isolation Policy
 
-**Status:** Implemented as offline validation against topology. Not validated on a real hypervisor.
+**Status:** Implemented as **policy** validation against declared topology (`PolicyValidated` / `ConfigurationDeclared`). Not inspected on a real hypervisor (`HypervisorNotInspected`, `NetworkIsolationNotVerified`). `actualIsolationVerified` is always false in Milestone 6B.
 
 ## Defaults (must hold)
 
@@ -37,4 +37,15 @@ Explicit test-data retention rules live in cleanup ownership: owned disposable a
 
 ## Implementation
 
-`Test-XboxOSLabVmIsolationPolicy` returns a versioned `lab-isolation-v1` result. Failures fail closed into `LabProvisioningBlocked` / `RecoveryRequired` simulation decisions.
+`Test-XboxOSLabVmIsolationPolicy` returns a versioned `lab-isolation-v1.1` result with explicit statuses:
+
+| Field | Meaning |
+|-------|---------|
+| `policyValidationStatus` | `PolicyValidated` or `PolicyInvalid` |
+| `configurationStatus` | Always `ConfigurationDeclared` for catalog topology |
+| `hypervisorInspectionStatus` | Always `HypervisorNotInspected` (no hypervisor queries) |
+| `networkIsolationVerificationStatus` | Always `NetworkIsolationNotVerified` |
+| `environmentLimitationStatus` | `EnvironmentLimited` |
+| `futureEvidenceSlots` | Placeholders for VM / switch / firewall / networking evidence |
+
+A valid declared `IsolatedSwitch` policy does **not** imply a virtual switch exists or that isolation was proven. Failures fail closed into `LabProvisioningBlocked` / `RecoveryRequired` simulation decisions.

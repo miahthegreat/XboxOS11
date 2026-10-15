@@ -719,7 +719,7 @@ function Resolve-XboxOSReadOnlyDismArguments {
     )
 
     $spec = $script:XboxOSReadOnlyDismOperations[$Operation]
-    $args = foreach ($part in @($spec.Template)) {
+    $argumentList = foreach ($part in @($spec.Template)) {
         $resolved = [string]$part
         foreach ($key in @($Parameters.Keys)) {
             $token = '{' + [string]$key + '}'
@@ -731,7 +731,7 @@ function Resolve-XboxOSReadOnlyDismArguments {
         $resolved
     }
 
-    $scan = Test-XboxOSDismArgumentListAllowed -ArgumentList @($args)
+    $scan = Test-XboxOSDismArgumentListAllowed -ArgumentList @($argumentList)
     if (-not $scan.Allowed) {
         throw ("Allowlist build produced prohibited arguments for '{0}': {1}" -f $Operation, $scan.Reason)
     }
@@ -739,7 +739,7 @@ function Resolve-XboxOSReadOnlyDismArguments {
     return [pscustomobject]@{
         Operation   = $Operation
         Class       = [string]$spec.Class
-        ArgumentList = @($args)
+        ArgumentList = @($argumentList)
         AdapterVersion = Get-XboxOSReadOnlyDismAdapterVersion
     }
 }

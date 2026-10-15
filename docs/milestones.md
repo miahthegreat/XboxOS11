@@ -110,8 +110,10 @@ Simulation-only lab topology, boundary validation, VM isolation policy, ownershi
 - Integrity/recovery: [m6b-integrity-recovery.md](m6b-integrity-recovery.md)
 - Evidence: [m6b-evidence-custody.md](m6b-evidence-custody.md)
 - Unresolved risks: [m6b-unresolved-risks.md](m6b-unresolved-risks.md)
-- CLI: `scripts/Test-IsolatedLabReadiness.ps1`
-- Engine `6.1.0-b`; decision always **LabProvisioningBlocked** (or **RecoveryRequired** on injected failure); Layer D structurally disabled
+- CLI: `scripts/Test-IsolatedLabReadiness.ps1` (authoritative M1/M4+M5+M6A chain; inline only with explicit switches)
+- Engine `6.1.1-b`; decision always **LabProvisioningBlocked** (or **RecoveryRequired** on injected failure); Layer D structurally disabled
+- Isolation: `PolicyValidated` ≠ actual verification (`HypervisorNotInspected` / `NetworkIsolationNotVerified`)
+- PSSA review: [m6b-pssa-warning-review.md](m6b-pssa-warning-review.md)
 
 ## Later: Xbox mode integration
 

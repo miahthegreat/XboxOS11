@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.6.1'
+    ModuleVersion     = '0.6.2'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -186,6 +186,7 @@
         'Test-XboxOSExperimentMissingEvidencePolicy'
         'Get-XboxOSExperimentPlanCanonicalDocument'
         'Get-XboxOSExperimentPlanContentHash'
+        'Get-XboxOSExperimentPlanContentHashFromPlan'
         'New-XboxOSExperimentAuthorizationRecord'
         'Test-XboxOSExperimentAuthorizationRecord'
         'Assert-XboxOSExperimentTransactionTransition'
@@ -204,10 +205,13 @@
         'Get-XboxOSLabTransactionSchemaVersion'
         'Get-XboxOSLabEvidenceSchemaVersion'
         'Get-XboxOSLabKeyPolicySchemaVersion'
+        'Get-XboxOSLabEvidenceChainSchemaVersion'
+        'Get-XboxOSLabEvidenceLabel'
         'Get-XboxOSLabRealProvisioningEnabled'
         'Get-XboxOSLabHypervisorCommandsInvoked'
         'Assert-XboxOSIsolatedLabSafetyInvariants'
         'Import-XboxOSLabTopologyCatalog'
+        'Test-XboxOSLabEvidenceChain'
         'Test-XboxOSLabPathHasReparsePoint'
         'Test-XboxOSLabInfrastructureBoundaries'
         'Test-XboxOSLabVmIsolationPolicy'
@@ -234,7 +238,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 6B: isolated disposable-image lab infrastructure simulation (no provisioning, Layer D disabled).'
+            ReleaseNotes = 'Milestone 6B.1: evidence-chain enforcement and isolation policy vs verification separation (simulation only).'
         }
     }
 }

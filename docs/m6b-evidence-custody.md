@@ -1,6 +1,6 @@
 # Milestone 6B — Evidence Custody
 
-**Status:** Implemented under report namespace `m6b`. Prior M1–M6A baselines must not be modified or deleted by this tooling.
+**Status:** Implemented under report namespace `m6b` (schema `lab-evidence-v1.1`). Prior M1–M6A baselines must not be modified or deleted by this tooling. Reports are labeled `ExternalValidatedEvidence`, `InlineSimulationEvidence`, or `NotValidated`.
 
 ## Manifest (`lab-evidence-v1`)
 

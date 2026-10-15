@@ -1,14 +1,15 @@
 # Milestone 6B — Isolated disposable-image lab infrastructure (simulation only).
 # No Hyper-V provisioning, no DISM mutation, Layer D remains disabled.
 
-$script:XboxOSIsolatedLabEngineVersion = '6.1.0-b'
+$script:XboxOSIsolatedLabEngineVersion = '6.1.1-b'
 $script:XboxOSLabTopologySchemaVersion = 'lab-topology-v1'
-$script:XboxOSLabIsolationSchemaVersion = 'lab-isolation-v1'
-$script:XboxOSLabOwnershipSchemaVersion = 'lab-ownership-v1'
+$script:XboxOSLabIsolationSchemaVersion = 'lab-isolation-v1.1'
+$script:XboxOSLabOwnershipSchemaVersion = 'lab-ownership-v1.1'
 $script:XboxOSLabSnapshotSchemaVersion = 'lab-snapshot-v1'
 $script:XboxOSLabTransactionSchemaVersion = 'lab-transaction-v1'
-$script:XboxOSLabEvidenceSchemaVersion = 'lab-evidence-v1'
+$script:XboxOSLabEvidenceSchemaVersion = 'lab-evidence-v1.1'
 $script:XboxOSLabKeyPolicySchemaVersion = 'lab-key-policy-v1'
+$script:XboxOSLabEvidenceChainSchemaVersion = 'lab-evidence-chain-v1'
 
 $script:XboxOSLabTransactionStates = @(
     'InfrastructurePlanned',
@@ -49,9 +50,25 @@ function Get-XboxOSLabSnapshotSchemaVersion { return $script:XboxOSLabSnapshotSc
 function Get-XboxOSLabTransactionSchemaVersion { return $script:XboxOSLabTransactionSchemaVersion }
 function Get-XboxOSLabEvidenceSchemaVersion { return $script:XboxOSLabEvidenceSchemaVersion }
 function Get-XboxOSLabKeyPolicySchemaVersion { return $script:XboxOSLabKeyPolicySchemaVersion }
+function Get-XboxOSLabEvidenceChainSchemaVersion { return $script:XboxOSLabEvidenceChainSchemaVersion }
 
 function Get-XboxOSLabRealProvisioningEnabled { return $false }
 function Get-XboxOSLabHypervisorCommandsInvoked { return $false }
+
+function Get-XboxOSLabEvidenceLabel {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('ExternalValidated', 'InlineSimulation', 'NotValidated')]
+        [string]$EvidenceMode
+    )
+
+    switch ($EvidenceMode) {
+        'ExternalValidated' { return 'ExternalValidatedEvidence' }
+        'InlineSimulation' { return 'InlineSimulationEvidence' }
+        default { return 'NotValidated' }
+    }
+}
 
 function Assert-XboxOSIsolatedLabSafetyInvariants {
     [CmdletBinding()]
@@ -173,7 +190,12 @@ function Test-XboxOSLabInfrastructureBoundaries {
                     [void]$errors.Add('Workspace must not be under the source-image parent directory.')
                 }
             }
-            catch { }
+            catch {
+                [void]$errors.Add(("Unable to evaluate workspace against source-image parent: {0}" -f $_.Exception.Message))
+            }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ExpectedIsoSha256) -and $ExpectedIsoSha256 -notmatch '^[0-9A-Fa-f]{64}$') {
+            [void]$errors.Add('ExpectedIsoSha256 must be a 64-character hex SHA-256 when provided.')
         }
         $wsUnderIso = Test-XboxOSPathEqualsOrUnder -Path $canon['workspaceRoot'] -ParentPath $canon['sourceIsoPath']
         $isoUnderWs = Test-XboxOSPathEqualsOrUnder -Path $canon['sourceIsoPath'] -ParentPath $canon['workspaceRoot']
@@ -285,16 +307,33 @@ function Test-XboxOSLabVmIsolationPolicy {
         [void]$notes.Add('Offline validation is the default; Store/Xbox auth/WU connectivity tests remain EnvironmentLimited until a reviewed online profile exists.')
     }
 
+    $policyValid = [bool]($errors.Count -eq 0)
+    [void]$notes.Add('PolicyValidated means the declared topology satisfies isolation policy; it does not prove a virtual switch exists or that network isolation was inspected.')
+    [void]$notes.Add('Milestone 6B does not query or modify the hypervisor; HypervisorNotInspected and NetworkIsolationNotVerified are expected.')
+
     return [pscustomobject]@{
-        schemaVersion              = Get-XboxOSLabIsolationSchemaVersion
-        valid                      = [bool]($errors.Count -eq 0)
-        errors                     = [string[]]@($errors.ToArray())
-        notes                      = [string[]]@($notes.ToArray())
-        dedicatedDisposableVm      = [bool]$vm.dedicatedDisposable
-        productionDomainMembership = [bool]$vm.productionDomainMembership
-        isolationMode              = [string]$net.isolationMode
-        offlineValidationDefault   = $offlineDefault
-        inventsFunctionalResults   = $false
+        schemaVersion                        = Get-XboxOSLabIsolationSchemaVersion
+        valid                                = $policyValid
+        policyValidationStatus               = $(if ($policyValid) { 'PolicyValidated' } else { 'PolicyInvalid' })
+        configurationStatus                  = 'ConfigurationDeclared'
+        hypervisorInspectionStatus           = 'HypervisorNotInspected'
+        networkIsolationVerificationStatus   = 'NetworkIsolationNotVerified'
+        environmentLimitationStatus          = 'EnvironmentLimited'
+        actualIsolationVerified              = $false
+        errors                               = [string[]]@($errors.ToArray())
+        notes                                = [string[]]@($notes.ToArray())
+        dedicatedDisposableVm                = [bool]$vm.dedicatedDisposable
+        productionDomainMembership           = [bool]$vm.productionDomainMembership
+        isolationMode                        = [string]$net.isolationMode
+        declaredIsolationMode                = [string]$net.isolationMode
+        offlineValidationDefault             = $offlineDefault
+        inventsFunctionalResults             = $false
+        futureEvidenceSlots                  = [pscustomobject]@{
+            vmEvidence             = $null
+            virtualSwitchEvidence  = $null
+            firewallEvidence       = $null
+            networkingEvidence     = $null
+        }
     }
 }
 
@@ -308,10 +347,42 @@ function New-XboxOSLabOwnershipRecord {
         [Parameter(Mandatory)][string]$PlanHash,
         [Parameter(Mandatory)][string]$ReadinessBindingDigest,
         [Parameter(Mandatory)][string]$SourceIsoSha256,
-        [Parameter(Mandatory)][string]$WorkspaceRoot
+        [Parameter(Mandatory)][string]$WorkspaceRoot,
+        [Parameter(Mandatory)][string]$ExperimentPlanHash,
+        [Parameter(Mandatory)][string]$InventoryFingerprint,
+        [string[]]$EvidenceReferences = @()
     )
 
-    $token = Get-XboxOSUtf8Sha256Hex -Text ('{0}|{1}|{2}|{3}|{4}|{5}' -f $LabId, $VmId, $WorkspaceId, $OwnerId, $WorkspaceRoot, $SourceIsoSha256)
+    foreach ($pair in @(
+            @{ n = 'LabId'; v = $LabId },
+            @{ n = 'VmId'; v = $VmId },
+            @{ n = 'WorkspaceId'; v = $WorkspaceId },
+            @{ n = 'PlanHash'; v = $PlanHash },
+            @{ n = 'ReadinessBindingDigest'; v = $ReadinessBindingDigest },
+            @{ n = 'SourceIsoSha256'; v = $SourceIsoSha256 },
+            @{ n = 'ExperimentPlanHash'; v = $ExperimentPlanHash },
+            @{ n = 'InventoryFingerprint'; v = $InventoryFingerprint }
+        )) {
+        if ([string]::IsNullOrWhiteSpace($pair.v)) {
+            throw ("Ownership record missing required identity field: {0}" -f $pair.n)
+        }
+    }
+
+    $tokenMaterial = '{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}' -f `
+        $LabId, $VmId, $WorkspaceId, $OwnerId, $WorkspaceRoot, $SourceIsoSha256, `
+        $PlanHash, $ReadinessBindingDigest, $ExperimentPlanHash, $InventoryFingerprint
+    $token = Get-XboxOSUtf8Sha256Hex -Text $tokenMaterial
+    $bindingDigest = Get-XboxOSUtf8Sha256Hex -Text (ConvertTo-XboxOSCanonicalJson -Value ([ordered]@{
+                labId                  = $LabId
+                vmId                   = $VmId
+                workspaceId            = $WorkspaceId
+                planHash               = $PlanHash
+                readinessBindingDigest = $ReadinessBindingDigest
+                experimentPlanHash     = $ExperimentPlanHash
+                inventoryFingerprint   = $InventoryFingerprint
+                sourceIsoSha256        = $SourceIsoSha256
+            }))
+
     return [pscustomobject]@{
         schemaVersion            = Get-XboxOSLabOwnershipSchemaVersion
         labId                    = $LabId
@@ -319,13 +390,21 @@ function New-XboxOSLabOwnershipRecord {
         workspaceId              = $WorkspaceId
         ownerId                  = $OwnerId
         ownershipToken           = $token
+        ownershipBindingDigest   = $bindingDigest
         planHash                 = $PlanHash
         readinessBindingDigest   = $ReadinessBindingDigest
+        experimentPlanHash       = $ExperimentPlanHash
+        inventoryFingerprint     = $InventoryFingerprint
         sourceIsoSha256          = $SourceIsoSha256
         workspaceRoot            = $WorkspaceRoot
         recoveryState            = 'NotRequired'
-        evidenceReferences       = @()
+        evidenceReferences       = @($EvidenceReferences)
+        ownershipIsAuthorization = $false
         realProvisioningEnabled  = $false
+        notes                    = @(
+            'Ownership digests are integrity checks, not trusted authorization signatures.'
+            'Layer D remains disabled.'
+        )
     }
 }
 
@@ -337,18 +416,38 @@ function Test-XboxOSLabOwnershipRecord {
         [Parameter(Mandatory)][string]$ExpectedVmId,
         [Parameter(Mandatory)][string]$ExpectedPlanHash,
         [Parameter(Mandatory)][string]$ExpectedReadinessBindingDigest,
-        [Parameter(Mandatory)][string]$ExpectedSourceIsoSha256
+        [Parameter(Mandatory)][string]$ExpectedSourceIsoSha256,
+        [string]$ExpectedExperimentPlanHash = '',
+        [string]$ExpectedInventoryFingerprint = ''
     )
 
     $errors = New-Object System.Collections.Generic.List[string]
+    if ([string]::IsNullOrWhiteSpace([string]$Record.labId) -or [string]::IsNullOrWhiteSpace([string]$Record.vmId) -or [string]::IsNullOrWhiteSpace([string]$Record.workspaceId)) {
+        [void]$errors.Add('Ambiguous or missing lab/VM/workspace identity.')
+    }
     if ([string]$Record.labId -ne $ExpectedLabId) { [void]$errors.Add('Lab identity mismatch.') }
     if ([string]$Record.vmId -ne $ExpectedVmId) { [void]$errors.Add('VM identity mismatch.') }
     if ([string]$Record.planHash -ne $ExpectedPlanHash) { [void]$errors.Add('Plan hash mismatch on ownership record.') }
     if ([string]$Record.readinessBindingDigest -ne $ExpectedReadinessBindingDigest) { [void]$errors.Add('Readiness binding digest mismatch on ownership record.') }
     if ([string]$Record.sourceIsoSha256 -ne $ExpectedSourceIsoSha256) { [void]$errors.Add('Source ISO hash mismatch on ownership record.') }
-    $recomputed = Get-XboxOSUtf8Sha256Hex -Text ('{0}|{1}|{2}|{3}|{4}|{5}' -f $Record.labId, $Record.vmId, $Record.workspaceId, $Record.ownerId, $Record.workspaceRoot, $Record.sourceIsoSha256)
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedExperimentPlanHash)) {
+        if (-not $Record.PSObject.Properties['experimentPlanHash'] -or [string]$Record.experimentPlanHash -ne $ExpectedExperimentPlanHash) {
+            [void]$errors.Add('Experiment plan hash mismatch on ownership record.')
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedInventoryFingerprint)) {
+        if (-not $Record.PSObject.Properties['inventoryFingerprint'] -or [string]$Record.inventoryFingerprint -ne $ExpectedInventoryFingerprint) {
+            [void]$errors.Add('Inventory fingerprint mismatch on ownership record.')
+        }
+    }
+    $recomputed = Get-XboxOSUtf8Sha256Hex -Text ('{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}' -f `
+            $Record.labId, $Record.vmId, $Record.workspaceId, $Record.ownerId, $Record.workspaceRoot, $Record.sourceIsoSha256, `
+            $Record.planHash, $Record.readinessBindingDigest, $Record.experimentPlanHash, $Record.inventoryFingerprint)
     if ([string]$Record.ownershipToken -ne $recomputed) {
         [void]$errors.Add('Forged or incorrect lab ownership token.')
+    }
+    if ($Record.PSObject.Properties['ownershipIsAuthorization'] -and [bool]$Record.ownershipIsAuthorization) {
+        [void]$errors.Add('Ownership record must not claim authorization signature trust.')
     }
     return [pscustomobject]@{
         valid  = [bool]($errors.Count -eq 0)
@@ -375,6 +474,8 @@ function New-XboxOSLabSnapshotRecord {
         ownershipToken         = [string]$Ownership.ownershipToken
         planHash               = [string]$Ownership.planHash
         readinessBindingDigest = [string]$Ownership.readinessBindingDigest
+        experimentPlanHash     = [string]$Ownership.experimentPlanHash
+        inventoryFingerprint   = [string]$Ownership.inventoryFingerprint
         sourceIsoSha256        = [string]$Ownership.sourceIsoSha256
         purpose                = $Purpose
         capturedUtc            = [datetime]::UtcNow.ToUniversalTime().ToString('o')
@@ -399,6 +500,8 @@ function Test-XboxOSLabSnapshotBinding {
             @{ n = 'ownershipToken'; a = [string]$Snapshot.ownershipToken; b = [string]$Ownership.ownershipToken },
             @{ n = 'planHash'; a = [string]$Snapshot.planHash; b = [string]$Ownership.planHash },
             @{ n = 'readinessBindingDigest'; a = [string]$Snapshot.readinessBindingDigest; b = [string]$Ownership.readinessBindingDigest },
+            @{ n = 'experimentPlanHash'; a = [string]$Snapshot.experimentPlanHash; b = [string]$Ownership.experimentPlanHash },
+            @{ n = 'inventoryFingerprint'; a = [string]$Snapshot.inventoryFingerprint; b = [string]$Ownership.inventoryFingerprint },
             @{ n = 'sourceIsoSha256'; a = [string]$Snapshot.sourceIsoSha256; b = [string]$Ownership.sourceIsoSha256 }
         )) {
         if ($pair.a -ne $pair.b) {
@@ -640,6 +743,9 @@ function New-XboxOSLabEvidenceManifest {
         [Parameter(Mandatory)][object]$IsolationResult,
         [object]$Git = $null,
         [string]$ExperimentPlanHash = '',
+        [ValidateSet('ExternalValidated', 'InlineSimulation', 'NotValidated')]
+        [string]$EvidenceMode = 'NotValidated',
+        [string]$EvidenceLabel = 'NotValidated',
         [string[]]$ArtifactHashes = @(),
         [string]$CleanupStatus = 'NotPerformed-SimulationOnly'
     )
@@ -666,10 +772,15 @@ function New-XboxOSLabEvidenceManifest {
     return [pscustomobject]@{
         schemaVersion              = Get-XboxOSLabEvidenceSchemaVersion
         reportNamespace            = 'm6b'
+        evidenceMode               = $EvidenceMode
+        evidenceLabel              = $EvidenceLabel
         gitCommitSha               = $(if ($Git -and $Git.PSObject.Properties['gitCommitSha']) { [string]$Git.gitCommitSha } else { 'Unknown' })
         sourceIsoSha256            = [string]$Ownership.sourceIsoSha256
         experimentPlanHash         = $ExperimentPlanHash
+        planHash                   = [string]$Ownership.planHash
+        inventoryFingerprint       = [string]$Ownership.inventoryFingerprint
         readinessBindingDigest     = [string]$Ownership.readinessBindingDigest
+        ownershipBindingDigest     = $(if ($Ownership.PSObject.Properties['ownershipBindingDigest']) { [string]$Ownership.ownershipBindingDigest } else { '' })
         labId                      = [string]$Ownership.labId
         vmId                       = [string]$Ownership.vmId
         environmentConfigurationDigest = $envDigest
@@ -689,11 +800,235 @@ function New-XboxOSLabEvidenceManifest {
             'Retain m6b evidence namespace; never overwrite M1-M6A baselines'
         )
         boundaryValid              = [bool]$BoundaryResult.valid
-        isolationValid             = [bool]$IsolationResult.valid
+        isolationPolicyValid       = [bool]$IsolationResult.valid
+        isolationPolicyStatus      = $(if ($IsolationResult.PSObject.Properties['policyValidationStatus']) { [string]$IsolationResult.policyValidationStatus } else { 'Unknown' })
+        actualIsolationVerified    = $false
+        hypervisorInspectionStatus = 'HypervisorNotInspected'
+        networkIsolationVerificationStatus = 'NetworkIsolationNotVerified'
         realProvisioningEnabled    = $false
         layerDActivated            = $false
         preservesPriorBaselines    = $true
         generatedUtc               = [datetime]::UtcNow
+    }
+}
+
+function Test-XboxOSLabEvidenceChain {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$CompatJsonPath,
+        [Parameter(Mandatory)][string]$ReadinessJsonPath,
+        [Parameter(Mandatory)][string]$ExperimentPlanJsonPath,
+        [Parameter(Mandatory)][object]$RemoveAppsManifest,
+        [Parameter(Mandatory)][object]$DisableFeaturesManifest,
+        [Parameter(Mandatory)][object]$CompatibilityManifest,
+        [ValidateSet('ExternalValidated', 'InlineSimulation')]
+        [string]$EvidenceMode = 'ExternalValidated'
+    )
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    $notes = New-Object System.Collections.Generic.List[string]
+    $label = Get-XboxOSLabEvidenceLabel -EvidenceMode $EvidenceMode
+
+    foreach ($pair in @(
+            @{ n = 'CompatJsonPath'; p = $CompatJsonPath },
+            @{ n = 'ReadinessJsonPath'; p = $ReadinessJsonPath },
+            @{ n = 'ExperimentPlanJsonPath'; p = $ExperimentPlanJsonPath }
+        )) {
+        if ([string]::IsNullOrWhiteSpace($pair.p) -or -not (Test-Path -LiteralPath $pair.p)) {
+            [void]$errors.Add(("Missing required evidence report ({0}): {1}" -f $pair.n, $pair.p))
+        }
+    }
+    if ($errors.Count -gt 0) {
+        return [pscustomobject]@{
+            schemaVersion          = Get-XboxOSLabEvidenceChainSchemaVersion
+            valid                  = $false
+            evidenceMode           = $EvidenceMode
+            evidenceLabel          = $label
+            errors                 = [string[]]@($errors.ToArray())
+            notes                  = [string[]]@('Authoritative mode requires M1/M4 + M5 + M6A reports; no silent skip.')
+            planHash               = $null
+            inventoryFingerprint   = $null
+            readinessBindingDigest = $null
+            experimentPlanHash     = $null
+            sourceIsoSha256        = $null
+            activatesProvisioning  = $false
+            activatesLayerD        = $false
+        }
+    }
+
+    try {
+        $inventory = Import-XboxOSInventoryFromCompatReport -Path $CompatJsonPath
+    }
+    catch {
+        [void]$errors.Add(("Failed to import M1/M4 compatibility inventory: {0}" -f $_.Exception.Message))
+        $inventory = $null
+    }
+
+    if ($null -ne $inventory) {
+        if ($EvidenceMode -eq 'ExternalValidated' -and [string]$inventory.verificationStatus -ne 'Authoritative') {
+            [void]$errors.Add(("Authoritative M1/M4 inventory required; got verificationStatus '{0}'." -f $inventory.verificationStatus))
+        }
+    }
+
+    $plan = $null
+    if ($null -ne $inventory -and $errors.Count -eq 0) {
+        $plan = New-XboxOSServicingPlan `
+            -Inventory $inventory `
+            -RemoveAppsManifest $RemoveAppsManifest `
+            -DisableFeaturesManifest $DisableFeaturesManifest `
+            -CompatibilityManifest $CompatibilityManifest
+    }
+
+    $readyFile = $null
+    $bind = $null
+    if ($errors.Count -eq 0) {
+        try {
+            $readyFile = Get-Content -LiteralPath $ReadinessJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
+        catch {
+            [void]$errors.Add(("Malformed M5 readiness report: {0}" -f $_.Exception.Message))
+        }
+    }
+    if ($null -ne $readyFile -and $null -ne $plan) {
+        $bind = Test-XboxOSReadinessReportBinding `
+            -Report $readyFile `
+            -Plan $plan `
+            -EvidenceMode $EvidenceMode `
+            -RequireAuthoritativeProvenance:($EvidenceMode -eq 'ExternalValidated')
+        if (-not $bind.valid) {
+            foreach ($e in @($bind.errors)) { [void]$errors.Add(("M5 readiness binding: {0}" -f $e)) }
+        }
+    }
+
+    $expReport = $null
+    $expPlan = $null
+    # Always attempt M6A load so missing/malformed reports are explicit even when earlier steps failed.
+    try {
+        $expReport = Get-Content -LiteralPath $ExperimentPlanJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    catch {
+        [void]$errors.Add(("Malformed M6A experiment plan report: {0}" -f $_.Exception.Message))
+    }
+
+    if ($null -ne $expReport) {
+        if (-not $expReport.PSObject.Properties['experimentPlan'] -or $null -eq $expReport.experimentPlan) {
+            [void]$errors.Add('M6A report missing experimentPlan.')
+        }
+        else {
+            $expPlan = $expReport.experimentPlan
+        }
+        if ($expReport.PSObject.Properties['decision'] -and [string]$expReport.decision -ne 'BlockedForExecution') {
+            [void]$errors.Add(("M6A decision must be BlockedForExecution; got '{0}'." -f $expReport.decision))
+        }
+        foreach ($flag in @(
+                'realDismExecutionEnabled', 'modifyingCommandsInvoked', 'executionAuthorized', 'servicingAuthorized',
+                'experimentalMutationEnabled', 'experimentalExecutionAuthorized'
+            )) {
+            if (-not $expReport.PSObject.Properties[$flag]) {
+                [void]$errors.Add(("M6A report missing safety flag '{0}'." -f $flag))
+            }
+            elseif ([bool]$expReport.$flag) {
+                [void]$errors.Add(("M6A report safety flag '{0}' must be False." -f $flag))
+            }
+        }
+        if ($EvidenceMode -eq 'ExternalValidated') {
+            $mode = if ($expReport.PSObject.Properties['evidenceMode']) { [string]$expReport.evidenceMode } else { '' }
+            if ($mode -ne 'ExternalValidated') {
+                [void]$errors.Add(("Authoritative lab mode requires M6A evidenceMode ExternalValidated; got '{0}'." -f $mode))
+            }
+        }
+        if (-not $expReport.PSObject.Properties['readinessBindingDigest'] -or [string]::IsNullOrWhiteSpace([string]$expReport.readinessBindingDigest)) {
+            [void]$errors.Add('M6A report missing readinessBindingDigest.')
+        }
+    }
+
+    if ($null -ne $plan -and $null -ne $expPlan -and $null -ne $bind) {
+        if ([string]$expPlan.servicingPlanContentHash -ne [string]$plan.contentHash) {
+            [void]$errors.Add('M6A servicingPlanContentHash does not match recomputed M2 plan contentHash.')
+        }
+        if ([string]$expPlan.inventoryFingerprint -ne [string]$plan.inventoryFingerprint) {
+            [void]$errors.Add('M6A inventoryFingerprint does not match recomputed M2 inventory fingerprint.')
+        }
+        if ([string]$expReport.readinessBindingDigest -ne [string]$bind.readinessBindingDigest) {
+            [void]$errors.Add('M6A readinessBindingDigest does not match recomputed M5 binding digest.')
+        }
+        if ([string]$expPlan.readinessBindingDigest -ne [string]$bind.readinessBindingDigest) {
+            [void]$errors.Add('Embedded experiment plan readinessBindingDigest does not match recomputed M5 digest.')
+        }
+        if ([string]$expPlan.sourceIsoSha256 -ne [string]$plan.sourceImage.isoSha256) {
+            [void]$errors.Add('Contradictory source ISO SHA256 between M6A plan and recomputed M2 plan.')
+        }
+        if ([string]$expPlan.editionName -ne [string]$plan.sourceImage.editionName) {
+            [void]$errors.Add('Edition mismatch between M6A plan and recomputed M2 plan.')
+        }
+        if ([string]$expPlan.buildNumber -ne [string]$plan.sourceImage.buildNumber) {
+            [void]$errors.Add('Build number mismatch between M6A plan and recomputed M2 plan.')
+        }
+        if ([string]$expPlan.sourceIndex -ne [string]$plan.sourceImage.sourceIndex) {
+            [void]$errors.Add('Source index mismatch between M6A plan and recomputed M2 plan.')
+        }
+
+        try {
+            $recomputedExpHash = Get-XboxOSExperimentPlanContentHashFromPlan -ExperimentPlan $expPlan
+            if ([string]$expPlan.contentHash -ne $recomputedExpHash) {
+                [void]$errors.Add('M6A experiment plan contentHash does not match recomputed canonical hash (altered or incomplete evidence).')
+            }
+        }
+        catch {
+            [void]$errors.Add(("Unable to recompute M6A experiment plan content hash: {0}" -f $_.Exception.Message))
+        }
+
+        if (-not $expPlan.PSObject.Properties['git'] -or $null -eq $expPlan.git -or
+            [string]::IsNullOrWhiteSpace([string]$expPlan.git.gitCommitSha) -or [string]$expPlan.git.gitCommitSha -eq 'Unknown') {
+            [void]$errors.Add('M6A experiment plan missing git/evidence provenance.')
+        }
+
+        $eligiblePlan = @($plan.operations | Where-Object { [string]$_.status -eq 'Eligible' } | ForEach-Object { [string]$_.operationId } | Sort-Object)
+        $expOps = @($expPlan.operations | ForEach-Object { [string]$_.operationId } | Sort-Object)
+        foreach ($oid in $expOps) {
+            if ($eligiblePlan -notcontains $oid) {
+                [void]$errors.Add(("Forged or non-Eligible operation in M6A plan: {0}" -f $oid))
+            }
+        }
+        foreach ($op in @($expPlan.operations)) {
+            $tid = if ($op.PSObject.Properties['targetIdentity']) { [string]$op.targetIdentity } else { '' }
+            if ([string]::IsNullOrWhiteSpace($tid)) {
+                [void]$errors.Add(("M6A operation missing targetIdentity: {0}" -f $op.operationId))
+            }
+            $planOp = @($plan.operations | Where-Object { [string]$_.operationId -eq [string]$op.operationId } | Select-Object -First 1)
+            if (-not $planOp) {
+                [void]$errors.Add(("M6A operation not present in recomputed M2 plan: {0}" -f $op.operationId))
+            }
+            elseif ([string]$planOp.targetIdentity -ne $tid) {
+                [void]$errors.Add(("M6A targetIdentity mismatch for {0}." -f $op.operationId))
+            }
+        }
+    }
+
+    [void]$notes.Add('Evidence-chain agreement is integrity evidence only; it does not authorize provisioning or Layer D.')
+    [void]$notes.Add(("Evidence label: {0}" -f $label))
+
+    $valid = [bool]($errors.Count -eq 0 -and $null -ne $plan -and $null -ne $bind -and $null -ne $expPlan)
+    return [pscustomobject]@{
+        schemaVersion          = Get-XboxOSLabEvidenceChainSchemaVersion
+        valid                  = $valid
+        evidenceMode           = $EvidenceMode
+        evidenceLabel          = $label
+        errors                 = [string[]]@($errors.ToArray() | Select-Object -Unique)
+        notes                  = [string[]]@($notes.ToArray())
+        planHash               = $(if ($plan) { [string]$plan.contentHash } else { $null })
+        inventoryFingerprint   = $(if ($plan) { [string]$plan.inventoryFingerprint } else { $null })
+        readinessBindingDigest = $(if ($bind) { [string]$bind.readinessBindingDigest } else { $null })
+        experimentPlanHash     = $(if ($expPlan) { [string]$expPlan.contentHash } else { $null })
+        sourceIsoSha256        = $(if ($plan) { [string]$plan.sourceImage.isoSha256 } elseif ($expPlan) { [string]$expPlan.sourceIsoSha256 } else { $null })
+        editionName            = $(if ($plan) { [string]$plan.sourceImage.editionName } else { $null })
+        buildNumber            = $(if ($plan) { [string]$plan.sourceImage.buildNumber } else { $null })
+        sourceIndex            = $(if ($plan) { [string]$plan.sourceImage.sourceIndex } else { $null })
+        plan                   = $plan
+        readinessReport        = $readyFile
+        experimentReport       = $expReport
+        activatesProvisioning  = $false
+        activatesLayerD        = $false
     }
 }
 
@@ -705,9 +1040,13 @@ function Invoke-XboxOSIsolatedLabSimulate {
         [Parameter(Mandatory)][string]$PlanHash,
         [Parameter(Mandatory)][string]$ReadinessBindingDigest,
         [Parameter(Mandatory)][string]$SourceIsoSha256,
+        [Parameter(Mandatory)][string]$ExperimentPlanHash,
+        [Parameter(Mandatory)][string]$InventoryFingerprint,
         [string]$OwnerId = 'lab-sim-operator',
         [string]$RepoRoot = $null,
-        [string]$ExperimentPlanHash = '',
+        [ValidateSet('ExternalValidated', 'InlineSimulation', 'NotValidated')]
+        [string]$EvidenceMode = 'NotValidated',
+        [object]$EvidenceChain = $null,
         [switch]$SimulateOperatorReview,
         [ValidateSet(
             '',
@@ -729,10 +1068,14 @@ function Invoke-XboxOSIsolatedLabSimulate {
     if ([string]$Topology.provider.kind -ne 'Simulation' -and [bool]$Topology.provider.assumesHypervisorInstalled) {
         throw 'Non-simulation providers that assume a hypervisor are not executable in Milestone 6B defaults.'
     }
+    if ([string]::IsNullOrWhiteSpace($ExperimentPlanHash) -or [string]::IsNullOrWhiteSpace($InventoryFingerprint)) {
+        throw 'ExperimentPlanHash and InventoryFingerprint are required for lab ownership binding.'
+    }
 
     $labId = ('lab-{0}' -f [datetime]::UtcNow.ToString('yyyyMMddHHmmssfff'))
     $vmId = ([string]$Topology.vm.vmIdTemplate) -replace '\{labId\}', $labId
     $workspaceId = ('ws-{0}' -f $labId)
+    $evidenceLabel = Get-XboxOSLabEvidenceLabel -EvidenceMode $EvidenceMode
 
     $tx = New-XboxOSLabTransaction -LabId $labId
     $boundary = Test-XboxOSLabInfrastructureBoundaries `
@@ -749,17 +1092,18 @@ function Invoke-XboxOSIsolatedLabSimulate {
     if (-not $boundary.valid) { foreach ($e in @($boundary.errors)) { [void]$blockers.Add($e) } }
     if (-not $isolation.valid) { foreach ($e in @($isolation.errors)) { [void]$blockers.Add($e) } }
     if (-not $keyPolicy.valid) { foreach ($e in @($keyPolicy.errors)) { [void]$blockers.Add($e) } }
+    if ($EvidenceMode -eq 'NotValidated') {
+        [void]$blockers.Add('Evidence mode NotValidated; lab readiness refuses unvalidated evidence.')
+    }
+    if ($null -ne $EvidenceChain -and -not [bool]$EvidenceChain.valid) {
+        foreach ($e in @($EvidenceChain.errors)) { [void]$blockers.Add(("Evidence chain: {0}" -f $e)) }
+    }
 
-    # Hypervisor availability is informational; default Simulation does not require it.
-    $hypervisorAvailable = $false
-    try {
-        $hypervisorAvailable = [bool](Get-Command Get-VM -ErrorAction SilentlyContinue)
-    }
-    catch { $hypervisorAvailable = $false }
-    $hypervisorNotes = @()
-    if (-not $hypervisorAvailable) {
-        $hypervisorNotes += 'Hypervisor management commands unavailable; real provisioning remains blocked (expected for Simulation).'
-    }
+    # Milestone 6B.1: do not query or modify the hypervisor.
+    $hypervisorNotes = @(
+        'HypervisorNotInspected: Milestone 6B does not query or modify the hypervisor.'
+        'Declared IsolatedSwitch policy is ConfigurationDeclared only; NetworkIsolationNotVerified.'
+    )
 
     $wsRoot = if ($boundary.canonicalPaths.PSObject.Properties['workspaceRoot']) { [string]$boundary.canonicalPaths.workspaceRoot } else { [string]$Topology.paths.workspaceRoot }
     $ownership = New-XboxOSLabOwnershipRecord `
@@ -770,9 +1114,23 @@ function Invoke-XboxOSIsolatedLabSimulate {
         -PlanHash $PlanHash `
         -ReadinessBindingDigest $ReadinessBindingDigest `
         -SourceIsoSha256 $SourceIsoSha256 `
-        -WorkspaceRoot $wsRoot
+        -WorkspaceRoot $wsRoot `
+        -ExperimentPlanHash $ExperimentPlanHash `
+        -InventoryFingerprint $InventoryFingerprint `
+        -EvidenceReferences @('m6a-experiment-plan', 'm5-readiness', 'm1-m4-compat-inventory')
 
-    $snapshot = New-XboxOSLabSnapshotRecord -Ownership $ownership -Purpose PreExperimentBaseline -EvidenceReferences @('m6a-experiment-plan', 'm5-readiness')
+    $ownCheck = Test-XboxOSLabOwnershipRecord `
+        -Record $ownership `
+        -ExpectedLabId $labId `
+        -ExpectedVmId $vmId `
+        -ExpectedPlanHash $PlanHash `
+        -ExpectedReadinessBindingDigest $ReadinessBindingDigest `
+        -ExpectedSourceIsoSha256 $SourceIsoSha256 `
+        -ExpectedExperimentPlanHash $ExperimentPlanHash `
+        -ExpectedInventoryFingerprint $InventoryFingerprint
+    if (-not $ownCheck.valid) { foreach ($e in @($ownCheck.errors)) { [void]$blockers.Add($e) } }
+
+    $snapshot = New-XboxOSLabSnapshotRecord -Ownership $ownership -Purpose PreExperimentBaseline -EvidenceReferences @('m6a-experiment-plan', 'm5-readiness', $ExperimentPlanHash)
     $snapBind = Test-XboxOSLabSnapshotBinding -Snapshot $snapshot -Ownership $ownership
     if (-not $snapBind.valid) { foreach ($e in @($snapBind.errors)) { [void]$blockers.Add($e) } }
 
@@ -786,7 +1144,7 @@ function Invoke-XboxOSIsolatedLabSimulate {
     }
     if ($InjectFailure -eq 'WorkspaceOwnershipMismatch') {
         $ownership.ownershipToken = ('F' * 64)
-        $ownCheck = Test-XboxOSLabOwnershipRecord -Record $ownership -ExpectedLabId $labId -ExpectedVmId $vmId -ExpectedPlanHash $PlanHash -ExpectedReadinessBindingDigest $ReadinessBindingDigest -ExpectedSourceIsoSha256 $SourceIsoSha256
+        $ownCheck = Test-XboxOSLabOwnershipRecord -Record $ownership -ExpectedLabId $labId -ExpectedVmId $vmId -ExpectedPlanHash $PlanHash -ExpectedReadinessBindingDigest $ReadinessBindingDigest -ExpectedSourceIsoSha256 $SourceIsoSha256 -ExpectedExperimentPlanHash $ExperimentPlanHash -ExpectedInventoryFingerprint $InventoryFingerprint
         foreach ($e in @($ownCheck.errors)) { [void]$blockers.Add($e) }
     }
     if ($InjectFailure -eq 'IsoHashMismatch') {
@@ -843,16 +1201,21 @@ function Invoke-XboxOSIsolatedLabSimulate {
         -BoundaryResult $boundary `
         -IsolationResult $isolation `
         -Git $git `
-        -ExperimentPlanHash $ExperimentPlanHash
+        -ExperimentPlanHash $ExperimentPlanHash `
+        -EvidenceMode $EvidenceMode `
+        -EvidenceLabel $evidenceLabel
 
     $report = [pscustomobject]@{
-        reportSchemaVersion               = 'isolated-lab-report-v1'
+        reportSchemaVersion               = 'isolated-lab-report-v1.1'
         engineVersion                     = Get-XboxOSIsolatedLabEngineVersion
         decision                          = $decision
         transactionState                  = [string]$tx.state
         topologySchemaVersion             = Get-XboxOSLabTopologySchemaVersion
         providerKind                      = [string]$Topology.provider.kind
-        hypervisorAvailable               = $hypervisorAvailable
+        evidenceMode                      = $EvidenceMode
+        evidenceLabel                     = $evidenceLabel
+        evidenceChain                     = $EvidenceChain
+        hypervisorInspectionStatus        = 'HypervisorNotInspected'
         hypervisorNotes                   = [string[]]$hypervisorNotes
         boundary                          = $boundary
         isolation                         = $isolation
@@ -881,9 +1244,11 @@ function Invoke-XboxOSIsolatedLabSimulate {
         layerDActivated                   = $false
         generatedUtc                      = [datetime]::UtcNow
         notes                             = @(
-            'Milestone 6B simulates lab infrastructure readiness only.'
+            'Milestone 6B.1 simulates lab infrastructure readiness only.'
             'Valid configuration is permission to plan, not to provision.'
+            'PolicyValidated isolation is not actual hypervisor/network verification.'
             'Layer D and writable DISM remain unauthorized.'
+            ("Evidence label: {0}" -f $evidenceLabel)
         )
     }
 
@@ -946,10 +1311,15 @@ function Save-XboxOSIsolatedLabReport {
         [void]$lines.Add(('| `{0}` | {1} |' -f $flag, $Report.$flag))
     }
     [void]$lines.Add('')
+    [void]$lines.Add(('Evidence mode: `{0}` (`{1}`)' -f $Report.evidenceMode, $Report.evidenceLabel))
+    [void]$lines.Add('')
     [void]$lines.Add('## Isolation')
     [void]$lines.Add('')
-    [void]$lines.Add(('Valid: `{0}`' -f $Report.isolation.valid))
-    [void]$lines.Add(('Mode: `{0}`' -f $Report.isolation.isolationMode))
+    [void]$lines.Add(('Policy valid: `{0}` (`{1}`)' -f $Report.isolation.valid, $Report.isolation.policyValidationStatus))
+    [void]$lines.Add(('Declared mode: `{0}` (`{1}`)' -f $Report.isolation.declaredIsolationMode, $Report.isolation.configurationStatus))
+    [void]$lines.Add(('Hypervisor: `{0}`' -f $Report.isolation.hypervisorInspectionStatus))
+    [void]$lines.Add(('Network verification: `{0}`' -f $Report.isolation.networkIsolationVerificationStatus))
+    [void]$lines.Add(('Actual isolation verified: `{0}`' -f $Report.isolation.actualIsolationVerified))
     [void]$lines.Add('')
     [void]$lines.Add('## Blockers')
     [void]$lines.Add('')

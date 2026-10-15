@@ -1,11 +1,13 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Milestone 6B isolated disposable-image lab infrastructure readiness (simulation only).
+    Milestone 6B.1 isolated disposable-image lab infrastructure readiness (simulation only).
 .DESCRIPTION
-    Validates lab topology, isolation policy, ownership/snapshots, authorization key policy,
-    and evidence custody against M5/M6A bindings. Always blocks real provisioning and Layer D.
-    Does not invoke DISM or hypervisor provisioning commands.
+    Default authoritative mode requires M1/M4 compatibility inventory, validated M5 readiness,
+    and validated M6A experiment plan. Reconstructs the M2 plan, revalidates the M5 binding
+    digest, and recomputes the M6A experiment content hash. Never falls back to synthetic
+    evidence without -Simulation -AllowInlineSimulationReadiness.
+    Always blocks real provisioning and Layer D. Does not invoke DISM or hypervisor commands.
 #>
 [CmdletBinding()]
 param(
@@ -35,7 +37,11 @@ if (-not $LabTopologyPath) {
     $LabTopologyPath = Join-Path $RepoRoot 'config\lab-topology.json'
 }
 
-Write-Host '=== XboxOS11 Milestone 6B isolated lab readiness (simulation only) ===' -ForegroundColor Cyan
+if ($AllowInlineSimulationReadiness -and -not $Simulation) {
+    throw '-AllowInlineSimulationReadiness requires -Simulation and never substitutes evidence in default authoritative mode.'
+}
+
+Write-Host '=== XboxOS11 Milestone 6B.1 isolated lab readiness (simulation only) ===' -ForegroundColor Cyan
 Write-Host ("Engine: {0}" -f (Get-XboxOSIsolatedLabEngineVersion))
 Write-Host ("Real DISM enabled: {0}" -f (Get-XboxOSRealDismExecutionEnabled))
 Write-Host ("Lab real provisioning: {0}" -f (Get-XboxOSLabRealProvisioningEnabled))
@@ -48,30 +54,12 @@ $compatibility = Import-XboxOSManifest -Path (Join-Path $RepoRoot 'config\compat
 $removeApps = Import-XboxOSManifest -Path (Join-Path $RepoRoot 'config\remove-apps.json')
 $disableFeatures = Import-XboxOSManifest -Path (Join-Path $RepoRoot 'config\disable-features.json')
 
-# Resolve plan hash + readiness binding digest from M6A/M5 evidence
-$planHash = $null
-$readinessDigest = $null
-$isoSha = $null
-$experimentPlanHash = ''
+$evidenceMode = 'ExternalValidated'
+$evidenceChain = $null
 
-if ((-not $Simulation) -and (Test-Path -LiteralPath $ExperimentPlanJsonPath)) {
-    $exp = Get-Content -LiteralPath $ExperimentPlanJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($exp.PSObject.Properties['experimentPlan'] -and $exp.experimentPlan) {
-        $planHash = [string]$exp.experimentPlan.servicingPlanContentHash
-        $isoSha = [string]$exp.experimentPlan.sourceIsoSha256
-        $experimentPlanHash = [string]$exp.experimentPlan.contentHash
-    }
-    if ($exp.PSObject.Properties['readinessBindingDigest']) {
-        $readinessDigest = [string]$exp.readinessBindingDigest
-    }
-    Write-Host ("Bound M6A experiment report: {0}" -f $ExperimentPlanJsonPath)
-}
-
-if (-not $planHash -or -not $readinessDigest -or -not $isoSha) {
-    if (-not $Simulation -or -not $AllowInlineSimulationReadiness) {
-        throw 'Validated M6A/M5 evidence bindings required. Provide experiment plan JSON or use -Simulation -AllowInlineSimulationReadiness.'
-    }
-    Write-Host 'Mode: Explicit inline simulation bindings (fixtures).' -ForegroundColor Yellow
+if ($Simulation -and $AllowInlineSimulationReadiness) {
+    Write-Host 'Mode: Explicit inline simulation evidence (fixtures). Label: InlineSimulationEvidence.' -ForegroundColor Yellow
+    $evidenceMode = 'InlineSimulation'
     $fixtures = Join-Path $RepoRoot 'tests\Fixtures'
     $appx = @(ConvertFrom-XboxOSDismProvisionedAppxListOutput -Output (Get-Content (Join-Path $fixtures 'dism-get-appx-26300.9457.txt')) | ForEach-Object { $_.PackageName })
     $features = @(ConvertFrom-XboxOSDismFeatureListOutput -Output (Get-Content (Join-Path $fixtures 'dism-get-features-26300.9457.txt')))
@@ -94,26 +82,80 @@ if (-not $planHash -or -not $readinessDigest -or -not $isoSha) {
         -RepoRoot $RepoRoot
     $bind = Test-XboxOSReadinessReportBinding -Report $ready -Plan $plan -EvidenceMode InlineSimulation
     if (-not $bind.valid) { throw ("Inline readiness binding failed: {0}" -f ($bind.errors -join '; ')) }
+
+    $eligibleIds = @($ready.operationAssessments | Where-Object planStatus -eq 'Eligible' | ForEach-Object { [string]$_.operationId })
+    $simReport = Invoke-XboxOSExperimentPlanSimulate `
+        -Plan $plan `
+        -ReadinessAssessment $ready `
+        -RequestedOperationIds $eligibleIds `
+        -FunctionalValidationCatalog $fvCatalog `
+        -CompatibilityManifest $compatibility `
+        -RepoRoot $RepoRoot `
+        -ProposedWorkspaceRoot 'C:\XboxOS\Work\lab-m6b-inline-sim' `
+        -EvidenceMode InlineSimulation `
+        -SimulateOperatorConsent `
+        -SimulateRiskAcceptance
+    if ($simReport.decision -ne 'BlockedForExecution') {
+        throw 'Inline M6A simulation must remain BlockedForExecution.'
+    }
+
     $planHash = [string]$plan.contentHash
+    $inventoryFingerprint = [string]$plan.inventoryFingerprint
     $readinessDigest = [string]$bind.readinessBindingDigest
     $isoSha = [string]$plan.sourceImage.isoSha256
-    $experimentPlanHash = 'inline-simulation-no-m6a-plan'
+    $experimentPlanHash = [string]$simReport.experimentPlan.contentHash
+    $evidenceChain = [pscustomobject]@{
+        valid                  = $true
+        evidenceMode           = 'InlineSimulation'
+        evidenceLabel          = 'InlineSimulationEvidence'
+        planHash               = $planHash
+        inventoryFingerprint   = $inventoryFingerprint
+        readinessBindingDigest = $readinessDigest
+        experimentPlanHash     = $experimentPlanHash
+        sourceIsoSha256        = $isoSha
+        errors                 = @()
+        notes                  = @('Explicit -Simulation -AllowInlineSimulationReadiness fixture chain.')
+        activatesProvisioning  = $false
+        activatesLayerD        = $false
+    }
 }
-elseif ((-not $Simulation) -and (Test-Path -LiteralPath $ReadinessJsonPath) -and (Test-Path -LiteralPath $CompatJsonPath)) {
-    $inventory = Import-XboxOSInventoryFromCompatReport -Path $CompatJsonPath
-    $plan = New-XboxOSServicingPlan -Inventory $inventory -RemoveAppsManifest $removeApps -DisableFeaturesManifest $disableFeatures -CompatibilityManifest $compatibility
-    $readyFile = Get-Content -LiteralPath $ReadinessJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $bind = Test-XboxOSReadinessReportBinding -Report $readyFile -Plan $plan -EvidenceMode ExternalValidated -RequireAuthoritativeProvenance
-    if (-not $bind.valid) {
-        throw ("M5 readiness rejected (fail closed): {0}" -f ($bind.errors -join '; '))
+else {
+    Write-Host 'Mode: Authoritative evidence chain (M1/M4 + M5 + M6A). Label: ExternalValidatedEvidence.'
+    if ($Simulation -and -not $AllowInlineSimulationReadiness) {
+        throw '-Simulation without -AllowInlineSimulationReadiness does not enable synthetic evidence; provide authoritative reports or both switches.'
     }
-    if ($planHash -ne [string]$plan.contentHash) {
-        throw 'M6A plan hash does not match recomputed M2 plan from authoritative inventory.'
+    foreach ($pair in @(
+            @{ n = 'M1/M4 compatibility inventory'; p = $CompatJsonPath },
+            @{ n = 'M5 readiness report'; p = $ReadinessJsonPath },
+            @{ n = 'M6A experiment plan report'; p = $ExperimentPlanJsonPath }
+        )) {
+        if (-not (Test-Path -LiteralPath $pair.p)) {
+            throw ("Missing required {0}: {1}. Authoritative mode never falls back to synthetic evidence." -f $pair.n, $pair.p)
+        }
     }
-    if ($readinessDigest -ne [string]$bind.readinessBindingDigest) {
-        throw 'M6A readiness binding digest does not match recomputed M5 digest.'
+
+    $evidenceChain = Test-XboxOSLabEvidenceChain `
+        -CompatJsonPath $CompatJsonPath `
+        -ReadinessJsonPath $ReadinessJsonPath `
+        -ExperimentPlanJsonPath $ExperimentPlanJsonPath `
+        -RemoveAppsManifest $removeApps `
+        -DisableFeaturesManifest $disableFeatures `
+        -CompatibilityManifest $compatibility `
+        -EvidenceMode ExternalValidated
+
+    if (-not $evidenceChain.valid) {
+        throw ("Authoritative evidence chain rejected (fail closed): {0}" -f ($evidenceChain.errors -join '; '))
     }
-    Write-Host ("Validated M5 readiness: {0}" -f $ReadinessJsonPath)
+
+    $planHash = [string]$evidenceChain.planHash
+    $inventoryFingerprint = [string]$evidenceChain.inventoryFingerprint
+    $readinessDigest = [string]$evidenceChain.readinessBindingDigest
+    $isoSha = [string]$evidenceChain.sourceIsoSha256
+    $experimentPlanHash = [string]$evidenceChain.experimentPlanHash
+    Write-Host ("Validated M2 plan hash:        {0}" -f $planHash)
+    Write-Host ("Validated inventory fingerprint:{0}" -f $inventoryFingerprint)
+    Write-Host ("Validated M5 binding digest:   {0}" -f $readinessDigest)
+    Write-Host ("Validated M6A plan hash:       {0}" -f $experimentPlanHash)
 }
 
 Reset-XboxOSLabNonceRegistry
@@ -124,25 +166,36 @@ $report = Invoke-XboxOSIsolatedLabSimulate `
     -PlanHash $planHash `
     -ReadinessBindingDigest $readinessDigest `
     -SourceIsoSha256 $isoSha `
+    -ExperimentPlanHash $experimentPlanHash `
+    -InventoryFingerprint $inventoryFingerprint `
     -OwnerId $OperatorId `
     -RepoRoot $RepoRoot `
-    -ExperimentPlanHash $experimentPlanHash `
+    -EvidenceMode $evidenceMode `
+    -EvidenceChain $evidenceChain `
     -SimulateOperatorReview:(-not $SkipOperatorReview)
 
 $paths = Save-XboxOSIsolatedLabReport -Report $report -OutputDirectory $OutputDirectory -Stem $OutputStem -RepoRoot $RepoRoot
 
 Write-Host ''
-Write-Host ("Decision:              {0}" -f $report.decision)
-Write-Host ("Transaction state:     {0}" -f $report.transactionState)
-Write-Host ("Isolation valid:       {0}" -f $report.isolation.valid)
-Write-Host ("Boundary valid:        {0}" -f $report.boundary.valid)
-Write-Host ("Hypervisor available:  {0}" -f $report.hypervisorAvailable)
-Write-Host ("Layer D activated:     {0}" -f $report.layerDActivated)
-Write-Host ("JSON:                  {0}" -f $paths.JsonPath)
-Write-Host ("Markdown:              {0}" -f $paths.MarkdownPath)
+Write-Host ("Decision:                 {0}" -f $report.decision)
+Write-Host ("Transaction state:        {0}" -f $report.transactionState)
+Write-Host ("Evidence label:           {0}" -f $report.evidenceLabel)
+Write-Host ("Isolation policy:         {0}" -f $report.isolation.policyValidationStatus)
+Write-Host ("Actual isolation verified:{0}" -f $report.isolation.actualIsolationVerified)
+Write-Host ("Hypervisor inspection:    {0}" -f $report.isolation.hypervisorInspectionStatus)
+Write-Host ("Network verification:     {0}" -f $report.isolation.networkIsolationVerificationStatus)
+Write-Host ("Layer D activated:        {0}" -f $report.layerDActivated)
+Write-Host ("JSON:                     {0}" -f $paths.JsonPath)
+Write-Host ("Markdown:                 {0}" -f $paths.MarkdownPath)
 
 Assert-XboxOSIsolatedLabSafetyInvariants -Report $report
 if ($report.decision -notin @('LabProvisioningBlocked', 'RecoveryRequired')) {
     throw 'Safety invariant violated: Milestone 6B must block real provisioning.'
+}
+if ($report.isolation.actualIsolationVerified) {
+    throw 'Safety invariant violated: actual isolation must remain unverified in Milestone 6B.'
+}
+if (@($report.functionalTestPlan.tests | Where-Object { $_.plannedStatus -eq 'Passed' -or $_.claimedPassed }).Count -gt 0) {
+    throw 'Safety invariant violated: functional tests must not be Passed without runtime evidence.'
 }
 exit 2
