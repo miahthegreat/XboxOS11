@@ -118,11 +118,15 @@ Simulation-only lab topology, boundary validation, VM isolation **policy**, owne
 
 **Infrastructure complete ≠ permission to provision VMs or modify Windows images.**
 
-## M6C: Read-only hypervisor and host lab discovery (proposal only)
+## M6C: Read-only hypervisor and host lab discovery (simulation)
 
-Design-only proposal for separately gated, read-only inspection of the Windows host and virtualization environment — without provisioning, networking changes, DISM mutation, or Layer D.
+Mocked, allowlisted, read-only discovery contracts for host/hypervisor inspection — without enumerating the live host in CI, provisioning VMs, changing networking, running DISM, or enabling Layer D.
 
-Proposal: [m6c-real-host-lab-discovery-design.md](m6c-real-host-lab-discovery-design.md). Not implemented.
+- Design parent: [m6c-real-host-lab-discovery-design.md](m6c-real-host-lab-discovery-design.md)
+- Contracts: [m6c-host-discovery-contracts.md](m6c-host-discovery-contracts.md)
+- CLI: `scripts/Test-HostLabDiscovery.ps1` (default **HostDiscoveryBlocked**; mocked approval only with explicit switches)
+- Engine `6.2.0-c`; adapter mode **MockedSimulation**; `ActualIsolationVerified` remains false for fixture evidence
+- Distinct `HostDiscovery` approval layer (not M6A/M6B/Layer D reuse)
 
 ## Later: Xbox mode integration
 

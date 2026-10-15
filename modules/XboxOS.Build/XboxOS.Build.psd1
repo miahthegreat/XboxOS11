@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.6.2'
+    ModuleVersion     = '0.6.3'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -229,6 +229,37 @@
         'Invoke-XboxOSIsolatedLabSimulate'
         'Save-XboxOSIsolatedLabReport'
         'Reset-XboxOSLabNonceRegistry'
+        'Get-XboxOSHostDiscoveryEngineVersion'
+        'Get-XboxOSHostIdentitySchemaVersion'
+        'Get-XboxOSHostDiscoveryApprovalSchemaVersion'
+        'Get-XboxOSHostDiscoveryScopeSchemaVersion'
+        'Get-XboxOSHostDiscoveryAllowlistSchemaVersion'
+        'Get-XboxOSHostDiscoveryHypervisorSchemaVersion'
+        'Get-XboxOSHostDiscoveryVmInventorySchemaVersion'
+        'Get-XboxOSHostDiscoverySwitchSchemaVersion'
+        'Get-XboxOSHostDiscoveryResourceSchemaVersion'
+        'Get-XboxOSHostDiscoveryIsolationSchemaVersion'
+        'Get-XboxOSHostDiscoveryEvidenceSchemaVersion'
+        'Get-XboxOSHostDiscoveryReportSchemaVersion'
+        'Get-XboxOSHostDiscoveryTransactionSchemaVersion'
+        'Get-XboxOSHostDiscoveryRealHostCommandsInvoked'
+        'Reset-XboxOSHostDiscoveryNonceRegistry'
+        'Assert-XboxOSHostDiscoverySafetyInvariants'
+        'Import-XboxOSHostDiscoveryAllowlistCatalog'
+        'New-XboxOSHostIdentity'
+        'New-XboxOSHostDiscoveryScope'
+        'New-XboxOSHostDiscoveryApprovalRecord'
+        'Test-XboxOSHostDiscoveryApprovalRecord'
+        'Test-XboxOSHostDiscoveryCommandAllowed'
+        'New-XboxOSMockHostDiscoveryAdapter'
+        'Invoke-XboxOSHostDiscoveryAdapterOperation'
+        'Test-XboxOSHostDiscoveryIsolationObservations'
+        'Assert-XboxOSHostDiscoveryTransactionTransition'
+        'New-XboxOSHostDiscoveryTransaction'
+        'Set-XboxOSHostDiscoveryTransactionState'
+        'New-XboxOSHostDiscoveryEvidenceManifest'
+        'Invoke-XboxOSHostLabDiscoverySimulate'
+        'Save-XboxOSHostLabDiscoveryReport'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -238,7 +269,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 6B.1: evidence-chain enforcement and isolation policy vs verification separation (simulation only).'
+            ReleaseNotes = 'Milestone 6C: read-only host/hypervisor discovery simulation (mocked adapter; HostDiscoveryBlocked by default).'
         }
     }
 }

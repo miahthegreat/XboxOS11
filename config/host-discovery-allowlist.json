@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "host-discovery-allowlist-v1",
+  "catalogVersion": "6.2.0-c",
+  "notes": [
+    "Milestone 6C read-only discovery allowlist.",
+    "Default adapter mode is MockedSimulation; real-host execution is not enabled.",
+    "Any command not listed here is denied."
+  ],
+  "allowedCategories": [
+    "OsInformation",
+    "CpuVirtualization",
+    "HyperVManagementComponents",
+    "VmInventory",
+    "VmSwitchInventory",
+    "NetworkAdapters",
+    "VhdMetadata",
+    "HostResources",
+    "WorkspaceBoundaries",
+    "DismMountMetadata",
+    "LabCredentialPrerequisites"
+  ],
+  "allowedOperations": [
+    {
+      "operationId": "Get-OsInfo",
+      "category": "OsInformation",
+      "description": "Read Windows edition/build identity",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-CpuVirtualization",
+      "category": "CpuVirtualization",
+      "description": "Read CPU virtualization capability flags",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-HyperVManagementPresence",
+      "category": "HyperVManagementComponents",
+      "description": "Probe Hyper-V management module/cmdlet presence",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-VmInventory",
+      "category": "VmInventory",
+      "description": "Enumerate existing VM metadata when tools available",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-VmSwitchInventory",
+      "category": "VmSwitchInventory",
+      "description": "Enumerate existing virtual switches when tools available",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-NetworkAdapters",
+      "category": "NetworkAdapters",
+      "description": "Enumerate host network adapters",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-VhdMetadata",
+      "category": "VhdMetadata",
+      "description": "Locate VHD/VHDX metadata under approved roots",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-HostResources",
+      "category": "HostResources",
+      "description": "Read CPU, memory, and free disk capacity",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-WorkspaceBoundaries",
+      "category": "WorkspaceBoundaries",
+      "description": "Validate workspace path constraints",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-DismMountMetadata",
+      "category": "DismMountMetadata",
+      "description": "Read-only DISM mount-state metadata",
+      "sideEffects": false
+    },
+    {
+      "operationId": "Get-LabCredentialPrerequisites",
+      "category": "LabCredentialPrerequisites",
+      "description": "Check lab trust/credential prerequisite labels only",
+      "sideEffects": false
+    }
+  ],
+  "deniedPatterns": [
+    "New-VM",
+    "Start-VM",
+    "Stop-VM",
+    "Remove-VM",
+    "New-VMSwitch",
+    "Set-VMSwitch",
+    "Remove-VMSwitch",
+    "New-VHD",
+    "Mount-VHD",
+    "Dismount-VHD",
+    "Enable-WindowsOptionalFeature",
+    "Disable-WindowsOptionalFeature",
+    "Mount-WindowsImage",
+    "Dismount-WindowsImage",
+    "Cleanup-WindowsImage",
+    "Invoke-Expression",
+    "Start-Process",
+    "netsh",
+    "Set-NetFirewall",
+    "New-NetIPAddress"
+  ]
+}

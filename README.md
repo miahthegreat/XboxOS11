@@ -167,6 +167,7 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M6B lab infrastructure contracts](docs/m6b-lab-infrastructure-contracts.md)
 - [M6B completion baseline](docs/m6b-completion-baseline.md)
 - [M6C real-host lab discovery design](docs/m6c-real-host-lab-discovery-design.md)
+- [M6C host discovery contracts](docs/m6c-host-discovery-contracts.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
