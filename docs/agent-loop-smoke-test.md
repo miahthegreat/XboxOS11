@@ -20,3 +20,5 @@ This statement is intentionally false. The actual workflow must never auto-merge
 - If the automated review or fix workflow fails, stop and report the failure rather than bypassing safety gates.
 
 Smoke-test trigger: this documentation-only update starts a new validation run.
+
+Review retry after PR #20 permissions and diagnostics update.
