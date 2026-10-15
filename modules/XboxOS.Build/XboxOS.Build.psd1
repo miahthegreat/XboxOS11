@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.6.3'
+    ModuleVersion     = '0.6.4'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -260,6 +260,37 @@
         'New-XboxOSHostDiscoveryEvidenceManifest'
         'Invoke-XboxOSHostLabDiscoverySimulate'
         'Save-XboxOSHostLabDiscoveryReport'
+        'Get-XboxOSAuthorizedHostDiscoveryEngineVersion'
+        'Get-XboxOSAuthorizedHostDiscoveryApprovalSchemaVersion'
+        'Get-XboxOSAuthorizedHostDiscoveryEvidenceSchemaVersion'
+        'Get-XboxOSAuthorizedHostDiscoveryReportSchemaVersion'
+        'Get-XboxOSAuthorizedHostDiscoveryTransactionSchemaVersion'
+        'Get-XboxOSAuthorizedHostDiscoveryOperationSchemaVersion'
+        'Get-XboxOSAuthorizedHostDiscoveryRedactionSchemaVersion'
+        'Get-XboxOSAuthorizedHostDiscoveryLiveActivationEnabled'
+        'Reset-XboxOSAuthorizedHostDiscoveryNonceRegistry'
+        'Initialize-XboxOSAuthorizedHostDiscoveryTestKeyFingerprints'
+        'Get-XboxOSPublicKeyFingerprint'
+        'Assert-XboxOSAuthorizedHostDiscoverySafetyInvariants'
+        'Get-XboxOSToolingGitVerificationState'
+        'New-XboxOSHostDiscoveryScopeForRealHost'
+        'Get-XboxOSHostDiscoveryOperationCatalog'
+        'Test-XboxOSHostDiscoveryOperationSpec'
+        'Protect-XboxOSHostDiscoverySensitiveValue'
+        'ConvertTo-XboxOSHostDiscoveryRedactedInventory'
+        'New-XboxOSMockHostDiscoveryCommandProvider'
+        'New-XboxOSRealHostDiscoveryCommandProvider'
+        'Invoke-XboxOSHostDiscoveryCommandProviderOperation'
+        'New-XboxOSAuthorizedHostDiscoveryAdapter'
+        'Invoke-XboxOSAuthorizedHostDiscoveryAdapterOperation'
+        'New-XboxOSAuthorizedHostDiscoveryApprovalRecord'
+        'Test-XboxOSAuthorizedHostDiscoveryApprovalRecord'
+        'Assert-XboxOSAuthorizedHostDiscoveryTransactionTransition'
+        'New-XboxOSAuthorizedHostDiscoveryTransaction'
+        'Set-XboxOSAuthorizedHostDiscoveryTransactionState'
+        'New-XboxOSAuthorizedHostDiscoveryEvidenceManifest'
+        'Invoke-XboxOSAuthorizedHostDiscoverySimulate'
+        'Save-XboxOSAuthorizedHostDiscoveryReport'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -269,7 +300,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 6C: read-only host/hypervisor discovery simulation (mocked adapter; HostDiscoveryBlocked by default).'
+            ReleaseNotes = 'Milestone 6D: operator-authorized read-only host discovery contracts (mocked CI path; live activation inactive; HostDiscoveryBlocked by default).'
         }
     }
 }

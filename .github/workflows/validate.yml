@@ -109,10 +109,18 @@ jobs:
             'docs/m6c-host-discovery-contracts.md',
             'docs/m6c-completion-baseline.md',
             'docs/m6d-authorized-readonly-host-inspection-design.md',
+            'docs/m6d-readonly-host-adapter.md',
+            'docs/m6d-operator-authorization.md',
+            'docs/m6d-isolation-evidence.md',
+            'docs/m6d-operational-runbook.md',
+            'docs/m6d-unresolved-risks.md',
             'config/host-discovery-allowlist.json',
             'modules/XboxOS.Build/HostLabDiscovery.ps1',
+            'modules/XboxOS.Build/AuthorizedHostDiscovery.ps1',
             'scripts/Test-HostLabDiscovery.ps1',
+            'scripts/Test-AuthorizedHostDiscovery.ps1',
             'tests/HostLabDiscovery.Tests.ps1',
+            'tests/AuthorizedHostDiscovery.Tests.ps1',
             'README.md',
             'LICENSE'
           )

@@ -170,14 +170,21 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M6C host discovery contracts](docs/m6c-host-discovery-contracts.md)
 - [M6C completion baseline](docs/m6c-completion-baseline.md)
 - [M6D authorized read-only host inspection design](docs/m6d-authorized-readonly-host-inspection-design.md)
+- [M6D read-only host adapter](docs/m6d-readonly-host-adapter.md)
+- [M6D operator authorization](docs/m6d-operator-authorization.md)
+- [M6D isolation evidence](docs/m6d-isolation-evidence.md)
+- [M6D operational runbook](docs/m6d-operational-runbook.md)
+- [M6D unresolved risks](docs/m6d-unresolved-risks.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
 ## Roadmap
 
-**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → **M6C** mocked host discovery → proposed **M6D** operator-authorized real-host inspection → later Xbox mode / performance / recovery / release engineering.
+**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → **M6C** mocked host discovery → **M6D** authorized host-discovery contracts (live inactive) → later Xbox mode / performance / recovery / release engineering.
 
-M6C acceptance is **not** permission to inspect a production host, provision VMs, or modify Windows images.
+**Product target:** Native WinUI 3 Windows 11 ISO Builder (ISO import, edition discovery, gaming presets, component selection, dependency/safety warnings, driver integration, unattended setup, custom ISO export, JSON presets, build logs / integrity reports). GUI not implemented in Milestone 6D; backend contracts remain reusable for a future WinUI 3 / .NET frontend.
+
+M6D implementation acceptance is **not** permission to inspect a production host, provision VMs, or modify Windows images.
 
 ## License
 

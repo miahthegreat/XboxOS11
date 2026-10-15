@@ -988,6 +988,7 @@ function Save-XboxOSHostLabDiscoveryReport {
         'XboxOS11-servicing-readiness-m5',
         'XboxOS11-experiment-plan-m6a',
         'XboxOS11-isolated-lab-m6b',
+        'XboxOS11-host-lab-discovery-m6d',
         'XboxOS11-execution-safety-m3',
         'XboxOS11-servicing-plan'
     )
