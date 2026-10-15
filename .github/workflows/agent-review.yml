@@ -1,0 +1,32 @@
+name: Agent Review
+on:
+  workflow_run:
+    workflows: ["Validate"]
+    types: [completed]
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: read
+concurrency:
+  group: agent-review-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+jobs:
+  review:
+    if: ${{ (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.conclusion == 'success' && vars.AGENT_LOOP_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Review validated PR and optionally dispatch fix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AGENT_MODEL: ${{ vars.AGENT_REVIEW_MODEL || 'gpt-5.2' }}
+          REPOSITORY: ${{ github.repository }}
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: python3 automation/review_pr.py

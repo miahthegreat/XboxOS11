@@ -1,0 +1,109 @@
+name: Agent Fix
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-fix-${{ inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  generate-patch:
+    if: ${{ vars.AGENT_LOOP_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      branch: ${{ steps.gate.outputs.branch }}
+    steps:
+      - name: Checkout trusted controls
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: control
+          persist-credentials: false
+      - name: Validate opt-in, reviewed HEAD and no protected changes
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr }}
+          REVIEWED_SHA: ${{ inputs.sha }}
+        run: python3 control/automation/verify_fix_gate.py
+      - name: Checkout feature branch for unprivileged agent
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          path: workspace
+          persist-credentials: false
+      - name: Install Cursor CLI
+        run: |
+          curl -fsSL https://cursor.com/install | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+      - name: Run Cursor without GitHub write token
+        working-directory: workspace
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr }}
+          REVIEWED_SHA: ${{ inputs.sha }}
+          GATE_REVIEW_JSON: ../control/review-feedback.json
+        run: python3 ../control/automation/run_cursor_fix.py
+      - name: Capture proposed patch (not an executable artifact)
+        working-directory: workspace
+        run: python3 ../control/automation/capture_patch.py ../candidate.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-patch
+          path: candidate.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-scoped-patch:
+    needs: generate-patch
+    if: ${{ vars.AGENT_LOOP_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+      pull-requests: read
+      issues: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          path: workspace
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-patch
+          path: candidate
+      - name: Validate and publish scoped candidate
+        working-directory: workspace
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr }}
+          REVIEWED_SHA: ${{ inputs.sha }}
+          BRANCH: ${{ needs.generate-patch.outputs.branch }}
+          PATCH_PATH: ../candidate/candidate.patch
+        run: python3 ../control/automation/publish_fix.py
