@@ -18,3 +18,5 @@ This statement is intentionally false. The actual workflow must never auto-merge
 - No modifications to workflows, security policy, or authorization code.
 - The smoke test should change only this document.
 - If the automated review or fix workflow fails, stop and report the failure rather than bypassing safety gates.
+
+Smoke-test trigger: this documentation-only update starts a new validation run.
