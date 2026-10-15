@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.5.0'
+    ModuleVersion     = '0.6.0'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -164,6 +164,38 @@
         'Invoke-XboxOSOperationReadinessEvaluation'
         'New-XboxOSServicingReadinessAssessment'
         'Save-XboxOSServicingReadinessReport'
+        'Get-XboxOSExperimentPlanEngineVersion'
+        'Get-XboxOSExperimentPlanSchemaVersion'
+        'Get-XboxOSExperimentAllowlistSchemaVersion'
+        'Get-XboxOSExperimentAuthLayerSchemaVersion'
+        'Get-XboxOSExperimentSnapshotSchemaVersion'
+        'Get-XboxOSExperimentTransactionSchemaVersion'
+        'Get-XboxOSFunctionalValidationSchemaVersion'
+        'Get-XboxOSExperimentPlanHashSchemaVersion'
+        'Get-XboxOSReadinessBindingDigestSchemaVersion'
+        'Get-XboxOSExperimentalMutationEnabled'
+        'Get-XboxOSExperimentalExecutionAuthorized'
+        'Assert-XboxOSExperimentSafetyInvariants'
+        'Test-XboxOSExperimentPathIsUnsafeShape'
+        'Get-XboxOSReadinessBindingCanonicalDocument'
+        'Get-XboxOSReadinessBindingDigest'
+        'Test-XboxOSReadinessReportBinding'
+        'Import-XboxOSFunctionalValidationCatalog'
+        'Test-XboxOSExperimentWorkspaceConstraints'
+        'Test-XboxOSExperimentOperationAllowlist'
+        'Test-XboxOSExperimentMissingEvidencePolicy'
+        'Get-XboxOSExperimentPlanCanonicalDocument'
+        'Get-XboxOSExperimentPlanContentHash'
+        'New-XboxOSExperimentAuthorizationRecord'
+        'Test-XboxOSExperimentAuthorizationRecord'
+        'Assert-XboxOSExperimentTransactionTransition'
+        'New-XboxOSExperimentTransaction'
+        'Set-XboxOSExperimentTransactionState'
+        'New-XboxOSExperimentSnapshotContract'
+        'New-XboxOSExperimentPlan'
+        'Invoke-XboxOSExperimentPlanSimulate'
+        'Save-XboxOSExperimentPlanReport'
+        'Reset-XboxOSExperimentNonceRegistry'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -173,7 +205,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 5.1.0: harden dependency graph traversal, catalog validation, and authoritative vs simulation inventory modes.'
+            ReleaseNotes = 'Milestone 6A.1: harden readiness evidence binding, digests, allowlist, and workspace path validation.'
         }
     }
 }

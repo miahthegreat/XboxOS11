@@ -81,13 +81,23 @@ Baseline documentation: [m5-completion-baseline.md](m5-completion-baseline.md).
 
 **Implementation complete ≠ servicing ready.** Writable servicing remains unauthorized.
 
-## M6: Disposable-image experiment design and functional validation (proposal only)
+## M6A: Disposable-image experiment planning and authorization simulation (in progress)
 
-Design-only proposal for non-mutating experiment planning, explicit operator authorization, disposable-image-only mutation controls, scoped allowlists, snapshots/integrity, evidence-bound selection, reversible execution, isolated VM functional validation (Xbox FSE, Gaming Services, Store, controllers, audio, graphics, networking, Windows Update, recovery), post-test evidence, and rollback. MissingEvidence ops are never authorized merely because an experiment is disposable.
+Deterministic, fail-closed experiment planning and authorization simulation. No writable DISM. No WIM create/mount.
 
-Proposal: [m6-disposable-image-experiment-design.md](m6-disposable-image-experiment-design.md). Not implemented.
+- Contracts: [m6a-experiment-planning-contracts.md](m6a-experiment-planning-contracts.md)
+- Authorization boundaries: [m6a-authorization-boundaries.md](m6a-authorization-boundaries.md)
+- Functional validation matrix: [m6a-functional-validation-matrix.md](m6a-functional-validation-matrix.md)
+- Unresolved risks: [m6a-unresolved-risks.md](m6a-unresolved-risks.md)
+- Design parent: [m6-disposable-image-experiment-design.md](m6-disposable-image-experiment-design.md)
+- CLI: `scripts/Test-DisposableExperimentPlan.ps1` (default non-elevated; decision always `BlockedForExecution`)
+- Engine `6.0.1-a`; readiness binding digest + fail-closed external report validation; all six safety/mutation flags remain `false`
 
-## M6b / later: Xbox mode integration
+## M6B: Disposable-image lab (not started)
+
+Separately authorized disposable-image mutation lab. Must not modify source ISO or host OS. Not implemented in Milestone 6A.
+
+## Later: Xbox mode integration
 
 Supported Xbox FSE configuration, controller-first startup, and launcher integration—only after disposable-lab controls and Microsoft-supported mechanisms are validated on desktop hardware.
 

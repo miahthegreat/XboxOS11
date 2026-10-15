@@ -1,0 +1,164 @@
+{
+  "schemaVersion": "functional-validation-v1",
+  "catalogVersion": "6.0.0-a",
+  "notes": [
+    "Catalog only. No test is marked passed until ControlledTestResult evidence exists.",
+    "Milestone 6A does not execute these tests."
+  ],
+  "tests": [
+    {
+      "testId": "fv-xbox-fse-startup",
+      "capabilityId": "capability:XboxFullScreenExperience",
+      "prerequisites": ["Disposable VM installed from experiment WIM", "Documented FSE entry path available"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Documented Xbox FSE entry path reachable without host mutation",
+      "evidenceRequirements": ["ControlledTestResult with screenshots/logs", "Bound experiment contentHash"],
+      "failureSeverity": "Critical",
+      "abortBehavior": "Abort experiment; discard mount; retain logs",
+      "recoveryExpectations": "Source ISO untouched; workspace discarded or quarantined"
+    },
+    {
+      "testId": "fv-xbox-auth-signin",
+      "capabilityId": "capability:XboxIdentity",
+      "prerequisites": ["Test account available", "Identity packages present"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Xbox app authentication path completes for lab account",
+      "evidenceRequirements": ["ControlledTestResult", "No weakening of identity packages"],
+      "failureSeverity": "Critical",
+      "abortBehavior": "Abort; discard; do not remove identity packages",
+      "recoveryExpectations": "Preserve evidence; host unchanged"
+    },
+    {
+      "testId": "fv-gaming-services-smoke",
+      "capabilityId": "capability:GamingServices",
+      "prerequisites": ["Gaming Services provisioned in baseline"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Gaming Services service/app smoke succeeds",
+      "evidenceRequirements": ["ControlledTestResult with service state"],
+      "failureSeverity": "Critical",
+      "abortBehavior": "Abort; discard WIM changes",
+      "recoveryExpectations": "No production servicing"
+    },
+    {
+      "testId": "fv-store-license-smoke",
+      "capabilityId": "capability:MicrosoftStore",
+      "prerequisites": ["Store present", "Network available in VM"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Store opens; small free lab app install succeeds",
+      "evidenceRequirements": ["ControlledTestResult", "Store package identity retained"],
+      "failureSeverity": "High",
+      "abortBehavior": "Abort further mutations; retain logs",
+      "recoveryExpectations": "Discard disposable image"
+    },
+    {
+      "testId": "fv-game-launch-lab",
+      "capabilityId": "capability:GameLaunch",
+      "prerequisites": ["Lab title only", "Store/licensing smoke passed"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Optional lab title installs and launches",
+      "evidenceRequirements": ["ControlledTestResult"],
+      "failureSeverity": "Medium",
+      "abortBehavior": "Mark validation failed; discard if Critical dependency implicated",
+      "recoveryExpectations": "Preserve logs"
+    },
+    {
+      "testId": "fv-controller-usb-bt",
+      "capabilityId": "capability:ControllerSupport",
+      "prerequisites": ["USB and/or Bluetooth controller available to VM"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Controller enumerated",
+      "evidenceRequirements": ["ControlledTestResult with device enumeration"],
+      "failureSeverity": "High",
+      "abortBehavior": "Record MissingEvidence for runtime controller path",
+      "recoveryExpectations": "No host device driver changes"
+    },
+    {
+      "testId": "fv-xinput-smoke",
+      "capabilityId": "capability:XInput",
+      "prerequisites": ["Controller enumerated"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "XInput smoke query succeeds",
+      "evidenceRequirements": ["ControlledTestResult"],
+      "failureSeverity": "High",
+      "abortBehavior": "Fail validation suite for input stack",
+      "recoveryExpectations": "Discard if experiment mutated input-related packages"
+    },
+    {
+      "testId": "fv-gameinput-smoke",
+      "capabilityId": "capability:GameInput",
+      "prerequisites": ["Controller enumerated"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "GameInput smoke query succeeds where available",
+      "evidenceRequirements": ["ControlledTestResult"],
+      "failureSeverity": "Medium",
+      "abortBehavior": "Record gap; do not claim pass",
+      "recoveryExpectations": "Preserve evidence"
+    },
+    {
+      "testId": "fv-graphics-dx-enum",
+      "capabilityId": "capability:GraphicsAudio",
+      "prerequisites": ["GPU passthrough or VM graphics available"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Adapter enumeration and DirectX capability query succeed; no security disablement",
+      "evidenceRequirements": ["ControlledTestResult"],
+      "failureSeverity": "High",
+      "abortBehavior": "Abort if graphics stack broken by experiment",
+      "recoveryExpectations": "Discard disposable image"
+    },
+    {
+      "testId": "fv-audio-spatial-smoke",
+      "capabilityId": "capability:MediaPlayback",
+      "prerequisites": ["Audio endpoint available to VM"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Test tone renders; spatial audio toggle documented if available",
+      "evidenceRequirements": ["ControlledTestResult"],
+      "failureSeverity": "Medium",
+      "abortBehavior": "Record failure; continue non-audio suites only if severity allows",
+      "recoveryExpectations": "Preserve logs"
+    },
+    {
+      "testId": "fv-network-tls-reachability",
+      "capabilityId": "capability:NetworkingSecurity",
+      "prerequisites": ["VM networking enabled"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "DHCP + TLS reachability to Store/Xbox endpoints",
+      "evidenceRequirements": ["ControlledTestResult"],
+      "failureSeverity": "High",
+      "abortBehavior": "Abort Store/Xbox dependent tests",
+      "recoveryExpectations": "No host network changes"
+    },
+    {
+      "testId": "fv-wufb-scan-only",
+      "capabilityId": "capability:Servicing",
+      "prerequisites": ["Windows Update stack present"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Scan-only or lab WSUS succeeds; no host mutation",
+      "evidenceRequirements": ["ControlledTestResult"],
+      "failureSeverity": "Critical",
+      "abortBehavior": "Abort; RecoveryRequired if servicing stack damaged",
+      "recoveryExpectations": "Discard image; never target host OS"
+    },
+    {
+      "testId": "fv-anticheat-checklist",
+      "capabilityId": "capability:AntiCheatCompatibility",
+      "prerequisites": ["Documented checklist only"],
+      "executionEnvironment": "Isolated disposable VM / documentation review",
+      "expectedResult": "Checklist completed without security surface disablement",
+      "evidenceRequirements": ["ControlledTestResult or documented review with limitations"],
+      "failureSeverity": "Critical",
+      "abortBehavior": "Abort if security surfaces altered",
+      "recoveryExpectations": "Discard; do not weaken security for synthetic gains"
+    },
+    {
+      "testId": "fv-servicing-recovery-path",
+      "capabilityId": "capability:Recovery",
+      "prerequisites": ["Recovery options documented"],
+      "executionEnvironment": "Isolated disposable VM",
+      "expectedResult": "Recovery path remains available; rollback/discard verified",
+      "evidenceRequirements": ["ControlledTestResult", "Mount/hive cleanup verification"],
+      "failureSeverity": "Critical",
+      "abortBehavior": "RecoveryRequired; stop further experiments on workspace",
+      "recoveryExpectations": "Source ISO untouched; owned cleanup verified"
+    }
+  ]
+}
