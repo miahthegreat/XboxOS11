@@ -85,6 +85,21 @@ Real ISO build:
   -OutputDirectory 'C:\XboxOS\Output'
 ```
 
+## Builder profiles (recommended)
+
+Create a reusable profile from a preset, then build from it:
+
+```powershell
+Import-Module .\modules\XboxOS.Build\XboxOS.Build.psd1
+$p = New-XboxOSBuildProfile -Name 'My Rig' -PresetId gaming-balanced -SourceIso 'C:\ISOs\Win11_x64.iso'
+Export-XboxOSBuildProfile -BuildProfile $p -Path 'C:\XboxOS\Profiles\my-rig.json'
+
+.\scripts\Invoke-XboxOSBuild.ps1 -ProfilePath 'C:\XboxOS\Profiles\my-rig.json' -DryRun   # validate + plan
+.\scripts\Invoke-XboxOSBuild.ps1 -ProfilePath 'C:\XboxOS\Profiles\my-rig.json'           # real build (elevated)
+```
+
+Presets: `gaming-balanced` (recommended), `gaming-lean`, `handheld-xbox-mode`, `stock-safe`. Profiles cannot express TPM/Secure Boot/network-requirement bypasses, security feature removal, product keys, or automatic disk wiping. See [docs/m7-builder-backend-contracts.md](docs/m7-builder-backend-contracts.md).
+
 ## Safety considerations
 
 - Builds use an isolated external workspace under `C:\XboxOS\Work` (not the Git repo, not OneDrive).
@@ -178,12 +193,13 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M6D completion baseline](docs/m6d-completion-baseline.md)
 - [M6E controlled live discovery design](docs/m6e-controlled-live-discovery-design.md)
 - [M6E controlled live discovery contracts](docs/m6e-controlled-live-discovery-contracts.md)
+- [M7 builder backend contracts](docs/m7-builder-backend-contracts.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
 ## Roadmap
 
-**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → **M6C** mocked host discovery → **M6D** authorized host-discovery contracts (live inactive) → **M6E** controlled live read-only discovery (Gate A) → later Xbox mode / performance / recovery / release engineering.
+**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → **M6C** mocked host discovery → **M6D** authorized host-discovery contracts (live inactive) → **M6E** controlled live read-only discovery (Gate A) → **M7** Builder backend → **M8** native WinUI 3 Builder → **M9** gaming performance / Xbox mode → **M10** recovery and release engineering.
 
 **Product target:** Native WinUI 3 XboxOS11 Builder — select a supported Windows 11 ISO → choose a gaming preset or Custom → review dependency-aware component changes → configure drivers and installation options → validate the proposed build → produce a customized bootable ISO → save and reuse the build configuration. User-facing builder contracts stay separate from internal lab authorization. GUI, ISO production, and new servicing are not implemented in Milestone 6D/M6E design; backend contracts remain reusable for a future WinUI 3 / .NET frontend.
 

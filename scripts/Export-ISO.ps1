@@ -88,6 +88,26 @@ if (-not $DryRun) {
     }
 }
 
+$overlayDir = $null
+if ($Context.PSObject.Properties.Name -contains 'MediaOverlayDirectory' -and $Context.MediaOverlayDirectory) {
+    $overlayDir = [string]$Context.MediaOverlayDirectory
+    $overlayCheck = Test-XboxOSMediaOverlay -Directory $overlayDir
+    if (-not $overlayCheck.valid) {
+        throw ("Media overlay rejected:`n - " + ($overlayCheck.errors -join "`n - "))
+    }
+    if ($DryRun) {
+        Write-XboxOSLog -Level Information -Message ("DryRun: would copy media overlay files: {0}" -f ($overlayCheck.files -join ', '))
+    }
+    else {
+        foreach ($rel in $overlayCheck.files) {
+            $dest = Join-Path $sourceTree $rel
+            New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $overlayDir $rel) -Destination $dest -Force
+        }
+        Write-XboxOSLog -Level Information -Message ("Copied {0} media overlay file(s) onto the ISO tree." -f @($overlayCheck.files).Count)
+    }
+}
+
 $bootData = $null
 if (-not $DryRun) {
     $bootData = New-XboxOSIsoBootData -SourceTree $sourceTree

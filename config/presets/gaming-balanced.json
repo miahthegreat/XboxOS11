@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "xboxos-builder-preset-v1",
+  "id": "gaming-balanced",
+  "order": 1,
+  "displayName": "Gaming - Balanced (recommended)",
+  "recommended": true,
+  "description": "Removes promotional consumer apps, disables legacy optional features, keeps every Store/Xbox/gaming dependency, and runs post-install Game Mode setup.",
+  "profile": {
+    "source": {
+      "isoPath": "",
+      "editionPattern": "*Pro*",
+      "imageIndex": null
+    },
+    "apps": {
+      "remove": [
+        "Clipchamp",
+        "Copilot",
+        "TeamsConsumer",
+        "News",
+        "Weather",
+        "Solitaire",
+        "OutlookConsumer"
+      ]
+    },
+    "features": {
+      "disable": [
+        "XpsViewer",
+        "PrintingXPS",
+        "Smb1",
+        "WorkFolders"
+      ]
+    },
+    "drivers": {
+      "enabled": false,
+      "directory": "C:\\XboxOS\\Drivers"
+    },
+    "updates": {
+      "enabled": false,
+      "directory": "C:\\XboxOS\\Updates"
+    },
+    "setup": {
+      "unattend": true,
+      "uiLanguage": "en-US",
+      "inputLocale": "en-US",
+      "systemLocale": "en-US",
+      "userLocale": "en-US",
+      "timeZone": "Pacific Standard Time",
+      "hideEula": true,
+      "privacy": "Minimal",
+      "startupToGamingHome": false,
+      "postInstall": {
+        "enabled": true,
+        "gameMode": true,
+        "hardwareAcceleratedGpuScheduling": false,
+        "launchers": [
+          "Steam"
+        ]
+      }
+    },
+    "output": {
+      "directory": "C:\\XboxOS\\Output",
+      "isoLabel": "XboxOS11"
+    }
+  }
+}

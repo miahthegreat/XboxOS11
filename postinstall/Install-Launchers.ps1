@@ -50,7 +50,7 @@ foreach ($launcher in $Launchers) {
         continue
     }
 
-    $wingetArgs = @('install', '--id', $pkg.Id, '-e', '--accept-package-agreements', '--accept-source-agreements')
+    $wingetArgs = @('install', '--id', $pkg.Id, '-e', '--source', $pkg.Source, '--accept-package-agreements', '--accept-source-agreements')
     if ($DryRun -or -not $PSCmdlet.ShouldProcess($pkg.Name, "Install via winget ($($pkg.Id))")) {
         $results.Add([pscustomobject]@{
             Launcher = $launcher
