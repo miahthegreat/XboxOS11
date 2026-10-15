@@ -168,14 +168,16 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M6B completion baseline](docs/m6b-completion-baseline.md)
 - [M6C real-host lab discovery design](docs/m6c-real-host-lab-discovery-design.md)
 - [M6C host discovery contracts](docs/m6c-host-discovery-contracts.md)
+- [M6C completion baseline](docs/m6c-completion-baseline.md)
+- [M6D authorized read-only host inspection design](docs/m6d-authorized-readonly-host-inspection-design.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
 ## Roadmap
 
-**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → proposed **M6C** read-only host discovery → later Xbox mode / performance / recovery / release engineering.
+**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → **M6C** mocked host discovery → proposed **M6D** operator-authorized real-host inspection → later Xbox mode / performance / recovery / release engineering.
 
-M6B acceptance is **not** permission to provision VMs or modify Windows images.
+M6C acceptance is **not** permission to inspect a production host, provision VMs, or modify Windows images.
 
 ## License
 

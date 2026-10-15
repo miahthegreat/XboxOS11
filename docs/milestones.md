@@ -118,15 +118,26 @@ Simulation-only lab topology, boundary validation, VM isolation **policy**, owne
 
 **Infrastructure complete ≠ permission to provision VMs or modify Windows images.**
 
-## M6C: Read-only hypervisor and host lab discovery (simulation)
+## M6C: Read-only hypervisor and host lab discovery (simulation) — complete
 
 Mocked, allowlisted, read-only discovery contracts for host/hypervisor inspection — without enumerating the live host in CI, provisioning VMs, changing networking, running DISM, or enabling Layer D.
 
 - Design parent: [m6c-real-host-lab-discovery-design.md](m6c-real-host-lab-discovery-design.md)
 - Contracts: [m6c-host-discovery-contracts.md](m6c-host-discovery-contracts.md)
 - CLI: `scripts/Test-HostLabDiscovery.ps1` (default **HostDiscoveryBlocked**; mocked approval only with explicit switches)
-- Engine `6.2.0-c`; adapter mode **MockedSimulation**; `ActualIsolationVerified` remains false for fixture evidence
+- Engine `6.2.0-c`; module `0.6.3`; adapter mode **MockedSimulation**; `ActualIsolationVerified` remains false for fixture evidence
 - Distinct `HostDiscovery` approval layer (not M6A/M6B/Layer D reuse)
+- Unavailable Hyper-V tools → Unavailable/Unknown inventories (not empty)
+- Merged via PR #14 (`43b66b0`); completion baseline: [m6c-completion-baseline.md](m6c-completion-baseline.md)
+
+**Framework complete ≠ permission to inspect a production host, provision VMs, or modify Windows images.**
+
+## M6D: Operator-authorized real-host discovery (proposed)
+
+Design-only proposal for optional, separately approved, bounded read-only inspection of a named host — still without provisioning, networking mutation, DISM writable servicing, or Layer D.
+
+- Design: [m6d-authorized-readonly-host-inspection-design.md](m6d-authorized-readonly-host-inspection-design.md)
+- Not implemented; not authorized; no live host-discovery commands
 
 ## Later: Xbox mode integration
 
