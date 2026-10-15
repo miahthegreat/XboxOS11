@@ -357,4 +357,83 @@ Describe 'XboxOS11 Milestone 6B.1 isolated lab evidence and isolation hardening'
         $t3.network.productionBridgeAllowed = $true
         (Test-XboxOSLabVmIsolationPolicy -Topology $t3).valid | Should -BeFalse
     }
+
+    It 'rejects junction/reparse-point escapes and overlapping path roots' {
+        $junction = Join-Path $script:TempRoot 'junction-ws'
+        $target = Join-Path $script:TempRoot 'junction-target'
+        New-Item -ItemType Directory -Path $target -Force | Out-Null
+        if (Test-Path -LiteralPath $junction) { Remove-Item -LiteralPath $junction -Force -Recurse -ErrorAction SilentlyContinue }
+        cmd /c mklink /J "$junction" "$target" | Out-Null
+        $t = script:Copy-LabTopology
+        $t.paths.workspaceRoot = $junction
+        $t.paths.evidenceRoot = (Join-Path $script:TempRoot 'ev')
+        $t.paths.virtualDiskRoot = (Join-Path $script:TempRoot 'vhd')
+        $r = Test-XboxOSLabInfrastructureBoundaries -Topology $t -ExpectedIsoSha256 $script:IsoSha
+        $r.valid | Should -BeFalse
+        ($r.errors -join ' ') | Should -Match 'reparse|junction|symlink'
+
+        $t2 = script:Copy-LabTopology
+        $t2.paths.evidenceRoot = (Join-Path $t2.paths.workspaceRoot 'nested-evidence')
+        $overlap = Test-XboxOSLabInfrastructureBoundaries -Topology $t2 -ExpectedIsoSha256 $script:IsoSha
+        $overlap.valid | Should -BeFalse
+        ($overlap.errors -join ' ') | Should -Match 'overlap'
+    }
+
+    It 'rejects approval replay, untrusted production key claims, and role collapse' {
+        $n = 'nonce-m6b-closure-replay-1'
+        $ok = Test-XboxOSLabKeyPolicy -TrustRootLabel 'test-approval-fixture' -Scope test-only -Nonce $n
+        $ok.valid | Should -BeTrue
+        $replay = Test-XboxOSLabKeyPolicy -TrustRootLabel 'test-approval-fixture' -Scope test-only -Nonce $n
+        $replay.valid | Should -BeFalse
+        ($replay.errors -join ' ') | Should -Match 'replay'
+        $prod = Test-XboxOSLabKeyPolicy -TrustRootLabel 'test-approval-fixture' -Scope test-only -ClaimProductionTrust
+        $prod.valid | Should -BeFalse
+        $prod.activatesLayerD | Should -BeFalse
+        $same = Test-XboxOSLabKeyPolicy -TrustRootLabel 'lab-root' -Scope lab-only -OperatorRole operator -AuthorizerRole operator
+        $same.valid | Should -BeFalse
+    }
+
+    It 'rejects invalid state transitions and unreachable real provisioning' {
+        { Assert-XboxOSLabTransactionTransition -From InfrastructurePlanned -To SimulationCompleted } | Should -Throw
+        { Assert-XboxOSLabTransactionTransition -From InfrastructurePlanned -To RealProvisioning } | Should -Throw
+        { Assert-XboxOSLabTransactionTransition -From SimulationCompleted -To WritableExecution } | Should -Throw
+        $tx = New-XboxOSLabTransaction -LabId 'lab-trans'
+        $null = Set-XboxOSLabTransactionState -Transaction $tx -To ConfigurationValidated -Note 'ok'
+        $null = Set-XboxOSLabTransactionState -Transaction $tx -To SimulationReady -Note 'ok'
+        $null = Set-XboxOSLabTransactionState -Transaction $tx -To SimulationCompleted -Note 'ok'
+        $null = Set-XboxOSLabTransactionState -Transaction $tx -To LabProvisioningBlocked -Note 'block'
+        $tx.state | Should -Be 'LabProvisioningBlocked'
+        $tx.labRealProvisioningEnabled | Should -BeFalse
+        $tx.layerDActivated | Should -BeFalse
+    }
+
+    It 'records m6b evidence custody and Simulation provider without admin assumption' {
+        $report = script:Invoke-LabSim -SimulateOperatorReview
+        $report.evidenceManifest.reportNamespace | Should -Be 'm6b'
+        $report.evidenceManifest.preservesPriorBaselines | Should -BeTrue
+        $report.providerKind | Should -Be 'Simulation'
+        $script:Topology.provider.requiresAdministrator | Should -BeFalse
+        $script:Topology.provider.assumesHypervisorInstalled | Should -BeFalse
+        @($report.evidenceManifest.missingEvidence).Count | Should -BeGreaterThan 0
+    }
+
+    It 'simulated failure helper never performs global DISM cleanup' {
+        $tx = New-XboxOSLabTransaction -LabId 'lab-fail'
+        $null = Set-XboxOSLabTransactionState -Transaction $tx -To ConfigurationValidated
+        $fail = Invoke-XboxOSLabSimulatedFailure -Transaction $tx -FailureKind InterruptedExperiment
+        $fail.state | Should -Be 'RecoveryRequired'
+        $fail.globalDismCleanupPerformed | Should -BeFalse
+        $fail.unrelatedHiveUnloadPerformed | Should -BeFalse
+        $fail.realProvisioningAttempted | Should -BeFalse
+    }
+
+    It 'marks GPU/controller/anti-cheat EnvironmentLimited specifically' {
+        $plan = New-XboxOSLabFunctionalTestPlan -FunctionalValidationCatalog $script:FvCatalog -VmEnvironment
+        $byId = @{}
+        foreach ($t in @($plan.tests)) { $byId[$t.testId] = $t }
+        $byId['fv-graphics-dx-enum'].plannedStatus | Should -Be 'EnvironmentLimited'
+        $byId['fv-controller-usb-bt'].plannedStatus | Should -Be 'EnvironmentLimited'
+        $byId['fv-anticheat-checklist'].plannedStatus | Should -Be 'EnvironmentLimited'
+        $byId['fv-xbox-fse-startup'].plannedStatus | Should -Be 'MissingEvidence'
+    }
 }
