@@ -155,6 +155,9 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M4 disposable-image preflight contracts](docs/m4-disposable-image-preflight-contracts.md)
 - [M4 unresolved risks](docs/m4-unresolved-risks.md)
 - [M4 completion baseline](docs/m4-completion-baseline.md)
+- [M5 dependency evidence contracts](docs/m5-dependency-evidence-contracts.md)
+- [M5 future modification test strategy](docs/m5-future-modification-test-strategy.md)
+- [M5 unresolved risks](docs/m5-unresolved-risks.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 

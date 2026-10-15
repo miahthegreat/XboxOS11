@@ -1,0 +1,284 @@
+{
+  "schemaVersion": "dependency-evidence-v1",
+  "description": "Curated dependency relationships and operation evidence. Do not invent edges. Assumption sourceType cannot elevate readiness to VerifiedSafeForConsideration.",
+  "buildApplicability": {
+    "editionName": "Windows 11 Pro",
+    "buildNumber": "26300.9457",
+    "displayVersion": "26H2"
+  },
+  "evidence": [
+    {
+      "evidenceId": "ev-compat-protected-patterns",
+      "sourceType": "ManifestDeclared",
+      "sourceReference": "config/compatibility.json#protectedAppxPatterns",
+      "componentIdentity": "manifest:compatibility",
+      "relatedOperationIds": [],
+      "buildApplicability": "26300.9457",
+      "editionApplicability": "Windows 11 Pro",
+      "collectedUtc": "2026-10-15T00:00:00Z",
+      "verifiedUtc": "2026-10-15T00:00:00Z",
+      "quality": "High",
+      "stalenessDays": 365,
+      "knownLimitations": [
+        "Declares protection policy, not a complete Microsoft dependency graph."
+      ],
+      "supportingFindings": [
+        "Protected AppX/feature patterns must not be removed or disabled by normal manifests."
+      ],
+      "contradictingFindings": []
+    },
+    {
+      "evidenceId": "ev-m4-inventory-observation",
+      "sourceType": "DirectlyObserved",
+      "sourceReference": "C:/XboxOS/Logs/DISM-Compatibility-20261014-2.json transcripts + m4-live-readonly inventory fingerprint",
+      "componentIdentity": "inventory:m1-m4-baseline",
+      "relatedOperationIds": [],
+      "buildApplicability": "26300.9457",
+      "editionApplicability": "Windows 11 Pro",
+      "collectedUtc": "2026-10-14T22:23:00Z",
+      "verifiedUtc": "2026-10-15T03:47:21Z",
+      "quality": "High",
+      "stalenessDays": 90,
+      "knownLimitations": [
+        "Observation of presence/state only; does not prove runtime capability.",
+        "Architecture field absent from DISM export metadata."
+      ],
+      "supportingFindings": [
+        "Authoritative offline inventories reconstructed from DISM command transcripts."
+      ],
+      "contradictingFindings": []
+    },
+    {
+      "evidenceId": "ev-workfolders-optional-client",
+      "sourceType": "AuthoritativeDocumentation",
+      "sourceReference": "https://learn.microsoft.com/en-us/windows-server/storage/work-folders/work-folders-overview",
+      "componentIdentity": "feature:WorkFolders-Client",
+      "relatedOperationIds": ["feature:WorkFolders:WorkFolders-Client"],
+      "buildApplicability": "26300.9457",
+      "editionApplicability": "Windows 11 Pro",
+      "collectedUtc": "2026-10-15T00:00:00Z",
+      "verifiedUtc": "2026-10-15T00:00:00Z",
+      "quality": "Medium",
+      "stalenessDays": 180,
+      "knownLimitations": [
+        "Documents Work Folders as an optional sync client feature for enterprise file sync.",
+        "Does not constitute lab validation on this host image.",
+        "Does not authorize DISM Disable-Feature execution."
+      ],
+      "supportingFindings": [
+        "Work Folders client is an optional enterprise sync feature, not a documented Xbox/gaming runtime dependency."
+      ],
+      "contradictingFindings": []
+    },
+    {
+      "evidenceId": "ev-consumer-appx-missing-removal-contract",
+      "sourceType": "Assumption",
+      "sourceReference": "no-authoritative-removal-safety-contract",
+      "componentIdentity": "policy:eligible-consumer-appx",
+      "relatedOperationIds": [],
+      "buildApplicability": "26300.9457",
+      "editionApplicability": "Windows 11 Pro",
+      "collectedUtc": "2026-10-15T00:00:00Z",
+      "verifiedUtc": "2026-10-15T00:00:00Z",
+      "quality": "Insufficient",
+      "stalenessDays": 30,
+      "knownLimitations": [
+        "Package-name heuristics and non-membership in protected patterns are not sufficient proof of removal safety."
+      ],
+      "supportingFindings": [],
+      "contradictingFindings": [
+        "No Microsoft-published per-package offline-removal dependency contract is curated for these Eligible AppX identities."
+      ]
+    },
+    {
+      "evidenceId": "ev-store-shared-by-modern-apps",
+      "sourceType": "ManifestDeclared",
+      "sourceReference": "config/compatibility.json#protectedCategories/microsoft-store",
+      "componentIdentity": "capability:MicrosoftStore",
+      "relatedOperationIds": [],
+      "buildApplicability": "26300.9457",
+      "editionApplicability": "Windows 11 Pro",
+      "collectedUtc": "2026-10-15T00:00:00Z",
+      "verifiedUtc": "2026-10-15T00:00:00Z",
+      "quality": "High",
+      "stalenessDays": 365,
+      "knownLimitations": [
+        "Shared dependency on Store infrastructure; removing Store is unsafe. Removing an unrelated consumer AppX does not by itself prove Store remains healthy."
+      ],
+      "supportingFindings": [
+        "Microsoft Store is a shared dependency for modern AppX updates and Xbox app distribution."
+      ],
+      "contradictingFindings": []
+    }
+  ],
+  "components": [
+    {
+      "id": "feature:WorkFolders-Client",
+      "kind": "Feature",
+      "displayName": "WorkFolders-Client"
+    },
+    {
+      "id": "capability:MicrosoftStore",
+      "kind": "Capability",
+      "displayName": "Microsoft Store"
+    },
+    {
+      "id": "capability:GamingServices",
+      "kind": "Capability",
+      "displayName": "Gaming Services"
+    },
+    {
+      "id": "capability:XboxIdentityAuthentication",
+      "kind": "Capability",
+      "displayName": "Xbox identity and authentication"
+    },
+    {
+      "id": "capability:XboxGameBarOverlays",
+      "kind": "Capability",
+      "displayName": "Xbox Game Bar and overlays"
+    },
+    {
+      "id": "capability:XboxFullScreenExperience",
+      "kind": "Capability",
+      "displayName": "Xbox Full Screen Experience"
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "rel-store-shared-modern-apps",
+      "from": "runtime:ModernAppXUpdates",
+      "to": "capability:MicrosoftStore",
+      "kind": "SharedDependency",
+      "phase": "Runtime",
+      "evidenceIds": ["ev-store-shared-by-modern-apps", "ev-compat-protected-patterns"]
+    },
+    {
+      "relationshipId": "rel-xbox-fse-unknown-runtime",
+      "from": "capability:XboxFullScreenExperience",
+      "to": "runtime:XboxModeHostSettings",
+      "kind": "UnknownRelationship",
+      "phase": "Runtime",
+      "evidenceIds": ["ev-m4-inventory-observation"]
+    },
+    {
+      "relationshipId": "rel-workfolders-not-gaming-requires",
+      "from": "feature:WorkFolders-Client",
+      "to": "capability:XboxFullScreenExperience",
+      "kind": "UnknownRelationship",
+      "phase": "Runtime",
+      "evidenceIds": ["ev-workfolders-optional-client"],
+      "notes": "No documented Requires edge from Xbox FSE to WorkFolders-Client; absence of Requires is not automatic proof without the curated assessment below."
+    }
+  ],
+  "operationAssessments": [
+    {
+      "manifestRuleId": "WorkFolders",
+      "operationType": "DisableOptionalFeature",
+      "targetIdentityPattern": "WorkFolders-Client",
+      "readiness": "VerifiedSafeForConsideration",
+      "evidenceIds": ["ev-workfolders-optional-client", "ev-compat-protected-patterns", "ev-m4-inventory-observation"],
+      "affectedCapabilityIds": [],
+      "directDependencyNotes": [
+        "Optional enterprise sync client feature identity resolved exactly as WorkFolders-Client."
+      ],
+      "transitiveDependencyNotes": [
+        "No curated Requires edges from protected Xbox/gaming capabilities to WorkFolders-Client."
+      ],
+      "sharedDependencyNotes": [],
+      "requiredFunctionalTests": [
+        "Post-change smoke: Windows Update still functional",
+        "Post-change smoke: no enterprise Work Folders sync regression if that feature was in use"
+      ],
+      "validationSteps": [
+        "Confirm feature name exact match",
+        "Confirm feature is not in protectedFeatureNamePatterns",
+        "Confirm curated evidence not stale",
+        "Confirm no contradicting evidence records"
+      ]
+    },
+    {
+      "manifestRuleId": "Clipchamp",
+      "operationType": "RemoveProvisionedAppx",
+      "targetIdentityPattern": "Clipchamp.Clipchamp*",
+      "readiness": "MissingEvidence",
+      "evidenceIds": ["ev-consumer-appx-missing-removal-contract", "ev-m4-inventory-observation"],
+      "affectedCapabilityIds": [],
+      "directDependencyNotes": ["Exact package identity resolved from plan; no authoritative removal-safety contract curated."],
+      "transitiveDependencyNotes": ["Transitive Store/WebView interactions not evidenced for offline removal."],
+      "sharedDependencyNotes": ["May share Store update channels; Store itself must remain protected."],
+      "requiredFunctionalTests": [
+        "Store opens",
+        "Xbox app launches",
+        "No broken provisioned AppX dependency errors after removal (future disposable-image lab)"
+      ],
+      "validationSteps": [
+        "Fail closed until AuthoritativeDocumentation or ControlledTestResult evidence exists"
+      ]
+    },
+    {
+      "manifestRuleId": "TeamsConsumer",
+      "operationType": "RemoveProvisionedAppx",
+      "targetIdentityPattern": "MSTeams*",
+      "readiness": "MissingEvidence",
+      "evidenceIds": ["ev-consumer-appx-missing-removal-contract", "ev-m4-inventory-observation"],
+      "affectedCapabilityIds": [],
+      "directDependencyNotes": ["Exact package identity resolved from plan; no authoritative removal-safety contract curated."],
+      "transitiveDependencyNotes": [],
+      "sharedDependencyNotes": [],
+      "requiredFunctionalTests": ["Xbox identity sign-in still works", "Store opens"],
+      "validationSteps": ["Fail closed until non-assumption evidence exists"]
+    },
+    {
+      "manifestRuleId": "News",
+      "operationType": "RemoveProvisionedAppx",
+      "targetIdentityPattern": "Microsoft.BingNews*",
+      "readiness": "MissingEvidence",
+      "evidenceIds": ["ev-consumer-appx-missing-removal-contract", "ev-m4-inventory-observation"],
+      "affectedCapabilityIds": [],
+      "directDependencyNotes": ["Exact package identity resolved from plan; no authoritative removal-safety contract curated."],
+      "transitiveDependencyNotes": [],
+      "sharedDependencyNotes": [],
+      "requiredFunctionalTests": ["Start menu / widgets smoke (future lab)"],
+      "validationSteps": ["Fail closed until non-assumption evidence exists"]
+    },
+    {
+      "manifestRuleId": "Weather",
+      "operationType": "RemoveProvisionedAppx",
+      "targetIdentityPattern": "Microsoft.BingWeather*",
+      "readiness": "MissingEvidence",
+      "evidenceIds": ["ev-consumer-appx-missing-removal-contract", "ev-m4-inventory-observation"],
+      "affectedCapabilityIds": [],
+      "directDependencyNotes": ["Exact package identity resolved from plan; no authoritative removal-safety contract curated."],
+      "transitiveDependencyNotes": [],
+      "sharedDependencyNotes": [],
+      "requiredFunctionalTests": ["Widgets/shell smoke (future lab)"],
+      "validationSteps": ["Fail closed until non-assumption evidence exists"]
+    },
+    {
+      "manifestRuleId": "Solitaire",
+      "operationType": "RemoveProvisionedAppx",
+      "targetIdentityPattern": "Microsoft.MicrosoftSolitaireCollection*",
+      "readiness": "MissingEvidence",
+      "evidenceIds": ["ev-consumer-appx-missing-removal-contract", "ev-m4-inventory-observation"],
+      "affectedCapabilityIds": [],
+      "directDependencyNotes": ["Exact package identity resolved from plan; no authoritative removal-safety contract curated."],
+      "transitiveDependencyNotes": [],
+      "sharedDependencyNotes": [],
+      "requiredFunctionalTests": ["Store opens", "Xbox app launches"],
+      "validationSteps": ["Fail closed until non-assumption evidence exists"]
+    },
+    {
+      "manifestRuleId": "OutlookConsumer",
+      "operationType": "RemoveProvisionedAppx",
+      "targetIdentityPattern": "Microsoft.OutlookForWindows*|Microsoft.MicrosoftOfficeHub*",
+      "readiness": "MissingEvidence",
+      "evidenceIds": ["ev-consumer-appx-missing-removal-contract", "ev-m4-inventory-observation"],
+      "affectedCapabilityIds": [],
+      "directDependencyNotes": ["Exact package identities resolved from plan; no authoritative removal-safety contract curated."],
+      "transitiveDependencyNotes": ["Office Hub / Outlook consumer may share identity surfaces with other Microsoft account UX; evidence incomplete."],
+      "sharedDependencyNotes": [],
+      "requiredFunctionalTests": ["Xbox identity provider still present", "Store account flows"],
+      "validationSteps": ["Fail closed until non-assumption evidence exists"]
+    }
+  ]
+}
