@@ -76,6 +76,9 @@ Describe 'XboxOS11 build helpers' {
             'Validate-Image.ps1'
             'Dismount-Image.ps1'
             'Export-ISO.ps1'
+            'New-ServicingPlan.ps1'
+            'Build-CompatibilityMatrix.ps1'
+            'Test-DismCompatibility.ps1'
         )
         foreach ($name in $required) {
             Test-Path (Join-Path $script:RepoRoot "scripts\$name") | Should -BeTrue

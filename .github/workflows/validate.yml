@@ -56,6 +56,13 @@ jobs:
             'scripts/Build-CompatibilityMatrix.ps1',
             'docs/m1-compatibility-baseline.md',
             'docs/XboxOS11-compatibility-matrix-26300.9457.md',
+            'docs/m2-servicing-plan-contracts.md',
+            'docs/m2-operation-ordering-and-recovery.md',
+            'docs/m2-implementation-notes.md',
+            'docs/m2-canonical-plan-hash.md',
+            'modules/XboxOS.Build/ServicingPlan.ps1',
+            'scripts/New-ServicingPlan.ps1',
+            'tests/ServicingPlan.Tests.ps1',
             'README.md',
             'LICENSE'
           )
