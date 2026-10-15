@@ -9,8 +9,27 @@ public sealed class BuilderCatalog
     public List<PresetSummary> Presets { get; set; } = [];
     public List<string> Launchers { get; set; } = [];
     public List<string> PrivacyOptions { get; set; } = [];
+    public List<OptimizationInfo> Optimizations { get; set; } = [];
+    public List<NeverChangeInfo> NeverChange { get; set; } = [];
     public string DefaultOutput { get; set; } = @"C:\XboxOS\Output";
     public string DefaultProfileFolder { get; set; } = @"C:\XboxOS\Profiles";
+}
+
+public sealed class OptimizationInfo
+{
+    public string Id { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Scope { get; set; } = "User";
+    public bool RequiresRestart { get; set; }
+    public bool DefaultEnabled { get; set; }
+    public string SettingsPage { get; set; } = string.Empty;
+}
+
+public sealed class NeverChangeInfo
+{
+    public string Item { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
 }
 
 public sealed class PresetSummary

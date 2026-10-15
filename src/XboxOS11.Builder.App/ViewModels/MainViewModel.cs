@@ -43,6 +43,8 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<ComponentItem> Apps { get; } = [];
     public ObservableCollection<ComponentItem> Features { get; } = [];
     public ObservableCollection<LauncherItem> Launchers { get; } = [];
+    public ObservableCollection<OptimizationItem> Optimizations { get; } = [];
+    public ObservableCollection<string> NeverChanged { get; } = [];
     public ObservableCollection<string> AlwaysPreserved { get; } = [];
     public ObservableCollection<ImageEdition> Editions { get; } = [];
     public ObservableCollection<string> ValidationErrors { get; } = [];
@@ -352,6 +354,19 @@ public sealed partial class MainViewModel : ObservableObject
                 Launchers.Add(new LauncherItem(l, false, (name, sel) => { _editor.SetLauncher(name, sel); ProfileEdited(); }));
             }
 
+            Optimizations.Clear();
+            foreach (var o in catalog.Optimizations)
+            {
+                Optimizations.Add(new OptimizationItem(o.Id, o.Title, o.Description, o.SettingsPage, o.RequiresRestart, false,
+                    (id, sel) => { _editor.SetOptimization(id, sel); ProfileEdited(); }));
+            }
+
+            NeverChanged.Clear();
+            foreach (var n in catalog.NeverChange)
+            {
+                NeverChanged.Add($"{n.Item}: {n.Reason}");
+            }
+
             RecentProfiles.Clear();
             foreach (var r in settings.RecentProfiles.Where(File.Exists))
             {
@@ -433,6 +448,11 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var l in Launchers)
         {
             l.Sync(P.Setup.PostInstall.Launchers.Contains(l.Name, StringComparer.OrdinalIgnoreCase));
+        }
+
+        foreach (var o in Optimizations)
+        {
+            o.Sync(P.Setup.PostInstall.Optimizations.Contains(o.Id, StringComparer.OrdinalIgnoreCase));
         }
 
         _suppressPresetApply = true;

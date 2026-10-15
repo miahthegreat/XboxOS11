@@ -26,6 +26,9 @@ public class BackendContractTests
         Assert.Equal(BuildProfile.SchemaVersionV1, catalog.ProfileSchemaVersion);
         Assert.Equal(["gaming-balanced", "gaming-lean", "handheld-xbox-mode", "stock-safe"], catalog.Presets.Select(p => p.Id));
         Assert.Contains("Steam", catalog.Launchers);
+        Assert.Contains(catalog.Optimizations, o => o.Id == "WindowedGameOptimizations" && o.DefaultEnabled);
+        Assert.DoesNotContain(catalog.Optimizations, o => o.Id == "GameMode");
+        Assert.Contains(catalog.NeverChange, n => n.Item == "Power plan");
     }
 
     [Fact]
@@ -39,6 +42,7 @@ public class BackendContractTests
         Assert.Equal("Contract Rig", profile.Name);
         profile.Output.Directory = Path.Combine(tmp.Path, "out");
         profile.Setup.PostInstall.Launchers.Add("Epic");
+        profile.Setup.PostInstall.Optimizations.Add("VariableRefreshRate");
         profile.Source.ImageIndex = 6;
 
         var validation = await backend.ValidateAsync(profile, forBuild: false);

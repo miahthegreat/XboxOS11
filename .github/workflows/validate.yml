@@ -142,6 +142,10 @@ jobs:
             'src/XboxOS11.Builder.App/XboxOS11.Builder.App.csproj',
             'tests/dotnet/XboxOS11.Builder.Core.Tests/XboxOS11.Builder.Core.Tests.csproj',
             'docs/m8-winui-builder.md',
+            'config/gaming-tweaks.json',
+            'postinstall/Set-GamingOptimizations.ps1',
+            'tests/GamingOptimizations.Tests.ps1',
+            'docs/m9-gaming-performance.md',
             'README.md',
             'LICENSE'
           )

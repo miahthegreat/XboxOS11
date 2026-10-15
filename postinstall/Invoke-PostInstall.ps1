@@ -14,6 +14,9 @@
 param(
     [string]$OptionsPath = (Join-Path $PSScriptRoot 'postinstall.json'),
     [int]$WingetWaitSeconds = 600,
+    [string]$StatePath = 'C:\ProgramData\XboxOS11\gaming-state.json',
+    # Tests only: redirect registry writes (see Set-GamingOptimizations.ps1).
+    [string]$TestRegistryRoot,
     [switch]$DryRun
 )
 
@@ -47,12 +50,18 @@ function Add-StepResult {
 try {
     Write-Host ("XboxOS11 post-install for profile '{0}'" -f $options.profileName)
 
-    # 1. Gaming configuration (Game Mode / optional HAGS).
+    # 1. Gaming optimizations (reversible: Set-GamingOptimizations.ps1 -Restore).
     try {
-        $gamingArgs = @{ PassThru = $true; EnableGameMode = [bool]$options.gameMode }
-        if ([bool]$options.hardwareAcceleratedGpuScheduling) { $gamingArgs['EnableHardwareAcceleratedGPUScheduling'] = $true }
-        if ($DryRun) { $gamingArgs['WhatIf'] = $true }
-        $null = & (Join-Path $PSScriptRoot 'Setup-Gaming.ps1') @gamingArgs
+        $ids = New-Object System.Collections.Generic.List[string]
+        if ([bool]$options.gameMode) { $ids.Add('GameMode') | Out-Null }
+        if ([bool]$options.hardwareAcceleratedGpuScheduling) { $ids.Add('HardwareAcceleratedGpuScheduling') | Out-Null }
+        if ($options.PSObject.Properties['optimizations']) {
+            foreach ($o in @($options.optimizations)) { if ($o -and -not $ids.Contains([string]$o)) { $ids.Add([string]$o) | Out-Null } }
+        }
+        $tweakArgs = @{ Enable = $ids.ToArray(); StatePath = $StatePath; PassThru = $true; WhatIf = [bool]$DryRun }
+        if ($TestRegistryRoot) { $tweakArgs['TestRegistryRoot'] = $TestRegistryRoot }
+        $tweaks = & (Join-Path $PSScriptRoot 'Set-GamingOptimizations.ps1') @tweakArgs
+        foreach ($t in @($tweaks)) { Add-StepResult -Step ('Optimization:' + $t.Tweak) -Status ([string]$t.Status) -Message ([string]$t.Message) }
         Add-StepResult -Step 'GamingSettings' -Status 'Completed'
     }
     catch { Add-StepResult -Step 'GamingSettings' -Status 'Failed' -Message $_.Exception.Message }

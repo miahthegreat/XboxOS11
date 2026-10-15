@@ -93,6 +93,41 @@ public sealed partial class LauncherItem : ObservableObject
     internal void Sync(bool selected) => SetProperty(ref _isSelected, selected, nameof(IsSelected));
 }
 
+public sealed partial class OptimizationItem : ObservableObject
+{
+    private readonly Action<string, bool> _apply;
+    private bool _isSelected;
+
+    public OptimizationItem(string id, string title, string description, string settingsPage, bool requiresRestart, bool selected, Action<string, bool> apply)
+    {
+        Id = id;
+        Title = title;
+        Description = description;
+        Detail = requiresRestart ? $"{settingsPage} - restart required" : settingsPage;
+        _isSelected = selected;
+        _apply = apply;
+    }
+
+    public string Id { get; }
+    public string Title { get; }
+    public string Description { get; }
+    public string Detail { get; }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (SetProperty(ref _isSelected, value))
+            {
+                _apply(Id, value);
+            }
+        }
+    }
+
+    internal void Sync(bool selected) => SetProperty(ref _isSelected, selected, nameof(IsSelected));
+}
+
 public sealed class PresetItem
 {
     public required string Id { get; init; }

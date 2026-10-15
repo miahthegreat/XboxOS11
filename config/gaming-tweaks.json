@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "xboxos-gaming-tweaks-v1",
+  "description": "Supported, reversible gaming settings applied after Windows Setup. Each maps to a Windows Settings page and is captured before change so it can be restored exactly.",
+  "tweaks": [
+    {
+      "id": "GameMode",
+      "title": "Game Mode",
+      "description": "Prioritizes the game and pauses Windows Update restarts and notifications while playing.",
+      "scope": "User",
+      "settingsPage": "Settings > Gaming > Game Mode",
+      "settingsUri": "ms-settings:gaming-gamemode",
+      "requiresRestart": false,
+      "defaultEnabled": true,
+      "profileField": "gameMode",
+      "values": [
+        { "path": "HKCU:\\Software\\Microsoft\\GameBar", "name": "AutoGameModeEnabled", "type": "DWord", "data": 1 }
+      ]
+    },
+    {
+      "id": "HardwareAcceleratedGpuScheduling",
+      "title": "Hardware-accelerated GPU scheduling",
+      "description": "Lets the GPU manage its own memory scheduling. Requires a supporting driver (AMD Adrenalin) and a restart.",
+      "scope": "Machine",
+      "settingsPage": "Settings > System > Display > Graphics > Advanced graphics settings",
+      "settingsUri": "ms-settings:display-advancedgraphics",
+      "requiresRestart": true,
+      "defaultEnabled": false,
+      "profileField": "hardwareAcceleratedGpuScheduling",
+      "values": [
+        { "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers", "name": "HwSchMode", "type": "DWord", "data": 2 }
+      ]
+    },
+    {
+      "id": "WindowedGameOptimizations",
+      "title": "Optimizations for windowed games",
+      "description": "Uses the flip presentation model for DirectX 10/11 windowed and borderless games, lowering latency and enabling Auto HDR and VRR.",
+      "scope": "User",
+      "settingsPage": "Settings > System > Display > Graphics > Optimizations for windowed games",
+      "settingsUri": "ms-settings:display-advancedgraphics",
+      "requiresRestart": false,
+      "defaultEnabled": true,
+      "values": [
+        { "path": "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences", "name": "DirectXUserGlobalSettings", "type": "DirectXSetting", "key": "SwapEffectUpgradeEnable", "data": "1" }
+      ]
+    },
+    {
+      "id": "VariableRefreshRate",
+      "title": "Variable refresh rate for games without native support",
+      "description": "Extends FreeSync/VRR to DirectX 11/12 games that don't support it natively. Requires a VRR-capable display.",
+      "scope": "User",
+      "settingsPage": "Settings > System > Display > Graphics > Variable refresh rate",
+      "settingsUri": "ms-settings:display-advancedgraphics",
+      "requiresRestart": false,
+      "defaultEnabled": false,
+      "values": [
+        { "path": "HKCU:\\Software\\Microsoft\\DirectX\\UserGpuPreferences", "name": "DirectXUserGlobalSettings", "type": "DirectXSetting", "key": "VRROptimizeEnable", "data": "1" }
+      ]
+    },
+    {
+      "id": "BackgroundRecordingOff",
+      "title": "Turn off background recording",
+      "description": "Stops Game Bar from continuously recording the last minutes of gameplay. Manual captures (Win+Alt+R) still work.",
+      "scope": "User",
+      "settingsPage": "Settings > Gaming > Captures > Record what happened",
+      "settingsUri": "ms-settings:gaming-gamedvr",
+      "requiresRestart": false,
+      "defaultEnabled": true,
+      "values": [
+        { "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR", "name": "HistoricalCaptureEnabled", "type": "DWord", "data": 0 }
+      ]
+    },
+    {
+      "id": "PointerPrecisionOff",
+      "title": "Turn off Enhance pointer precision",
+      "description": "Disables mouse acceleration for consistent aim. Personal preference; off by default in this catalog.",
+      "scope": "User",
+      "settingsPage": "Settings > Bluetooth & devices > Mouse > Additional mouse settings",
+      "settingsUri": "ms-settings:mousetouchpad",
+      "requiresRestart": false,
+      "defaultEnabled": false,
+      "values": [
+        { "path": "HKCU:\\Control Panel\\Mouse", "name": "MouseSpeed", "type": "String", "data": "0" },
+        { "path": "HKCU:\\Control Panel\\Mouse", "name": "MouseThreshold1", "type": "String", "data": "0" },
+        { "path": "HKCU:\\Control Panel\\Mouse", "name": "MouseThreshold2", "type": "String", "data": "0" }
+      ]
+    }
+  ],
+  "neverChange": [
+    {
+      "item": "Power plan",
+      "reason": "AMD Ryzen X3D processors (such as the 7800X3D) rely on the Balanced plan with the AMD chipset driver; forcing High/Ultimate Performance can reduce gaming performance."
+    },
+    {
+      "item": "Xbox Game Bar",
+      "reason": "Required for Xbox mode and used by the AMD 3D V-Cache Performance Optimizer to detect games."
+    },
+    {
+      "item": "Core isolation / Memory integrity / VBS",
+      "reason": "Security features; some anti-cheat systems require them. Never disabled for benchmarks."
+    },
+    {
+      "item": "Microsoft Defender, Windows Update, firewall",
+      "reason": "Security baseline."
+    },
+    {
+      "item": "CPU vulnerability mitigations",
+      "reason": "Security; not altered for synthetic gains."
+    }
+  ]
+}

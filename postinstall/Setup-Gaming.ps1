@@ -1,62 +1,27 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Applies safe, idempotent gaming-related Windows configuration after installation.
-.NOTES
-    Milestone 1 prepares this script; it is not executed automatically during Windows Setup.
+    Applies Game Mode and (optionally) hardware-accelerated GPU scheduling.
+.DESCRIPTION
+    Compatibility wrapper over Set-GamingOptimizations.ps1, which captures original values so changes can
+    be undone with: .\Set-GamingOptimizations.ps1 -Restore
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [switch]$EnableGameMode,
     [switch]$EnableHardwareAcceleratedGPUScheduling,
+    [string]$StatePath = 'C:\ProgramData\XboxOS11\gaming-state.json',
     [switch]$PassThru
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$results = New-Object System.Collections.Generic.List[object]
+$ids = New-Object System.Collections.Generic.List[string]
+# Game Mode is on unless explicitly turned off with -EnableGameMode:$false.
+if ($EnableGameMode -or -not $PSBoundParameters.ContainsKey('EnableGameMode')) { $ids.Add('GameMode') | Out-Null }
+if ($EnableHardwareAcceleratedGPUScheduling) { $ids.Add('HardwareAcceleratedGpuScheduling') | Out-Null }
 
-function Set-GameDvrRegistry {
-    param([string]$Path, [string]$Name, [object]$Value, [string]$Type = 'DWord')
-    if (-not (Test-Path -LiteralPath $Path)) {
-        New-Item -Path $Path -Force | Out-Null
-    }
-    $current = Get-ItemProperty -LiteralPath $Path -Name $Name -ErrorAction SilentlyContinue
-    if ($current -and $current.$Name -eq $Value) {
-        return 'Unchanged'
-    }
-    if ($PSCmdlet.ShouldProcess("$Path\$Name", "Set to $Value")) {
-        New-ItemProperty -LiteralPath $Path -Name $Name -Value $Value -PropertyType $Type -Force | Out-Null
-        return 'Applied'
-    }
-    return 'Skipped'
-}
-
-# Game Mode (supported Settings-backed value)
-if ($EnableGameMode -or -not $PSBoundParameters.ContainsKey('EnableGameMode')) {
-    try {
-        $status = Set-GameDvrRegistry -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'AutoGameModeEnabled' -Value 1
-        $results.Add([pscustomobject]@{ Setting = 'GameMode'; Status = $status }) | Out-Null
-    }
-    catch {
-        $results.Add([pscustomobject]@{ Setting = 'GameMode'; Status = "Failed: $($_.Exception.Message)" }) | Out-Null
-    }
-}
-
-# HAGS is hardware/driver dependent; only toggle when requested.
-if ($EnableHardwareAcceleratedGPUScheduling) {
-    try {
-        $path = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
-        $status = Set-GameDvrRegistry -Path $path -Name 'HwSchMode' -Value 2
-        $results.Add([pscustomobject]@{ Setting = 'HAGS'; Status = $status; Notes = 'Requires reboot and compatible GPU driver.' }) | Out-Null
-    }
-    catch {
-        $results.Add([pscustomobject]@{ Setting = 'HAGS'; Status = "Failed: $($_.Exception.Message)" }) | Out-Null
-    }
-}
-
-Write-Host 'Setup-Gaming complete (idempotent). Review results before relying on performance claims.'
-$results | Format-Table -AutoSize | Out-String | Write-Host
-
+$results = & (Join-Path $PSScriptRoot 'Set-GamingOptimizations.ps1') -Enable $ids.ToArray() -StatePath $StatePath -PassThru -WhatIf:$WhatIfPreference
+Write-Host 'Setup-Gaming complete (idempotent, reversible with Set-GamingOptimizations.ps1 -Restore).'
 if ($PassThru) { return $results }

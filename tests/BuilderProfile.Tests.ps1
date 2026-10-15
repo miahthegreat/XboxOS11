@@ -97,6 +97,18 @@ Describe 'XboxOS11 Milestone 7 builder backend' {
             $e | Should -Match 'postInstall requires setup.unattend'
         }
 
+        It 'validates gaming optimizations and keeps older v1 profiles without them valid' {
+            $p = & $script:NewProfile
+            $p.setup.postInstall.optimizations = @('VariableRefreshRate', 'DisableDefender', 'GameMode')
+            $e = & $script:Errors $p
+            $e | Should -Match "Unknown optimization 'DisableDefender'"
+            $e | Should -Match "'GameMode' is controlled by setup.postInstall.gameMode"
+            $e | Should -Not -Match 'VariableRefreshRate'
+            $old = & $script:NewProfile
+            $old.setup.postInstall.PSObject.Properties.Remove('optimizations')
+            (Test-XboxOSBuildProfile -BuildProfile $old).valid | Should -BeTrue
+        }
+
         It 'warns that StartupToGamingHome is handheld-oriented' {
             (Test-XboxOSBuildProfile -BuildProfile (& $script:NewProfile 'handheld-xbox-mode')).warnings -join ' ' | Should -Match 'handhelds'
         }
@@ -201,6 +213,9 @@ Describe 'XboxOS11 Milestone 7 builder backend' {
             $opts = Get-Content -LiteralPath (Join-Path $eff.MediaOverlayDirectory 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\postinstall.json') -Raw | ConvertFrom-Json
             $opts.launchers | Should -Be @('Steam')
             $opts.gameMode | Should -BeTrue
+            $opts.optimizations | Should -Be @('WindowedGameOptimizations', 'BackgroundRecordingOff')
+            $check.files | Should -Contain 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\Set-GamingOptimizations.ps1'
+            $check.files | Should -Contain 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\gaming-tweaks.json'
         }
 
         It 'uses an exact edition name picked from the ISO as the target edition' {

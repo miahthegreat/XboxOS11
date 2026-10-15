@@ -23,6 +23,11 @@ $script:XboxOSBuildProfileShape = [ordered]@{
     'output'           = @('directory', 'isoLabel')
 }
 
+# Keys added after v1 shipped: accepted when present, never required, so older v1 profiles stay valid.
+$script:XboxOSBuildProfileOptionalKeys = @{
+    'setup.postInstall' = @('optimizations')
+}
+
 function Get-XboxOSBuilderEngineVersion { return $script:XboxOSBuilderEngineVersion }
 function Get-XboxOSBuildProfileSchemaVersion { return $script:XboxOSBuildProfileSchemaVersion }
 function Get-XboxOSBuilderEventPrefix { return $script:XboxOSBuilderEventPrefix }
@@ -53,6 +58,22 @@ function ConvertFrom-XboxOSBuilderEventLine {
     if (-not $Line.StartsWith($script:XboxOSBuilderEventPrefix)) { return $null }
     return ($Line.Substring($script:XboxOSBuilderEventPrefix.Length) | ConvertFrom-Json)
 }
+
+#region Gaming optimizations catalog
+
+function Get-XboxOSGamingTweakCatalog {
+    [CmdletBinding()]
+    param([string]$RepoRoot = $null)
+
+    if (-not $RepoRoot) { $RepoRoot = Get-XboxOSRepoRoot }
+    $catalog = Get-Content -LiteralPath (Join-Path $RepoRoot 'config\gaming-tweaks.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ([string]$catalog.schemaVersion -ne 'xboxos-gaming-tweaks-v1') {
+        throw ("Unsupported gaming tweak catalog '{0}'." -f $catalog.schemaVersion)
+    }
+    return $catalog
+}
+
+#endregion
 
 #region Presets
 
@@ -219,8 +240,10 @@ function Test-XboxOSBuildProfile {
             continue
         }
         $allowed = $script:XboxOSBuildProfileShape[$section]
+        $optional = @()
+        if ($script:XboxOSBuildProfileOptionalKeys.ContainsKey($section)) { $optional = @($script:XboxOSBuildProfileOptionalKeys[$section]) }
         foreach ($p in $node.PSObject.Properties) {
-            if ($allowed -notcontains $p.Name) {
+            if ($allowed -notcontains $p.Name -and $optional -notcontains $p.Name) {
                 if ($p.Name -match $script:XboxOSBuilderForbiddenSettingPattern) {
                     [void]$errors.Add(("Unsupported setting '{0}.{1}': XboxOS11 never bypasses Windows requirements, security features, activation, or disk selection." -f $label, $p.Name))
                 }
@@ -336,6 +359,21 @@ function Test-XboxOSBuildProfile {
     }
     foreach ($l in @($post.launchers)) {
         if ($script:XboxOSBuilderLaunchers -notcontains [string]$l) { [void]$errors.Add(("Unknown launcher '{0}'." -f $l)) }
+    }
+    if ($post.PSObject.Properties['optimizations']) {
+        $tweaks = @((Get-XboxOSGamingTweakCatalog -RepoRoot $m.RepoRoot).tweaks)
+        $selectedTweaks = @($post.optimizations)
+        if (@($selectedTweaks | Select-Object -Unique).Count -ne $selectedTweaks.Count) { [void]$errors.Add('setup.postInstall.optimizations contains duplicates.') }
+        foreach ($o in $selectedTweaks) {
+            $t = @($tweaks | Where-Object { [string]$_.id -eq [string]$o })
+            if ($t.Count -ne 1) { [void]$errors.Add(("Unknown optimization '{0}'." -f $o)); continue }
+            if ($t[0].PSObject.Properties['profileField']) {
+                [void]$errors.Add(("Optimization '{0}' is controlled by setup.postInstall.{1}." -f $o, $t[0].profileField))
+            }
+        }
+        if ($selectedTweaks.Count -gt 0 -and -not [bool]$post.enabled) {
+            [void]$warnings.Add('Optimizations are selected but first sign-in setup is off; they will not be applied.')
+        }
     }
     if ([bool]$post.enabled -and -not [bool]$setup.unattend) {
         [void]$errors.Add('setup.postInstall requires setup.unattend=true (it runs from FirstLogonCommands).')
@@ -514,6 +552,7 @@ function New-XboxOSPostInstallOptions {
         gameMode                         = [bool]$p.gameMode
         hardwareAcceleratedGpuScheduling = [bool]$p.hardwareAcceleratedGpuScheduling
         launchers                        = @($p.launchers | ForEach-Object { [string]$_ })
+        optimizations                    = @($(if ($p.PSObject.Properties['optimizations']) { $p.optimizations | ForEach-Object { [string]$_ } }))
         logPath                          = 'C:\ProgramData\XboxOS11\postinstall.log'
     }
 }
@@ -602,10 +641,12 @@ function New-XboxOSBuilderEffectiveConfiguration {
         if ([bool]$BuildProfile.setup.postInstall.enabled) {
             $scripts = Join-Path $overlay 'sources\$OEM$\$$\Setup\Scripts\XboxOS11'
             New-Item -ItemType Directory -Path $scripts -Force | Out-Null
-            foreach ($f in @('Invoke-PostInstall.ps1', 'Setup-Gaming.ps1', 'Install-Launchers.ps1', 'Verify-System.ps1')) {
+            foreach ($f in @('Invoke-PostInstall.ps1', 'Set-GamingOptimizations.ps1', 'Setup-Gaming.ps1', 'Install-Launchers.ps1', 'Verify-System.ps1')) {
                 Copy-Item -LiteralPath (Join-Path $m.RepoRoot ('postinstall\' + $f)) -Destination (Join-Path $scripts $f) -Force
                 $overlayFiles += ('sources\$OEM$\$$\Setup\Scripts\XboxOS11\' + $f)
             }
+            Copy-Item -LiteralPath (Join-Path $m.RepoRoot 'config\gaming-tweaks.json') -Destination (Join-Path $scripts 'gaming-tweaks.json') -Force
+            $overlayFiles += 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\gaming-tweaks.json'
             ((New-XboxOSPostInstallOptions -BuildProfile $BuildProfile) | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $scripts 'postinstall.json') -Encoding UTF8
             $overlayFiles += 'sources\$OEM$\$$\Setup\Scripts\XboxOS11\postinstall.json'
         }
