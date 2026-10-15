@@ -24,12 +24,15 @@ cd $env:WINDIR\Setup\Scripts\XboxOS11
 .\Restore-XboxOS11Components.ps1                       # show what was changed
 .\Restore-XboxOS11Components.ps1 -All -WhatIf          # preview everything
 .\Restore-XboxOS11Components.ps1 -Features             # re-enable disabled optional features
+.\Restore-XboxOS11Components.ps1 -Capabilities         # re-add removed optional capabilities (internet)
 .\Restore-XboxOS11Components.ps1 -GamingSettings       # restore original gaming settings
 .\Restore-XboxOS11Components.ps1 -Apps -OpenStore      # open Store pages for removed apps
 ```
 
 - **Features**: payloads are kept (`removePayload: false`), so features re-enable without installation media. Some need a restart.
 - **Gaming settings**: each value returns to exactly what it was before XboxOS11 changed it. Values that didn't exist are deleted.
+- **Capabilities** (lean builds): re-added from Windows Update with `Add-WindowsCapability`. You can also use Settings › System › Optional features.
+- **Defaults for new accounts** (lean builds): sponsored apps, tips, taskbar buttons, and the Edge first-run policy are listed in the summary with the Settings page that controls each one. To get OneDrive: `winget install Microsoft.OneDrive`.
 - **Apps**: removed apps are consumer/promotional apps (Clipchamp, News, Weather, …). Reinstall any of them from the Microsoft Store. Nothing is installed silently.
 
 Gaming settings alone: `.\Set-GamingOptimizations.ps1 -Restore`.

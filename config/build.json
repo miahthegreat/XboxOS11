@@ -51,7 +51,16 @@
     "addUpdates": true,
     "inventoryAfter": true,
     "validate": true,
-    "exportIso": true
+    "exportIso": true,
+    "removeCapabilities": false,
+    "imageTweaks": false,
+    "componentCleanup": false,
+    "recompress": false
+  },
+  "image": {
+    "resetBase": false,
+    "compression": "Default",
+    "notes": "Lean-image options. compression: Default keeps the export compression, Max writes install.wim, Recovery writes a smaller install.esd. resetBase makes updates already in the image permanent."
   },
   "paths": {
     "removeAppsManifest": "./config/remove-apps.json",
@@ -59,6 +68,8 @@
     "servicesManifest": "./config/services.json",
     "driversManifest": "./config/drivers.json",
     "compatibilityManifest": "./config/compatibility.json",
+    "removeCapabilitiesManifest": "./config/remove-capabilities.json",
+    "imageTweaksManifest": "./config/image-tweaks.json",
     "driverDirectory": "C:\\XboxOS\\Drivers",
     "updateDirectory": "C:\\XboxOS\\Updates"
   },

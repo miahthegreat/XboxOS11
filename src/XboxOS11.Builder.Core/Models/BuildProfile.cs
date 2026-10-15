@@ -22,6 +22,8 @@ public sealed class BuildProfile
     public FolderOption Updates { get; set; } = new() { Directory = @"C:\XboxOS\Updates" };
     public SetupOptions Setup { get; set; } = new();
     public OutputOptions Output { get; set; } = new();
+    public CapabilityOptions Capabilities { get; set; } = new();
+    public ImageOptions Image { get; set; } = new();
 
     public BuildProfile Clone() => FromJson(ToJson());
 
@@ -67,6 +69,8 @@ public sealed class SetupOptions
     public string Privacy { get; set; } = "Minimal";
     public bool StartupToGamingHome { get; set; }
     public PostInstallOptions PostInstall { get; set; } = new();
+    public bool LocalAccount { get; set; }
+    public bool AllowUnsupportedHardware { get; set; }
 }
 
 public sealed class PostInstallOptions
@@ -76,6 +80,21 @@ public sealed class PostInstallOptions
     public bool HardwareAcceleratedGpuScheduling { get; set; }
     public List<string> Launchers { get; set; } = [];
     public List<string> Optimizations { get; set; } = [];
+}
+
+public sealed class CapabilityOptions
+{
+    public List<string> Remove { get; set; } = [];
+}
+
+public sealed class ImageOptions
+{
+    public const string DefaultCompression = "Default";
+
+    public bool ComponentCleanup { get; set; }
+    public bool ResetBase { get; set; }
+    public string Compression { get; set; } = DefaultCompression;
+    public List<string> Tweaks { get; set; } = [];
 }
 
 public sealed class OutputOptions

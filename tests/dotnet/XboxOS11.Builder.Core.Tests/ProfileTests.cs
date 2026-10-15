@@ -18,6 +18,7 @@ public class ProfileTests
     [Theory]
     [InlineData("gaming-balanced")]
     [InlineData("gaming-lean")]
+    [InlineData("gaming-tiny")]
     [InlineData("handheld-xbox-mode")]
     [InlineData("stock-safe")]
     public void ReadsEveryShippedPreset(string id)
@@ -33,7 +34,7 @@ public class ProfileTests
     {
         var json = JsonNode.Parse(new BuildProfile().ToJson())!.AsObject();
         Assert.Equal(
-            ["schemaVersion", "name", "description", "presetId", "source", "apps", "features", "drivers", "updates", "setup", "output"],
+            ["schemaVersion", "name", "description", "presetId", "source", "apps", "features", "drivers", "updates", "setup", "output", "capabilities", "image"],
             json.Select(kv => kv.Key).ToArray());
         Assert.True(json["source"]!.AsObject().ContainsKey("imageIndex"));
         Assert.Null(json["source"]!["imageIndex"]);
@@ -91,6 +92,46 @@ public class ProfileTests
         editor.SetOptimization("WindowedGameOptimizations", false);
         Assert.Contains("VariableRefreshRate", editor.Profile.Setup.PostInstall.Optimizations);
         Assert.DoesNotContain("WindowedGameOptimizations", editor.Profile.Setup.PostInstall.Optimizations);
+    }
+
+    [Fact]
+    public void ReadsTheTinyPresetLeanOptions()
+    {
+        var p = LoadPreset("gaming-tiny");
+        Assert.Equal(8, p.Capabilities.Remove.Count);
+        Assert.True(p.Image.ComponentCleanup);
+        Assert.True(p.Image.ResetBase);
+        Assert.Equal("Recovery", p.Image.Compression);
+        Assert.Contains("NoOneDriveForNewAccounts", p.Image.Tweaks);
+        var balanced = LoadPreset("gaming-balanced");
+        Assert.Empty(balanced.Capabilities.Remove);
+        Assert.Equal(ImageOptions.DefaultCompression, balanced.Image.Compression);
+    }
+
+    [Fact]
+    public void LeanOptionRulesMirrorTheBackend()
+    {
+        var editor = new ProfileEditor(LoadPreset("stock-safe"));
+        editor.ApplyReview(new ProfileReview
+        {
+            Capabilities = [new CapabilityCandidate { Id = "StepsRecorder", Selectable = true }, new CapabilityCandidate { Id = "Locked", Protected = true }],
+        });
+        Assert.True(editor.SetCapabilityRemoved("StepsRecorder", true));
+        Assert.False(editor.SetCapabilityRemoved("Locked", true));
+        Assert.Equal(["StepsRecorder"], editor.Profile.Capabilities.Remove);
+
+        editor.SetResetBase(true);
+        Assert.True(editor.Profile.Image.ComponentCleanup);
+        editor.SetComponentCleanup(false);
+        Assert.False(editor.Profile.Image.ResetBase);
+
+        editor.SetAllowUnsupportedHardware(true);
+        Assert.True(editor.Profile.Setup.Unattend);
+        editor.SetLocalAccount(true);
+        editor.SetUnattend(false);
+        Assert.False(editor.Profile.Setup.AllowUnsupportedHardware);
+        Assert.False(editor.Profile.Setup.LocalAccount);
+        Assert.Equal(ProfileEditor.CustomPresetId, editor.Profile.PresetId);
     }
 
     [Fact]

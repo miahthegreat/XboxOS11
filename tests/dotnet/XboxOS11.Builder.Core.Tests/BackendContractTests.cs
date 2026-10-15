@@ -24,7 +24,8 @@ public class BackendContractTests
 
         var catalog = await backend.GetCatalogAsync();
         Assert.Equal(BuildProfile.SchemaVersionV1, catalog.ProfileSchemaVersion);
-        Assert.Equal(["gaming-balanced", "gaming-lean", "handheld-xbox-mode", "stock-safe"], catalog.Presets.Select(p => p.Id));
+        Assert.Equal(["gaming-balanced", "gaming-lean", "gaming-tiny", "handheld-xbox-mode", "stock-safe"], catalog.Presets.Select(p => p.Id));
+        Assert.Equal(["Default", "Max", "Recovery"], catalog.CompressionModes);
         Assert.Contains("Steam", catalog.Launchers);
         Assert.Contains(catalog.Optimizations, o => o.Id == "WindowedGameOptimizations" && o.DefaultEnabled);
         Assert.DoesNotContain(catalog.Optimizations, o => o.Id == "GameMode");
@@ -51,6 +52,32 @@ public class BackendContractTests
         var saved = await backend.SaveProfileAsync(profile, Path.Combine(tmp.Path, "saved", "rig.json"));
         var reloaded = BuildProfile.FromJson(File.ReadAllText(saved.Path));
         Assert.Equal(profile.ToJson(), reloaded.ToJson());
+    }
+
+    [Fact]
+    public async Task TinyProfilesFromTheClientPassTheStrictValidator()
+    {
+        using var tmp = new TempDir();
+        var backend = CreateBackend(tmp);
+        if (backend is null) { return; }
+
+        var profile = await backend.NewProfileAsync("gaming-tiny", "Tiny Rig");
+        Assert.Equal("Recovery", profile.Image.Compression);
+        profile.Output.Directory = Path.Combine(tmp.Path, "out");
+        profile.Setup.LocalAccount = true;
+        var validation = await backend.ValidateAsync(profile, forBuild: false);
+        Assert.True(validation.Valid, string.Join("; ", validation.Errors));
+
+        var review = await backend.ReviewAsync(profile);
+        Assert.Equal(8, review.Capabilities.Count(c => c.Selected));
+        Assert.Contains(review.ImageTweaks, t => t.Id == "EdgeNoFirstRun" && t.Selected);
+
+        var unattend = await backend.PreviewUnattendAsync(profile);
+        Assert.Contains("HideOnlineAccountScreens", unattend.Xml);
+        Assert.DoesNotContain("LabConfig", unattend.Xml);
+
+        profile.Image.Compression = "Ultra";
+        Assert.False((await backend.ValidateAsync(profile, forBuild: false)).Valid);
     }
 
     [Fact]

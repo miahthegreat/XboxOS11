@@ -112,6 +112,24 @@ Describe 'XboxOS11 Milestone 10 release engineering and recovery' {
             Should -Invoke Enable-WindowsOptionalFeature -Times 0
         }
 
+        It 're-adds removed capabilities only with administrator rights and never without -WhatIf consent' {
+            $tiny = New-XboxOSBuildProfile -Name 'Tiny Rig' -PresetId gaming-tiny
+            $tinyRecordPath = Join-Path $script:RecordDir 'build-record-tiny.json'
+            ((New-XboxOSBuildRecord -BuildProfile $tiny -ProfileHash (Get-XboxOSBuildProfileHash -BuildProfile $tiny)) | ConvertTo-Json -Depth 8) | Set-Content -LiteralPath $tinyRecordPath
+            Mock Get-WindowsCapability {
+                @('App.StepsRecorder~~~~0.0.1.0', 'MathRecognizer~~~~0.0.1.0', 'Browser.InternetExplorer~~~~0.0.11.0', 'Microsoft.Windows.PowerShell.ISE~~~~0.0.1.0',
+                    'Microsoft.Windows.WordPad~~~~0.0.1.0', 'Print.Fax.Scan~~~~0.0.1.0', 'App.Support.QuickAssist~~~~0.0.1.0', 'Microsoft.Wallpapers.Extended~~~~0.0.1.0') |
+                    ForEach-Object { [pscustomobject]@{ Name = $_; State = 'NotPresent' } }
+            }
+            Mock Add-WindowsCapability { }
+            $res = & $script:Restore -Capabilities -RecordPath $tinyRecordPath -PassThru -WhatIf 6>$null
+            $caps = @($res | Where-Object { $_.Area -eq 'Capability' })
+            $caps.Count | Should -Be 8
+            $expected = if (Test-XboxOSAdministrator) { 'WhatIf' } else { 'SkippedRequiresAdministrator' }
+            @($caps | ForEach-Object { $_.Status } | Select-Object -Unique) | Should -Be @($expected)
+            Should -Invoke Add-WindowsCapability -Times 0
+        }
+
         It 'reports nothing to restore when no gaming changes were recorded' {
             $res = & $script:Restore -GamingSettings -RecordPath $script:RecordPath -StatePath (Join-Path $script:TempRoot 'no-state.json') -PassThru 6>$null
             @($res)[0].Status | Should -Be 'NothingToRestore'

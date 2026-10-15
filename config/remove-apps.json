@@ -71,6 +71,125 @@
       "enabled": false
     },
     {
+      "id": "BingSearch",
+      "displayName": "Microsoft Bing (search app)",
+      "patterns": ["Microsoft.BingSearch*"],
+      "reason": "Standalone Bing search app; Windows Search keeps working.",
+      "enabled": false
+    },
+    {
+      "id": "PowerAutomate",
+      "displayName": "Power Automate",
+      "patterns": ["Microsoft.PowerAutomateDesktop*"],
+      "reason": "Desktop workflow automation not needed on a gaming PC.",
+      "enabled": false
+    },
+    {
+      "id": "ToDo",
+      "displayName": "Microsoft To Do",
+      "patterns": ["Microsoft.Todos*"],
+      "reason": "Optional task list app.",
+      "enabled": false
+    },
+    {
+      "id": "DevHome",
+      "displayName": "Dev Home",
+      "patterns": ["Microsoft.Windows.DevHome*"],
+      "reason": "Developer dashboard (retired by Microsoft).",
+      "enabled": false
+    },
+    {
+      "id": "Clock",
+      "displayName": "Clock (Alarms & Clock)",
+      "patterns": ["Microsoft.WindowsAlarms*"],
+      "reason": "Optional clock/timer app.",
+      "enabled": false
+    },
+    {
+      "id": "FeedbackHub",
+      "displayName": "Feedback Hub",
+      "patterns": ["Microsoft.WindowsFeedbackHub*"],
+      "reason": "Insider feedback app.",
+      "enabled": false
+    },
+    {
+      "id": "SoundRecorder",
+      "displayName": "Sound Recorder",
+      "patterns": ["Microsoft.WindowsSoundRecorder*"],
+      "reason": "Optional audio recorder; Game Bar captures audio separately.",
+      "enabled": false
+    },
+    {
+      "id": "PhoneLink",
+      "displayName": "Phone Link",
+      "patterns": ["Microsoft.YourPhone*"],
+      "reason": "Phone companion app.",
+      "enabled": false
+    },
+    {
+      "id": "MediaPlayer",
+      "displayName": "Media Player",
+      "patterns": ["Microsoft.ZuneMusic*"],
+      "reason": "Modern Media Player; reinstallable from the Store. Legacy Windows Media Player capability stays protected.",
+      "enabled": false
+    },
+    {
+      "id": "MoviesTV",
+      "displayName": "Movies & TV",
+      "patterns": ["Microsoft.ZuneVideo*"],
+      "reason": "Video store app (older images).",
+      "enabled": false
+    },
+    {
+      "id": "QuickAssist",
+      "displayName": "Quick Assist",
+      "patterns": ["MicrosoftCorporationII.QuickAssist*"],
+      "reason": "Remote assistance app; reinstallable from the Store.",
+      "enabled": false
+    },
+    {
+      "id": "MailCalendar",
+      "displayName": "Mail and Calendar",
+      "patterns": ["microsoft.windowscommunicationsapps*"],
+      "reason": "Retired Mail and Calendar apps (older images).",
+      "enabled": false
+    },
+    {
+      "id": "Maps",
+      "displayName": "Windows Maps",
+      "patterns": ["Microsoft.WindowsMaps*"],
+      "reason": "Retired Maps app (older images).",
+      "enabled": false
+    },
+    {
+      "id": "People",
+      "displayName": "People",
+      "patterns": ["Microsoft.People_*", "Microsoft.People"],
+      "reason": "Retired People app (older images).",
+      "enabled": false
+    },
+    {
+      "id": "Cortana",
+      "displayName": "Cortana",
+      "patterns": ["Microsoft.549981C3F5F10*"],
+      "reason": "Retired Cortana app (older images).",
+      "enabled": false
+    },
+    {
+      "id": "FamilySafety",
+      "displayName": "Microsoft Family",
+      "patterns": ["MicrosoftCorporationII.MicrosoftFamily*"],
+      "reason": "Family Safety companion app; parental controls still work through account settings.",
+      "enabled": false
+    },
+    {
+      "id": "Widgets",
+      "displayName": "Widgets (Windows Web Experience Pack)",
+      "patterns": ["MicrosoftWindows.Client.WebExperience*"],
+      "reason": "Taskbar Widgets board and news feed. Game Bar widgets are separate and kept.",
+      "enabled": false
+    },
+    {
       "id": "XboxTCUI",
       "displayName": "Xbox TCUI (protected example)",
       "patterns": ["Microsoft.Xbox.TCUI*"],

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "xboxos-builder-preset-v1",
   "id": "stock-safe",
-  "order": 4,
+  "order": 5,
   "displayName": "Stock - Minimal changes",
   "recommended": false,
   "description": "No app removal; disables only insecure SMB 1.0. No unattend file. Use to add drivers or updates to otherwise stock media.",
