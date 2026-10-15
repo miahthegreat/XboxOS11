@@ -6,7 +6,7 @@ Schema versions:
 
 | Contract | Version |
 |----------|---------|
-| Servicing readiness engine | `5.0.0` |
+| Servicing readiness engine | `5.1.0` |
 | Dependency evidence schema | `dependency-evidence-v1` |
 | Capability requirements schema | `capability-requirements-v1` |
 | Servicing readiness report | `servicing-readiness-v1` |

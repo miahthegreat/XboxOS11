@@ -147,14 +147,18 @@
         'Get-XboxOSCapabilityRequirementsSchemaVersion'
         'Get-XboxOSServicingReadinessReportSchemaVersion'
         'Get-XboxOSEvidenceQualitySchemaVersion'
+        'New-XboxOSInventoryProvenance'
         'Get-XboxOSReportTraceability'
         'Resolve-XboxOSImageArchitectureMetadata'
         'Import-XboxOSDependencyEvidenceCatalog'
         'Import-XboxOSCapabilityRequirementsCatalog'
         'Test-XboxOSEvidenceFreshness'
         'Test-XboxOSEvidenceContradiction'
+        'Test-XboxOSDependencyEvidenceCatalog'
         'Get-XboxOSRelatedEvidenceRecords'
         'Resolve-XboxOSCatalogOperationAssessment'
+        'Resolve-XboxOSOperationComponentNodeId'
+        'Get-XboxOSOperationDependencyClosure'
         'New-XboxOSDependencyGraph'
         'Get-XboxOSCapabilityInspectionResult'
         'Invoke-XboxOSOperationReadinessEvaluation'
@@ -169,7 +173,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 5.0.0: dependency evidence graph and servicing-readiness analysis (no writable DISM).'
+            ReleaseNotes = 'Milestone 5.1.0: harden dependency graph traversal, catalog validation, and authoritative vs simulation inventory modes.'
         }
     }
 }

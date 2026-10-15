@@ -141,9 +141,33 @@
       "id": "capability:XboxFullScreenExperience",
       "kind": "Capability",
       "displayName": "Xbox Full Screen Experience"
+    },
+    {
+      "id": "runtime:ModernAppXUpdates",
+      "kind": "Runtime",
+      "displayName": "Modern AppX update channel"
+    },
+    {
+      "id": "runtime:XboxModeHostSettings",
+      "kind": "Runtime",
+      "displayName": "Xbox mode host settings surface"
+    },
+    {
+      "id": "appx:Microsoft.WindowsStore",
+      "kind": "AppX",
+      "displayName": "Microsoft Store (family)"
     }
   ],
   "relationships": [
+    {
+      "relationshipId": "rel-store-provides-store-capability",
+      "from": "appx:Microsoft.WindowsStore",
+      "to": "capability:MicrosoftStore",
+      "kind": "Provides",
+      "phase": "Both",
+      "evidenceIds": ["ev-store-shared-by-modern-apps", "ev-compat-protected-patterns"],
+      "notes": "Manifest-declared Store package family provides the Microsoft Store capability surface."
+    },
     {
       "relationshipId": "rel-store-shared-modern-apps",
       "from": "runtime:ModernAppXUpdates",
@@ -161,13 +185,13 @@
       "evidenceIds": ["ev-m4-inventory-observation"]
     },
     {
-      "relationshipId": "rel-workfolders-not-gaming-requires",
+      "relationshipId": "rel-workfolders-unknown-fse-impact",
       "from": "feature:WorkFolders-Client",
       "to": "capability:XboxFullScreenExperience",
       "kind": "UnknownRelationship",
       "phase": "Runtime",
       "evidenceIds": ["ev-workfolders-optional-client"],
-      "notes": "No documented Requires edge from Xbox FSE to WorkFolders-Client; absence of Requires is not automatic proof without the curated assessment below."
+      "notes": "No documented Requires edge proving independence from Xbox FSE; UnknownRelationship means closure remains incomplete."
     }
   ],
   "operationAssessments": [

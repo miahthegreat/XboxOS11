@@ -12,13 +12,15 @@
 | `scripts/Test-ServicingReadiness.ps1` | Non-elevated CLI → `C:\XboxOS\Logs` |
 | `tests/ServicingReadiness.Tests.ps1` | Fixture/mock regression coverage |
 
-## Engine behavior
+## Engine behavior (5.1.0)
 
-1. Load M2 plan from authoritative inventory (compat report or DISM transcript fixtures).
-2. Build dependency graph from curated catalog + inventory observations (`Provides` for observed AppX).
-3. Inspect capabilities without classifying non-observable surfaces as absent/broken.
-4. Evaluate each Eligible operation with exact identity resolution and fail-closed readiness.
-5. Emit JSON/Markdown with Git SHA, architecture (`Unknown` when DISM Architecture missing), and safety flags always false.
+1. Load M2 plan from inventory; readiness provenance is separate (`Authoritative` vs explicit `-Simulation` / `FixtureDerived`).
+2. Validate dependency catalog (duplicates, dangling endpoints, missing evidence, invalid kinds).
+3. Build dependency graph from curated relationships only (no synthetic self-loop `Provides`).
+4. Traverse operation-scoped closures with cycle detection, shared-dep scoping, and UnknownRelationship tracking.
+5. Treat catalog `VerifiedSafeForConsideration` as a candidate only; downgrade when closure is incomplete or gates fail.
+6. Emit JSON/Markdown with inventory provenance, catalog validation errors, Git SHA, architecture (`Unknown` when absent), safety flags always false.
+7. Fixture/synthetic inventory cannot produce production `ReadyForReview`.
 
 ## Baseline Eligible operations (fixture / M1 inventory)
 
