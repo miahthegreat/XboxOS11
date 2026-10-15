@@ -288,11 +288,18 @@ Describe 'XboxOS11 Milestone 7 builder backend' {
             $path = Export-XboxOSBuildProfile -BuildProfile $p -Path (Join-Path $script:TempRoot 'dry.json')
             $exe = (Get-Process -Id $PID).Path
             $out = & $exe -NoProfile -File (Join-Path $script:RepoRoot 'scripts\Invoke-XboxOSBuild.ps1') -ProfilePath $path -DryRun -EmitEvents -SkipPrerequisites -WorkRoot (Join-Path $script:TempRoot 'dry-eff')
-            $LASTEXITCODE | Should -Be 0
+            $LASTEXITCODE | Should -Be 0 -Because (($out | Select-Object -Last 40) -join "`n")
             $events = @($out | ForEach-Object { ConvertFrom-XboxOSBuilderEventLine -Line "$_" } | Where-Object { $_ })
             $events[0].type | Should -Be 'started'
             $events[-1].type | Should -Be 'completed'
             @($events | Where-Object { $_.type -eq 'phase' -and $_.name -eq 'ExportIso' -and $_.status -eq 'succeeded' }).Count | Should -Be 1
+        }
+
+        It 'plans ISO export in dry-run mode without Windows ADK installed' {
+            $ctx = New-XboxOSBuildContext -ConfigurationPath (Join-Path $script:RepoRoot 'config\build.json') -SourceISO $script:Iso -OutputDirectory (Join-Path $script:TempRoot 'no-adk') -DryRun
+            $result = & (Join-Path $script:RepoRoot 'scripts\Export-ISO.ps1') -Context $ctx -OscdimgPath (Join-Path $script:TempRoot 'missing\oscdimg.exe') -DryRun
+            $result.DryRun | Should -BeTrue
+            $result.Command | Should -Match '^oscdimg\.exe '
         }
 
         It 'exits 4 on an invalid profile' {
