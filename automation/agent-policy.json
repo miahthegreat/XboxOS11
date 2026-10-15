@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "maxCycles": 5,
+  "maxChangedFiles": 40,
+  "maxDiffChars": 90000,
+  "maxFindings": 8,
+  "optInLabel": "agent-loop",
+  "allowedEditPrefixes": [
+    "docs/",
+    "modules/",
+    "scripts/",
+    "tests/",
+    "config/"
+  ],
+  "protectedPrefixes": [
+    ".github/",
+    "automation/",
+    ".cursor/",
+    "postinstall/"
+  ],
+  "protectedFiles": [
+    "config/host-discovery-allowlist.json",
+    "config/dependency-evidence.json",
+    "config/compatibility.json",
+    "config/disable-features.json",
+    "config/remove-apps.json",
+    "modules/XboxOS.Build/AuthorizedHostDiscovery.ps1",
+    "modules/XboxOS.Build/ExecutionSafety.ps1"
+  ],
+  "blockedActions": [
+    "DISM",
+    "WIM mutation",
+    "VM provisioning",
+    "host inspection",
+    "network modification",
+    "ISO build",
+    "merge"
+  ]
+}
