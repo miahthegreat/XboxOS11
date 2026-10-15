@@ -177,12 +177,13 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M6D unresolved risks](docs/m6d-unresolved-risks.md)
 - [M6D completion baseline](docs/m6d-completion-baseline.md)
 - [M6E controlled live discovery design](docs/m6e-controlled-live-discovery-design.md)
+- [M6E controlled live discovery contracts](docs/m6e-controlled-live-discovery-contracts.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
 ## Roadmap
 
-**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → **M6C** mocked host discovery → **M6D** authorized host-discovery contracts (live inactive) → proposed **M6E** controlled live read-only discovery → later Xbox mode / performance / recovery / release engineering.
+**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → **M6B** Isolated lab infrastructure (simulation) → **M6C** mocked host discovery → **M6D** authorized host-discovery contracts (live inactive) → **M6E** controlled live read-only discovery (Gate A) → later Xbox mode / performance / recovery / release engineering.
 
 **Product target:** Native WinUI 3 XboxOS11 Builder — select a supported Windows 11 ISO → choose a gaming preset or Custom → review dependency-aware component changes → configure drivers and installation options → validate the proposed build → produce a customized bootable ISO → save and reuse the build configuration. User-facing builder contracts stay separate from internal lab authorization. GUI, ISO production, and new servicing are not implemented in Milestone 6D/M6E design; backend contracts remain reusable for a future WinUI 3 / .NET frontend.
 

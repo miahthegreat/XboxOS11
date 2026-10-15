@@ -1,6 +1,6 @@
 # Milestone 6E — Controlled Live Read-Only Host Discovery
 
-**Status:** Design proposal only. **Not implemented. Not authorized.**
+**Status:** Gate A implemented (see [m6e-controlled-live-discovery-contracts.md](m6e-controlled-live-discovery-contracts.md)). Gate B remains a manual operator procedure; no live run has been executed by CI or by merging.
 
 This document proposes the next controlled stage after Milestone 6D: enabling a **real-host read-only adapter** only under two independent acceptance gates. It does **not** authorize VM provisioning, host modifications, Windows image mutation, DISM writable servicing, or Layer D.
 

@@ -149,12 +149,15 @@ Typed, allowlisted, operator-authorization contracts for future read-only host i
 
 **Implementation complete ≠ operational host inspection authorization.**
 
-## M6E: Controlled live read-only host discovery (proposed)
+## M6E: Controlled live read-only host discovery (Gate A) — complete
 
-Design-only proposal for enabling a real-host read-only adapter under two independent gates (implementation review + one operator-controlled run), with durable replay protection and separate `m6e` evidence — still without provisioning or mutation.
+Gate A controls for a real-host read-only adapter: durable cross-process replay protection, an independent approval verifier, a static read-only invoker gate, per-run operator activation, per-operation revalidation, and `m6e` evidence. CI exercises injected invokers only.
 
 - Design: [m6e-controlled-live-discovery-design.md](m6e-controlled-live-discovery-design.md)
-- Not implemented; not authorized; no live host-discovery commands
+- Contracts and operator procedure: [m6e-controlled-live-discovery-contracts.md](m6e-controlled-live-discovery-contracts.md)
+- CLI: `scripts/Invoke-ControlledLiveHostDiscovery.ps1` (default **HostDiscoveryBlocked**, exit 2); key/approval helpers `scripts/New-ControlledLiveDiscoverySigningKey.ps1`, `scripts/New-ControlledLiveDiscoveryApproval.ps1`
+- Engine `6.4.0-e`; module `0.6.5`; `networkIsolationVerified`, `labProvisioningAuthorized`, `writableServicingAuthorized` always False
+- Gate B (one operator-controlled run) is manual and has not been executed
 
 ## Product target: Native WinUI 3 XboxOS11 Builder
 
