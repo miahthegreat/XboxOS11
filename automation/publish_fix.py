@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Independent path and lease gate before any agent-authored commit."""
 import base64,json,os,pathlib,subprocess,sys
-policy=json.load(open("automation/agent-policy.json"))
+policy=json.load(open(pathlib.Path(__file__).resolve().parent / "agent-policy.json"))
 def run(*args): return subprocess.check_output(["git",*args],text=True).strip()
 def safe(path):
     p=path.replace("\\","/")
