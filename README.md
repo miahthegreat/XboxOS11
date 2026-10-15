@@ -158,12 +158,18 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 - [M5 dependency evidence contracts](docs/m5-dependency-evidence-contracts.md)
 - [M5 future modification test strategy](docs/m5-future-modification-test-strategy.md)
 - [M5 unresolved risks](docs/m5-unresolved-risks.md)
+- [M5 completion baseline](docs/m5-completion-baseline.md)
+- [M6 disposable-image experiment design](docs/m6-disposable-image-experiment-design.md)
+- [M6A experiment planning contracts](docs/m6a-experiment-planning-contracts.md)
+- [M6A authorization boundaries](docs/m6a-authorization-boundaries.md)
+- [M6A functional validation matrix](docs/m6a-functional-validation-matrix.md)
+- [M6A unresolved risks](docs/m6a-unresolved-risks.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Milestones](docs/milestones.md)
 
 ## Roadmap
 
-**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → later Xbox mode / performance / recovery / release engineering.
+**M1** Image build foundation → **M2** Servicing plan engine → **M3** Execution safety (simulation) → **M4** Disposable read-only preflight → **M5** Dependency evidence and servicing readiness → **M6A** Experiment planning / authorization simulation → later disposable lab / Xbox mode / performance / recovery / release engineering.
 
 ## License
 
