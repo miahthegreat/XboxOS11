@@ -1,0 +1,19 @@
+name: Agent Automation Safety
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/agent-*.yml"
+      - "automation/**"
+      - "tests/test_agent_automation.py"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-contract-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate automation source and disabled fix gate
+        run: python3 -m unittest discover -s tests -p test_agent_automation.py -v
