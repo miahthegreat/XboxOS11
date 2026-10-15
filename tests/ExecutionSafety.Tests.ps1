@@ -299,7 +299,7 @@ Describe 'XboxOS11 Milestone 3 execution safety' {
     It 'refuses OneDrive report output paths' {
         {
             $tx = New-XboxOSServicingTransaction -Plan $script:Plan -FreshInventory $script:Inventory
-            Save-XboxOSExecutionSafetyReport -Transaction $tx -OutputDirectory (Join-Path $script:RepoRoot 'artifacts') -Stem 'bad'
+            Save-XboxOSExecutionSafetyReport -Transaction $tx -OutputDirectory 'C:\Users\ci\OneDrive\XboxOS11\artifacts' -Stem 'bad'
         } | Should -Throw -ExpectedMessage '*OneDrive*'
     }
 
