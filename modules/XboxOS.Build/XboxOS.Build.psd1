@@ -128,6 +128,13 @@
         'Invoke-XboxOSDisposableImagePreflightSimulate'
         'Invoke-XboxOSDisposableImagePreflightLiveReadOnly'
         'Assert-XboxOSLiveReadOnlyPreflightAuthorization'
+        'Get-XboxOSExpectedSourceImageIdentity'
+        'Assert-XboxOSObservedSourceImageIdentity'
+        'Get-XboxOSMountedImageHiveMetadata'
+        'Confirm-XboxOSOwnedMountCleanup'
+        'Set-XboxOSPreflightCleanupStatus'
+        'Assert-XboxOSInventoryCompletenessForPreflight'
+        'ConvertTo-XboxOSNormalizedBuildNumber'
         'Mount-XboxOSSourceIsoForReadOnlyPreflight'
         'Dismount-XboxOSSourceIsoForReadOnlyPreflight'
         'Save-XboxOSDisposableImagePreflightReport'
@@ -140,7 +147,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 4.1: real read-only DISM adapter + gated live lifecycle (CI remains simulation/mocks).'
+            ReleaseNotes = 'Milestone 4.1.1: observed mounted-image metadata, verified cleanup, hardened DISM outcomes.'
         }
     }
 }

@@ -1,7 +1,7 @@
 # Milestone 4 disposable-image read-only preflight. Dotted into XboxOS.Build.psm1.
 # Live DISM mounts/exports are gated; CI uses mocks/fixtures only.
 
-$script:XboxOSPreflightEngineVersion = '4.1.0'
+$script:XboxOSPreflightEngineVersion = '4.1.1'
 $script:XboxOSReadOnlyDismAdapterVersion = 'readonly-dism-v1'
 $script:XboxOSDisposableWorkspaceSchemaVersion = 'workspace-v1'
 $script:XboxOSImageIntegritySchemaVersion = 'image-integrity-v1'
@@ -157,21 +157,277 @@ function Test-XboxOSContinuousIntegrationEnvironment {
     )
 }
 
+function ConvertTo-XboxOSNormalizedBuildNumber {
+    [CmdletBinding()]
+    param([string]$VersionText)
+
+    if ([string]::IsNullOrWhiteSpace($VersionText)) { return $null }
+    $text = $VersionText.Trim()
+    if ($text -match '^10\.0\.(\d+)\.(\d+)$') {
+        return ('{0}.{1}' -f $Matches[1], $Matches[2])
+    }
+    if ($text -match '^(\d+)\.(\d+)$') {
+        return $text
+    }
+    return $null
+}
+
+function Get-XboxOSExpectedSourceImageIdentity {
+    [CmdletBinding()]
+    param()
+
+    return [pscustomobject]@{
+        editionName    = $script:XboxOSExpectedEditionName
+        buildNumber    = $script:XboxOSExpectedBuildNumber
+        displayVersion = $script:XboxOSExpectedDisplayVersion
+        isoSha256      = Get-XboxOSExpectedSourceIsoSha256
+    }
+}
+
+function Assert-XboxOSObservedSourceImageIdentity {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Observed,
+        [object]$Expected = $null
+    )
+
+    if (-not $Expected) { $Expected = Get-XboxOSExpectedSourceImageIdentity }
+    $errors = New-Object System.Collections.Generic.List[string]
+
+    foreach ($field in @('editionName', 'buildNumber', 'displayVersion', 'isoSha256')) {
+        $value = $null
+        if ($Observed.PSObject.Properties[$field]) { $value = [string]$Observed.$field }
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            $null = $errors.Add("Observed source image missing required field '$field'.")
+        }
+    }
+    if ($Observed.PSObject.Properties['exportedIndex'] -and [int]$Observed.exportedIndex -ne 1) {
+        $null = $errors.Add(("Observed exported index must be 1; was {0}." -f $Observed.exportedIndex))
+    }
+    if ($Observed.PSObject.Properties['sourceIndex'] -and [int]$Observed.sourceIndex -lt 1) {
+        $null = $errors.Add('Observed source index is invalid.')
+    }
+
+    if ($Observed.editionName -and -not [string]::Equals([string]$Observed.editionName.Trim(), [string]$Expected.editionName, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $null = $errors.Add(("Observed edition '{0}' does not match expected '{1}'." -f $Observed.editionName, $Expected.editionName))
+    }
+    if ($Observed.buildNumber -and -not [string]::Equals([string]$Observed.buildNumber, [string]$Expected.buildNumber, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $null = $errors.Add(("Observed buildNumber '{0}' does not match expected '{1}'." -f $Observed.buildNumber, $Expected.buildNumber))
+    }
+    if ($Observed.displayVersion -and -not [string]::Equals([string]$Observed.displayVersion, [string]$Expected.displayVersion, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $null = $errors.Add(("Observed displayVersion '{0}' does not match expected '{1}'." -f $Observed.displayVersion, $Expected.displayVersion))
+    }
+    if ($Observed.isoSha256 -and -not [string]::Equals([string]$Observed.isoSha256, [string]$Expected.isoSha256, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $null = $errors.Add(("Observed isoSha256 '{0}' does not match expected '{1}'." -f $Observed.isoSha256, $Expected.isoSha256))
+    }
+
+    if ($errors.Count -gt 0) {
+        throw ('Observed source image identity verification failed: {0}' -f ($errors -join ' '))
+    }
+}
+
+function Get-XboxOSMountedImageHiveMetadata {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$MountDir,
+        [scriptblock]$HiveReader = $null
+    )
+
+    if ($HiveReader) {
+        $result = & $HiveReader -MountDir $MountDir
+        if ($null -eq $result) {
+            throw 'HiveReader returned no mounted-image metadata.'
+        }
+        return [pscustomobject]@{
+            buildNumber    = $(if ($result.PSObject.Properties['buildNumber']) { [string]$result.buildNumber } else { $null })
+            displayVersion = $(if ($result.PSObject.Properties['displayVersion']) { [string]$result.displayVersion } else { $null })
+            editionId      = $(if ($result.PSObject.Properties['editionId']) { [string]$result.editionId } else { $null })
+            productName    = $(if ($result.PSObject.Properties['productName']) { [string]$result.productName } else { $null })
+            architecture   = $(if ($result.PSObject.Properties['architecture']) { [string]$result.architecture } else { $null })
+            metadataSource = 'injected-hive-reader'
+        }
+    }
+
+    $hive = Join-Path $MountDir 'Windows\System32\config\SOFTWARE'
+    if (-not (Test-Path -LiteralPath $hive)) {
+        throw "Mounted SOFTWARE hive not found under mount dir: $hive"
+    }
+
+    $tempHive = 'HKLM\XboxOSPreflightReadOnly'
+    $loaded = $false
+    try {
+        $loadOut = & reg.exe load $tempHive $hive 2>&1
+        $loadExit = $LASTEXITCODE
+        if ($null -eq $loadExit -or [int]$loadExit -ne 0) {
+            throw ("reg.exe load failed with exit code {0}: {1}" -f $loadExit, (($loadOut | ForEach-Object { "$_" }) -join ' '))
+        }
+        $loaded = $true
+        $cv = Get-ItemProperty -Path 'HKLM:\XboxOSPreflightReadOnly\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop
+        $build = [string]$cv.CurrentBuild
+        if ([string]::IsNullOrWhiteSpace($build)) {
+            throw 'Mounted hive CurrentBuild is missing.'
+        }
+        if ($cv.UBR -or $cv.UBR -eq 0) {
+            $build = '{0}.{1}' -f $build, $cv.UBR
+        }
+        $display = $null
+        if ($cv.PSObject.Properties['DisplayVersion']) { $display = [string]$cv.DisplayVersion }
+        if ([string]::IsNullOrWhiteSpace($display)) {
+            throw 'Mounted hive DisplayVersion is missing.'
+        }
+        return [pscustomobject]@{
+            buildNumber    = $build
+            displayVersion = $display
+            editionId      = $(if ($cv.PSObject.Properties['EditionID']) { [string]$cv.EditionID } else { $null })
+            productName    = $(if ($cv.PSObject.Properties['ProductName']) { [string]$cv.ProductName } else { $null })
+            architecture   = $null
+            metadataSource = 'mounted-software-hive'
+        }
+    }
+    finally {
+        if ($loaded) {
+            & reg.exe unload $tempHive 2>$null | Out-Null
+        }
+    }
+}
+
+function Confirm-XboxOSOwnedMountCleanup {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Adapter,
+        [Parameter(Mandatory)][string]$OwnedMountDir,
+        [AllowEmptyCollection()][object[]]$BaselineMounts = @()
+    )
+
+    $probe = $Adapter.InvokeOperation('GetMountedImageInfo')
+    $finalMounts = @(ConvertFrom-XboxOSMountedImageInfoOutput -Output @($probe.Output))
+    $ownedCanonical = Get-XboxOSCanonicalPath -Path $OwnedMountDir
+    $stillOwned = @(
+        $finalMounts | Where-Object {
+            $_.MountDir -and (
+                [string]::Equals(
+                    (Get-XboxOSCanonicalPath -Path $_.MountDir),
+                    $ownedCanonical,
+                    [System.StringComparison]::OrdinalIgnoreCase
+                )
+            )
+        }
+    )
+    if ($stillOwned.Count -gt 0) {
+        throw ("RecoveryRequired: owned mount still present after Unmount-Discard: {0}" -f $OwnedMountDir)
+    }
+
+    foreach ($baseline in @($BaselineMounts)) {
+        if (-not $baseline -or -not $baseline.MountDir) { continue }
+        $basePath = Get-XboxOSCanonicalPath -Path $baseline.MountDir
+        if ([string]::Equals($basePath, $ownedCanonical, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        $stillThere = @(
+            $finalMounts | Where-Object {
+                $_.MountDir -and (
+                    [string]::Equals(
+                        (Get-XboxOSCanonicalPath -Path $_.MountDir),
+                        $basePath,
+                        [System.StringComparison]::OrdinalIgnoreCase
+                    )
+                )
+            }
+        )
+        if ($stillThere.Count -lt 1) {
+            throw ("RecoveryRequired: unrelated baseline mount missing after cleanup: {0}" -f $baseline.MountDir)
+        }
+    }
+
+    return [pscustomobject]@{
+        verified     = $true
+        command      = $probe
+        finalMounts  = $finalMounts
+        ownedMountDir = $OwnedMountDir
+    }
+}
+
+function Set-XboxOSPreflightCleanupStatus {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Preflight,
+        [Parameter(Mandatory)][ValidateSet('NotStarted', 'NotRequired', 'Succeeded', 'Recovered', 'Failed')]
+        [string]$Status
+    )
+
+    # Failed is sticky — success/recovered cannot overwrite a prior cleanup failure.
+    if ($Preflight.cleanupStatus -eq 'Failed' -and $Status -ne 'Failed') {
+        return
+    }
+    if ($Status -eq 'Succeeded' -and -not [bool]$Preflight.cleanupVerified) {
+        return
+    }
+    $Preflight.cleanupStatus = $Status
+}
+
 function Assert-XboxOSInventoryCompletenessForPreflight {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][object]$Inventory
+        [Parameter(Mandatory)][object]$Inventory,
+        [object]$BaselineInventory = $null
     )
 
     if ($Inventory.verificationStatus -ne 'Authoritative') {
         throw ("Fresh inventory verificationStatus must be Authoritative; was '{0}'." -f $Inventory.verificationStatus)
     }
-    $pkgCount = @($Inventory.packages).Count
-    $appxCount = @($Inventory.appxPackages).Count
-    $featCount = @($Inventory.features).Count
+    if (-not $Inventory.sourceImage) {
+        throw 'Incomplete inventory: sourceImage metadata is missing.'
+    }
+    if (-not [bool]$Inventory.sourceImage.PSObject.Properties['verified'] -or -not [bool]$Inventory.sourceImage.verified) {
+        throw 'Incomplete inventory: sourceImage metadata was not independently verified.'
+    }
+    foreach ($field in @('editionName', 'buildNumber', 'displayVersion', 'isoSha256')) {
+        if (-not $Inventory.sourceImage.PSObject.Properties[$field] -or [string]::IsNullOrWhiteSpace([string]$Inventory.sourceImage.$field)) {
+            throw ("Incomplete inventory: verified sourceImage.{0} is missing." -f $field)
+        }
+    }
+
+    $packages = @($Inventory.packages)
+    $appx = @($Inventory.appxPackages)
+    $features = @($Inventory.features)
+    $pkgCount = $packages.Count
+    $appxCount = $appx.Count
+    $featCount = $features.Count
     if ($pkgCount -lt 1) { throw 'Incomplete inventory: no DISM packages captured.' }
     if ($appxCount -lt 1) { throw 'Incomplete inventory: no provisioned AppX packages captured.' }
     if ($featCount -lt 1) { throw 'Incomplete inventory: no optional features captured.' }
+
+    $pkgIds = @(
+        foreach ($p in $packages) {
+            $id = $null
+            if ($p -is [string]) { $id = $p }
+            elseif ($p.PSObject.Properties['Identity']) { $id = [string]$p.Identity }
+            elseif ($p.PSObject.Properties['PackageName']) { $id = [string]$p.PackageName }
+            if ([string]::IsNullOrWhiteSpace($id)) { throw 'Incomplete inventory: package entry missing identity.' }
+            $id
+        }
+    )
+    if (@($pkgIds | Group-Object | Where-Object Count -gt 1).Count -gt 0) {
+        throw 'Incomplete inventory: duplicate package identities detected.'
+    }
+
+    $appxIds = @($appx | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($appxIds.Count -ne $appxCount) { throw 'Incomplete inventory: blank AppX identities detected.' }
+    if (@($appxIds | Group-Object | Where-Object Count -gt 1).Count -gt 0) {
+        throw 'Incomplete inventory: duplicate AppX identities detected.'
+    }
+
+    foreach ($feature in $features) {
+        if (-not $feature.PSObject.Properties['Name'] -or [string]::IsNullOrWhiteSpace([string]$feature.Name)) {
+            throw 'Incomplete inventory: feature entry missing Name.'
+        }
+        if (-not $feature.PSObject.Properties['State'] -or [string]::IsNullOrWhiteSpace([string]$feature.State)) {
+            throw 'Incomplete inventory: feature entry missing State.'
+        }
+    }
+    $featNames = @($features | ForEach-Object { [string]$_.Name })
+    if (@($featNames | Group-Object | Where-Object Count -gt 1).Count -gt 0) {
+        throw 'Incomplete inventory: duplicate feature names detected.'
+    }
+
     if ($null -ne $Inventory.advertisedPackageCount -and [int]$Inventory.advertisedPackageCount -ne $pkgCount) {
         throw 'Contradictory package inventory counts.'
     }
@@ -180,6 +436,21 @@ function Assert-XboxOSInventoryCompletenessForPreflight {
     }
     if ($null -ne $Inventory.advertisedFeatureCount -and [int]$Inventory.advertisedFeatureCount -ne $featCount) {
         throw 'Contradictory feature inventory counts.'
+    }
+
+    if ($BaselineInventory -and $BaselineInventory.verificationStatus -eq 'Authoritative') {
+        $basePkg = @($BaselineInventory.packages).Count
+        $baseAppx = @($BaselineInventory.appxPackages).Count
+        $baseFeat = @($BaselineInventory.features).Count
+        if ($basePkg -gt 0 -and $pkgCount -lt [math]::Ceiling($basePkg * 0.5)) {
+            throw ("Observed package count {0} is far below Milestone 1 baseline {1}; inventory appears incomplete." -f $pkgCount, $basePkg)
+        }
+        if ($baseAppx -gt 0 -and $appxCount -lt [math]::Ceiling($baseAppx * 0.5)) {
+            throw ("Observed AppX count {0} is far below Milestone 1 baseline {1}; inventory appears incomplete." -f $appxCount, $baseAppx)
+        }
+        if ($baseFeat -gt 0 -and $featCount -lt [math]::Ceiling($baseFeat * 0.5)) {
+            throw ("Observed feature count {0} is far below Milestone 1 baseline {1}; inventory appears incomplete." -f $featCount, $baseFeat)
+        }
     }
 }
 
@@ -301,17 +572,20 @@ function New-XboxOSMockReadOnlyDismAdapter {
                 $output = @(
                     'Index : 1',
                     'Name : Windows 11 Home',
+                    'Architecture : x64',
                     'Index : 6',
                     'Name : Windows 11 Pro',
                     'Description : Windows 11 Pro',
-                    "Version : $($script:XboxOSExpectedBuildNumber)"
+                    'Architecture : x64',
+                    "Version : 10.0.$($script:XboxOSExpectedBuildNumber)"
                 )
             }
             'GetExportedImageInfo' {
                 $output = @(
                     'Index : 1',
                     'Name : Windows 11 Pro',
-                    "Version : $($script:XboxOSExpectedBuildNumber)"
+                    'Architecture : x64',
+                    "Version : 10.0.$($script:XboxOSExpectedBuildNumber)"
                 )
             }
             'MountImageReadOnly' {
@@ -733,7 +1007,8 @@ function New-XboxOSRecordingDismRunner {
                         Output   = @(
                             'Index : 1'
                             'Name : Windows 11 Pro'
-                            "Version : $($script:XboxOSExpectedBuildNumber)"
+                            'Architecture : x64'
+                            "Version : 10.0.$($script:XboxOSExpectedBuildNumber)"
                         )
                     }
                 }
@@ -742,10 +1017,12 @@ function New-XboxOSRecordingDismRunner {
                     Output   = @(
                         'Index : 1'
                         'Name : Windows 11 Home'
+                        'Architecture : x64'
                         'Index : 6'
                         'Name : Windows 11 Pro'
                         'Description : Windows 11 Pro'
-                        "Version : $($script:XboxOSExpectedBuildNumber)"
+                        'Architecture : x64'
+                        "Version : 10.0.$($script:XboxOSExpectedBuildNumber)"
                     )
                 }
             }
@@ -806,6 +1083,8 @@ function New-XboxOSRealReadOnlyDismAdapter {
         RealReadOnlyInspectionOccurred    = $false
         DisposableExportOccurred          = $false
         ReadOnlyMountOccurred             = $false
+        ReadOnlyMountAttempted            = $false
+        DisposableExportAttempted         = $false
     }
 
     $adapter = New-Object psobject
@@ -818,10 +1097,36 @@ function New-XboxOSRealReadOnlyDismAdapter {
         if ($null -eq $Parameters) { $Parameters = @{} }
         elseif ($Parameters -isnot [hashtable]) { $Parameters = [hashtable]$Parameters }
         $built = Assert-XboxOSReadOnlyDismOperationAllowed -Operation $Operation -Parameters $Parameters
-        $native = Invoke-XboxOSNativeDismCommand `
-            -DismPath $this.Ctx.DismPath `
-            -ArgumentList @($built.ArgumentList) `
-            -Runner $this.Ctx.NativeRunner
+        if ($Operation -eq 'ExportImage') { $this.Ctx.DisposableExportAttempted = $true }
+        if ($Operation -eq 'MountImageReadOnly') {
+            $this.Ctx.ReadOnlyMountAttempted = $true
+            # Ownership assumed for cleanup as soon as mount is attempted with allowlisted args.
+            $this.Ctx.MountOwned = $true
+            $this.Ctx.MountDir = [string]$Parameters.MountDir
+        }
+
+        try {
+            $native = Invoke-XboxOSNativeDismCommand `
+                -DismPath $this.Ctx.DismPath `
+                -ArgumentList @($built.ArgumentList) `
+                -Runner $this.Ctx.NativeRunner
+        }
+        catch {
+            $exitCode = -1
+            if ($_.Exception.Message -match 'exit code\s+(\d+)') {
+                $exitCode = [int]$Matches[1]
+            }
+            $null = $this.Ctx.Commands.Add([pscustomobject]@{
+                    utc        = [datetime]::UtcNow
+                    operation  = $Operation
+                    class      = $built.Class
+                    arguments  = $built.ArgumentList
+                    exitCode   = $exitCode
+                    command    = "$($this.Ctx.DismPath) $($built.ArgumentList -join ' ')"
+                    failed     = $true
+                })
+            throw
+        }
 
         $null = $this.Ctx.Commands.Add([pscustomobject]@{
                 utc        = [datetime]::UtcNow
@@ -830,12 +1135,17 @@ function New-XboxOSRealReadOnlyDismAdapter {
                 arguments  = $built.ArgumentList
                 exitCode   = $native.ExitCode
                 command    = $native.Command
+                failed     = $false
             })
+
+        if ([int]$native.ExitCode -ne 0) {
+            throw ("Allowlisted DISM operation '{0}' returned nonzero exit code {1}." -f $Operation, $native.ExitCode)
+        }
 
         switch ($Operation) {
             'ExportImage' { $this.Ctx.DisposableExportOccurred = $true }
             'MountImageReadOnly' {
-                $this.Ctx.ReadOnlyMountOccurred = $true
+                # Confirmed occurrence is set by the lifecycle after Get-MountedImageInfo.
                 $this.Ctx.MountOwned = $true
                 $this.Ctx.MountDir = [string]$Parameters.MountDir
             }
@@ -855,17 +1165,18 @@ function New-XboxOSRealReadOnlyDismAdapter {
         $this.Ctx.SourceIsoModified = $false
 
         return [pscustomobject]@{
-            ExitCode                      = [int]$native.ExitCode
-            Output                        = @($native.Output)
-            Operation                     = $Operation
-            Class                         = $built.Class
-            ArgumentList                  = $built.ArgumentList
-            Command                       = $native.Command
-            ModifyingCommandsInvoked      = $false
-            RealDismExecutionEnabled      = $false
+            ExitCode                       = [int]$native.ExitCode
+            Output                         = @($native.Output)
+            Operation                      = $Operation
+            Class                          = $built.Class
+            ArgumentList                   = $built.ArgumentList
+            Command                        = $native.Command
+            ModifyingCommandsInvoked       = $false
+            RealDismExecutionEnabled       = $false
             RealReadOnlyInspectionOccurred = [bool]$this.Ctx.RealReadOnlyInspectionOccurred
-            DisposableExportOccurred      = [bool]$this.Ctx.DisposableExportOccurred
-            ReadOnlyMountOccurred         = [bool]$this.Ctx.ReadOnlyMountOccurred
+            DisposableExportOccurred       = [bool]$this.Ctx.DisposableExportOccurred
+            ReadOnlyMountOccurred          = [bool]$this.Ctx.ReadOnlyMountOccurred
+            ReadOnlyMountAttempted         = [bool]$this.Ctx.ReadOnlyMountAttempted
         }
     }
     return $adapter
@@ -1113,10 +1424,17 @@ function New-XboxOSDisposableImagePreflight {
         realReadOnlyInspectionOccurred  = $false
         disposableExportOccurred        = $false
         readOnlyMountOccurred           = $false
+        readOnlyMountAttempted          = $false
+        disposableExportAttempted       = $false
         disposableWimSha256             = $null
         postIsoSha256                   = $null
         postIsoIntegrityVerified        = $false
         sourceImageFileFromIso          = $null
+        expectedSourceImage             = $null
+        inventoryMetadataVerified       = $false
+        cleanupVerified                 = $false
+        finalMountInventory             = @()
+        baselineMountInventory          = @()
     }
 }
 
@@ -1370,6 +1688,7 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         [scriptblock]$IsoMountRunner = $null,
         [scriptblock]$IsoDismountRunner = $null,
         [scriptblock]$HashProvider = $null,
+        [scriptblock]$HiveReader = $null,
         [long]$MinimumFreeBytes = 20GB,
         [switch]$SkipWorkspaceFiles
     )
@@ -1378,7 +1697,7 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         throw 'Invoke-XboxOSDisposableImagePreflightLiveReadOnly requires Mode=LiveReadOnly.'
     }
 
-    Assert-XboxOSLiveReadOnlyPreflightAuthorization `
+    $null = Assert-XboxOSLiveReadOnlyPreflightAuthorization `
         -ConfirmLiveReadOnlyPreflight:$ConfirmLiveReadOnlyPreflight `
         -AllowLiveReadOnlyPreflight:$AllowLiveReadOnlyPreflight `
         -IUnderstandTemporaryHostState:$IUnderstandTemporaryHostState `
@@ -1389,20 +1708,29 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
     if (-not $adapter -or -not $adapter.Ctx -or $adapter.Ctx.Kind -ne 'real-readonly-dism') {
         throw 'Live read-only preflight requires New-XboxOSRealReadOnlyDismAdapter (kind=real-readonly-dism).'
     }
+    if ([bool]$adapter.Ctx.NativeRunner -and -not $HiveReader) {
+        throw 'Harnessed live read-only runs require -HiveReader so observed metadata is not substituted from expected values.'
+    }
 
     $null = $Preflight.audit.Add((New-XboxOSAuditEvent -Type 'PreflightStart' -Message 'Live read-only preflight started'))
 
     $isoMounted = $false
     $isoMountInfo = $null
-    $expectedSha = (Get-XboxOSExpectedSourceIsoSha256).ToUpperInvariant()
+    $expectedIdentity = Get-XboxOSExpectedSourceImageIdentity
+    $expectedSha = ([string]$expectedIdentity.isoSha256).ToUpperInvariant()
+    $Preflight.expectedSourceImage = $expectedIdentity
+    $Preflight.cleanupVerified = $false
+    $Preflight.inventoryMetadataVerified = $false
 
+    # Discard accidental pipeline output from nested asserts/Add calls.
+    $null = $(
     try {
-        # Probe mounts first (empty when harnessed; real DISM when NativeRunner absent).
         $existingMounts = @()
         try {
             $mountedProbe = $adapter.InvokeOperation('GetMountedImageInfo')
             $null = $Preflight.commands.Add($mountedProbe)
             $existingMounts = @(ConvertFrom-XboxOSMountedImageInfoOutput -Output @($mountedProbe.Output))
+            $Preflight.baselineMountInventory = @($existingMounts)
         }
         catch {
             $null = $Preflight.blockers.Add(('Mounted-image probe failed: {0}' -f $_.Exception.Message))
@@ -1423,8 +1751,18 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         if ($null -eq $Preflight.prerequisites -or -not [bool]$Preflight.prerequisites.valid) {
             foreach ($e in @($Preflight.prerequisites.errors)) { $null = $Preflight.blockers.Add($e) }
             $Preflight.transactionState = 'Failed'
-            $Preflight.cleanupStatus = 'NotRequired'
+            $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status NotRequired
             throw 'Live read-only prerequisites failed.'
+        }
+
+        $actualIsoSha = if ($Preflight.prerequisites.actualSha256) {
+            ([string]$Preflight.prerequisites.actualSha256).ToUpperInvariant()
+        }
+        else {
+            Get-XboxOSSourceIsoSha256ForPreflight -IsoPath $Preflight.isoPath -HashProvider $HashProvider
+        }
+        if (-not [string]::Equals($actualIsoSha, $expectedSha, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw ("Source ISO SHA256 mismatch before lifecycle. expected={0} actual={1}" -f $expectedSha, $actualIsoSha)
         }
 
         $Preflight.transactionState = 'SourceVerified'
@@ -1439,16 +1777,7 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         $img = $adapter.InvokeOperation('GetImageInfo', @{ ImageFile = $isoMountInfo.SourceImageFile })
         $null = $Preflight.commands.Add($img)
         $images = @(ConvertFrom-XboxOSDismImageInfoOutput -Output @($img.Output))
-        $resolved = Resolve-XboxOSExactImageIndex -Images $images -ExactName $script:XboxOSExpectedEditionName
-        $Preflight.sourceImage = [pscustomobject]@{
-            editionName     = [string]$resolved.Name
-            sourceIndex     = [int]$resolved.Index
-            buildNumber     = $script:XboxOSExpectedBuildNumber
-            displayVersion  = $script:XboxOSExpectedDisplayVersion
-            isoSha256       = $expectedSha
-            isoPath         = $Preflight.isoPath
-            sourceImageFile = [string]$isoMountInfo.SourceImageFile
-        }
+        $resolved = Resolve-XboxOSExactImageIndex -Images $images -ExactName $expectedIdentity.editionName
 
         $Preflight.workspace = New-XboxOSDisposableWorkspace -WorkRoot $Preflight.workRoot
         if (-not $SkipWorkspaceFiles) {
@@ -1461,10 +1790,17 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
 
         $export = $adapter.InvokeOperation('ExportImage', @{
                 SourceImageFile      = $isoMountInfo.SourceImageFile
-                SourceIndex          = [string]$Preflight.sourceImage.sourceIndex
+                SourceIndex          = [string]$resolved.Index
                 DestinationImageFile = $Preflight.workspace.disposableWimPath
             })
         $null = $Preflight.commands.Add($export)
+        $Preflight.disposableExportAttempted = $true
+        if ([int]$export.ExitCode -ne 0) {
+            throw ("Disposable WIM export failed with exit code {0}." -f $export.ExitCode)
+        }
+        if (-not (Test-Path -LiteralPath $Preflight.workspace.disposableWimPath)) {
+            throw 'Disposable WIM export reported success but destination file is missing.'
+        }
         $Preflight.disposableExportOccurred = $true
         $Preflight.transactionState = 'DisposableWimExported'
 
@@ -1481,9 +1817,13 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         if ([int]$exportMeta[0].Index -ne 1) {
             throw ("Expected exported image index 1, found {0}." -f $exportMeta[0].Index)
         }
-        if (-not [string]::Equals([string]$exportMeta[0].Name.Trim(), $script:XboxOSExpectedEditionName, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw ("Exported image name '{0}' does not exactly match '{1}'." -f $exportMeta[0].Name, $script:XboxOSExpectedEditionName)
+        if (-not [string]::Equals([string]$exportMeta[0].Name.Trim(), [string]$expectedIdentity.editionName, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw ("Exported image name '{0}' does not exactly match '{1}'." -f $exportMeta[0].Name, $expectedIdentity.editionName)
         }
+
+        $exportVersionBuild = ConvertTo-XboxOSNormalizedBuildNumber -VersionText $exportMeta[0].Version
+        $architecture = $null
+        if ($exportMeta[0].PSObject.Properties['Architecture']) { $architecture = [string]$exportMeta[0].Architecture }
 
         if ((Test-Path -LiteralPath $Preflight.workspace.disposableWimPath) -and -not $adapter.Ctx.NativeRunner) {
             $Preflight.disposableWimSha256 = (Get-XboxOSFileHash -Path $Preflight.workspace.disposableWimPath).Hash
@@ -1491,7 +1831,11 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         elseif (Test-Path -LiteralPath $Preflight.workspace.disposableWimPath) {
             $Preflight.disposableWimSha256 = Get-XboxOSUtf8Sha256Hex -Text ((Get-Content -LiteralPath $Preflight.workspace.disposableWimPath -Raw -ErrorAction SilentlyContinue))
         }
+        if ([string]::IsNullOrWhiteSpace([string]$Preflight.disposableWimSha256)) {
+            throw 'Exported disposable WIM identity hash could not be established.'
+        }
 
+        $Preflight.readOnlyMountAttempted = $true
         $mount = $adapter.InvokeOperation('MountImageReadOnly', @{
                 ImageFile = $Preflight.workspace.disposableWimPath
                 Index     = '1'
@@ -1499,13 +1843,13 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
             })
         $null = $Preflight.commands.Add($mount)
         $Preflight.mountOwned = $true
-        $Preflight.readOnlyMountOccurred = $true
         $Preflight.transactionState = 'ReadOnlyMounted'
 
         $ownedMountProbe = $adapter.InvokeOperation('GetMountedImageInfo')
         $null = $Preflight.commands.Add($ownedMountProbe)
         $ownedMounts = @(ConvertFrom-XboxOSMountedImageInfoOutput -Output @($ownedMountProbe.Output))
-        $ownedHit = @($ownedMounts | Where-Object {
+        $ownedHit = @(
+            $ownedMounts | Where-Object {
                 $_.MountDir -and (
                     [string]::Equals(
                         (Get-XboxOSCanonicalPath -Path $_.MountDir),
@@ -1513,10 +1857,45 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
                         [System.StringComparison]::OrdinalIgnoreCase
                     )
                 )
-            })
+            }
+        )
         if ($ownedHit.Count -lt 1) {
-            throw 'Owned read-only mount not present in Get-MountedImageInfo after mount.'
+            throw 'Owned read-only mount not present in Get-MountedImageInfo after mount (uncertain mount outcome).'
         }
+        $Preflight.readOnlyMountOccurred = $true
+        if ($adapter.Ctx) { $adapter.Ctx.ReadOnlyMountOccurred = $true }
+
+        $hiveMeta = Get-XboxOSMountedImageHiveMetadata -MountDir $Preflight.workspace.mountDir -HiveReader $HiveReader
+        if ([string]::IsNullOrWhiteSpace([string]$hiveMeta.buildNumber) -or [string]::IsNullOrWhiteSpace([string]$hiveMeta.displayVersion)) {
+            throw 'Mounted-image hive metadata incomplete (buildNumber/displayVersion required).'
+        }
+        if ($exportVersionBuild -and -not [string]::Equals($exportVersionBuild, [string]$hiveMeta.buildNumber, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw ("Exported WIM Version build '{0}' contradicts mounted hive build '{1}'." -f $exportVersionBuild, $hiveMeta.buildNumber)
+        }
+        if (-not $architecture -and $hiveMeta.architecture) { $architecture = [string]$hiveMeta.architecture }
+
+        $observedSource = [pscustomobject]@{
+            editionName         = [string]$exportMeta[0].Name.Trim()
+            sourceIndex         = [int]$resolved.Index
+            exportedIndex       = 1
+            buildNumber         = [string]$hiveMeta.buildNumber
+            displayVersion      = [string]$hiveMeta.displayVersion
+            architecture        = $architecture
+            editionId           = $hiveMeta.editionId
+            productName         = $hiveMeta.productName
+            isoSha256           = $actualIsoSha
+            isoPath             = $Preflight.isoPath
+            sourceImageFile     = [string]$isoMountInfo.SourceImageFile
+            disposableWimPath   = $Preflight.workspace.disposableWimPath
+            disposableWimSha256 = [string]$Preflight.disposableWimSha256
+            imageVersionText    = $(if ($exportMeta[0].Version) { [string]$exportMeta[0].Version } else { $null })
+            metadataSource      = ('{0}+dism-imageinfo' -f $hiveMeta.metadataSource)
+            verified            = $false
+        }
+        $null = Assert-XboxOSObservedSourceImageIdentity -Observed $observedSource -Expected $expectedIdentity
+        $observedSource.verified = $true
+        $Preflight.sourceImage = $observedSource
+        $Preflight.inventoryMetadataVerified = $true
 
         $pkg = $adapter.InvokeOperation('GetPackages', @{ MountDir = $Preflight.workspace.mountDir })
         $appx = $adapter.InvokeOperation('GetProvisionedAppxPackages', @{ MountDir = $Preflight.workspace.mountDir })
@@ -1524,11 +1903,17 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         $null = $Preflight.commands.Add($pkg)
         $null = $Preflight.commands.Add($appx)
         $null = $Preflight.commands.Add($feat)
+        if ([int]$pkg.ExitCode -ne 0 -or [int]$appx.ExitCode -ne 0 -or [int]$feat.ExitCode -ne 0) {
+            throw 'Inventory enumeration returned a nonzero DISM exit code.'
+        }
         $Preflight.realReadOnlyInspectionOccurred = $true
 
         $appxNames = @(ConvertFrom-XboxOSDismProvisionedAppxListOutput -Output @($appx.Output) | ForEach-Object { $_.PackageName })
         $features = @(ConvertFrom-XboxOSDismFeatureListOutput -Output @($feat.Output))
         $packages = @(ConvertFrom-XboxOSDismPackageListOutput -Output @($pkg.Output))
+        if ($appxNames.Count -lt 1 -or $features.Count -lt 1 -or $packages.Count -lt 1) {
+            throw 'Inventory parsing produced incomplete package/AppX/feature sets.'
+        }
 
         $Preflight.freshInventory = New-XboxOSInventorySnapshot `
             -AppxAvailability Available `
@@ -1543,7 +1928,7 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
             -AdvertisedFeatureCount $features.Count `
             -AdvertisedPackageCount $packages.Count
 
-        Assert-XboxOSInventoryCompletenessForPreflight -Inventory $Preflight.freshInventory
+        $null = Assert-XboxOSInventoryCompletenessForPreflight -Inventory $Preflight.freshInventory -BaselineInventory $Preflight.baselineInventory
         $Preflight.transactionState = 'InventoryCaptured'
 
         $Preflight.driftResult = Test-XboxOSInventoryDrift `
@@ -1579,9 +1964,20 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
         $null = Assert-XboxOSDisposableWorkspaceOwnership -Workspace $Preflight.workspace -OwnershipToken $Preflight.workspace.ownershipToken -CandidateMountDir $Preflight.workspace.mountDir
         $unmount = $adapter.InvokeOperation('UnmountDiscard', @{ MountDir = $Preflight.workspace.mountDir })
         $null = $Preflight.commands.Add($unmount)
+        if ([int]$unmount.ExitCode -ne 0) {
+            throw ("Unmount-Discard failed with exit code {0}." -f $unmount.ExitCode)
+        }
+
+        $cleanupConfirm = Confirm-XboxOSOwnedMountCleanup `
+            -Adapter $adapter `
+            -OwnedMountDir $Preflight.workspace.mountDir `
+            -BaselineMounts $Preflight.baselineMountInventory
+        $null = $Preflight.commands.Add($cleanupConfirm.command)
+        $Preflight.finalMountInventory = @($cleanupConfirm.finalMounts)
+        $Preflight.cleanupVerified = $true
         $Preflight.mountOwned = $false
         $Preflight.transactionState = 'ReadOnlyUnmounted'
-        $Preflight.cleanupStatus = 'Succeeded'
+        $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Succeeded
         $Preflight.transactionState = 'Completed'
     }
     catch {
@@ -1590,29 +1986,42 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
             $Preflight.transactionState = 'RecoveryRequired'
         }
         try {
-            if ($Preflight.workspace -and $Preflight.mountOwned) {
+            if ($Preflight.workspace -and ($Preflight.mountOwned -or [bool]$adapter.Ctx.MountOwned -or [bool]$Preflight.readOnlyMountAttempted)) {
                 $null = Assert-XboxOSDisposableWorkspaceOwnership -Workspace $Preflight.workspace -OwnershipToken $Preflight.workspace.ownershipToken -CandidateMountDir $Preflight.workspace.mountDir
                 $null = $adapter.InvokeOperation('UnmountDiscard', @{ MountDir = $Preflight.workspace.mountDir })
-                $Preflight.mountOwned = $false
-                $Preflight.cleanupStatus = 'Recovered'
-                $Preflight.transactionState = 'Aborted'
+                try {
+                    $cleanupConfirm = Confirm-XboxOSOwnedMountCleanup `
+                        -Adapter $adapter `
+                        -OwnedMountDir $Preflight.workspace.mountDir `
+                        -BaselineMounts $Preflight.baselineMountInventory
+                    $null = $Preflight.commands.Add($cleanupConfirm.command)
+                    $Preflight.finalMountInventory = @($cleanupConfirm.finalMounts)
+                    $Preflight.cleanupVerified = $true
+                    $Preflight.mountOwned = $false
+                    $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Recovered
+                    $Preflight.transactionState = 'Aborted'
+                }
+                catch {
+                    $null = $Preflight.blockers.Add(('Cleanup confirmation failure: {0}' -f $_.Exception.Message))
+                    $Preflight.cleanupVerified = $false
+                    $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Failed
+                    $Preflight.transactionState = 'Failed'
+                    $null = $Preflight.blockers.Add('RecoveryRequired: owned mount cleanup could not be independently confirmed; workspace and logs preserved.')
+                }
             }
             elseif ($Preflight.cleanupStatus -eq 'NotStarted' -or $Preflight.cleanupStatus -eq 'NotRequired') {
-                if ($Preflight.transactionState -eq 'Failed') {
-                    $Preflight.cleanupStatus = 'NotRequired'
-                }
-                else {
-                    $Preflight.cleanupStatus = 'NotRequired'
-                    if ($Preflight.transactionState -eq 'RecoveryRequired') {
-                        $Preflight.transactionState = 'Failed'
-                    }
+                $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status NotRequired
+                if ($Preflight.transactionState -eq 'RecoveryRequired') {
+                    $Preflight.transactionState = 'Failed'
                 }
             }
         }
         catch {
             $null = $Preflight.blockers.Add(('Cleanup failure: {0}' -f $_.Exception.Message))
-            $Preflight.cleanupStatus = 'Failed'
+            $Preflight.cleanupVerified = $false
+            $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Failed
             $Preflight.transactionState = 'Failed'
+            $null = $Preflight.blockers.Add('RecoveryRequired: cleanup failed; workspace and logs preserved for manual investigation.')
         }
     }
     finally {
@@ -1623,14 +2032,11 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
             }
             catch {
                 $null = $Preflight.blockers.Add(('ISO dismount failure: {0}' -f $_.Exception.Message))
-                if ($Preflight.cleanupStatus -ne 'Failed') {
-                    $Preflight.cleanupStatus = 'Failed'
-                }
+                $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Failed
                 $Preflight.transactionState = 'Failed'
             }
         }
 
-        # Always re-verify original ISO when accessible.
         try {
             if (Test-Path -LiteralPath $Preflight.isoPath) {
                 $Preflight.postIsoSha256 = Get-XboxOSSourceIsoSha256ForPreflight -IsoPath $Preflight.isoPath -HashProvider $HashProvider
@@ -1644,29 +2050,43 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
                     $Preflight.sourceIsoProtected = $false
                     if ($Preflight.transactionState -eq 'Completed') {
                         $Preflight.transactionState = 'Failed'
-                        $Preflight.cleanupStatus = 'Failed'
                     }
+                    $null = Set-XboxOSPreflightCleanupStatus -Preflight $Preflight -Status Failed
                 }
                 else {
                     $Preflight.sourceIsoProtected = $true
                 }
             }
+            else {
+                $Preflight.postIsoIntegrityVerified = $false
+                $null = $Preflight.blockers.Add('Post-run ISO integrity check failed: ISO path not accessible.')
+                if ($Preflight.transactionState -eq 'Completed') {
+                    $Preflight.transactionState = 'Failed'
+                }
+            }
         }
         catch {
+            $Preflight.postIsoIntegrityVerified = $false
             $null = $Preflight.blockers.Add(('Post-run ISO integrity check failed: {0}' -f $_.Exception.Message))
+            if ($Preflight.transactionState -eq 'Completed') {
+                $Preflight.transactionState = 'Failed'
+            }
         }
     }
 
     if ($adapter.Ctx) {
         $Preflight.realReadOnlyInspectionOccurred = [bool]$adapter.Ctx.RealReadOnlyInspectionOccurred -or [bool]$Preflight.realReadOnlyInspectionOccurred
-        $Preflight.disposableExportOccurred = [bool]$adapter.Ctx.DisposableExportOccurred -or [bool]$Preflight.disposableExportOccurred
-        $Preflight.readOnlyMountOccurred = [bool]$adapter.Ctx.ReadOnlyMountOccurred -or [bool]$Preflight.readOnlyMountOccurred
+        $Preflight.disposableExportOccurred = [bool]$adapter.Ctx.DisposableExportOccurred -and [bool]$Preflight.disposableExportOccurred
+        $Preflight.readOnlyMountOccurred = [bool]$Preflight.readOnlyMountOccurred
+        $Preflight.readOnlyMountAttempted = [bool]$adapter.Ctx.ReadOnlyMountAttempted -or [bool]$Preflight.readOnlyMountAttempted
+        $Preflight.disposableExportAttempted = [bool]$adapter.Ctx.DisposableExportAttempted -or [bool]$Preflight.disposableExportAttempted
+        $Preflight.mountOwned = [bool]$adapter.Ctx.MountOwned -or [bool]$Preflight.mountOwned
     }
 
     $Preflight.modifyingCommandsInvoked = $false
     $Preflight.realDismExecutionEnabled = $false
     $Preflight.executionAuthorized = $false
-    Assert-XboxOSExecutionSafetyInvariants -Transaction ([pscustomobject]@{
+    $null = Assert-XboxOSExecutionSafetyInvariants -Transaction ([pscustomobject]@{
             modifyingCommandsInvoked = $Preflight.modifyingCommandsInvoked
             executionAuthorized      = $Preflight.executionAuthorized
             realDismExecutionEnabled = $Preflight.realDismExecutionEnabled
@@ -1675,12 +2095,18 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
     $lifecycleOk = (
         $Preflight.transactionState -eq 'Completed' -and
         $Preflight.cleanupStatus -eq 'Succeeded' -and
+        [bool]$Preflight.cleanupVerified -and
         -not $Preflight.mountOwned -and
-        [bool]$Preflight.postIsoIntegrityVerified
+        [bool]$Preflight.postIsoIntegrityVerified -and
+        [bool]$Preflight.inventoryMetadataVerified -and
+        $null -ne $Preflight.freshInventory -and
+        $Preflight.freshInventory.verificationStatus -eq 'Authoritative'
     )
     if (-not $lifecycleOk) {
-        if ($Preflight.cleanupStatus -eq 'Failed' -or $Preflight.mountOwned) {
-            $Preflight.transactionState = 'Failed'
+        if ($Preflight.cleanupStatus -eq 'Failed' -or $Preflight.mountOwned -or -not $Preflight.cleanupVerified) {
+            if ($Preflight.mountOwned -or ($Preflight.cleanupStatus -eq 'Failed')) {
+                $Preflight.transactionState = 'Failed'
+            }
             if ($Preflight.mountOwned) {
                 $null = $Preflight.blockers.Add('RecoveryRequired: owned mount still held; workspace and logs preserved for manual investigation.')
             }
@@ -1695,7 +2121,9 @@ function Invoke-XboxOSDisposableImagePreflightLiveReadOnly {
     }
 
     $null = $Preflight.audit.Add((New-XboxOSAuditEvent -Type 'PreflightEnd' -Message ("state={0} decision={1}" -f $Preflight.transactionState, $Preflight.preflightDecision)))
-    , $Preflight
+    ) # end pipeline-discard subexpression
+
+    return $Preflight
 }
 
 function Save-XboxOSDisposableImagePreflightReport {
@@ -1715,8 +2143,11 @@ function Save-XboxOSDisposableImagePreflightReport {
         $Stem = $Stem + '-live-readonly'
     }
 
-    if ($Preflight.cleanupStatus -eq 'Failed' -or $Preflight.mountOwned) {
-        $null = $Preflight.blockers.Add('Cleanup incomplete or mount ownership still held; cannot report unconditional success.')
+    if ($Preflight.cleanupStatus -eq 'Failed' -or $Preflight.mountOwned -or ($Preflight.mode -eq 'LiveReadOnly' -and -not [bool]$Preflight.cleanupVerified)) {
+        $null = $Preflight.blockers.Add('Cleanup incomplete, unverified, or mount ownership still held; cannot report unconditional success.')
+    }
+    if ($Preflight.mode -eq 'LiveReadOnly' -and -not [bool]$Preflight.inventoryMetadataVerified) {
+        $null = $Preflight.blockers.Add('Inventory/source metadata verification incomplete; cannot report success.')
     }
 
     $lifecycleOk = (
@@ -1728,7 +2159,14 @@ function Save-XboxOSDisposableImagePreflightReport {
         -not $Preflight.executionAuthorized
     )
     if ($Preflight.mode -eq 'LiveReadOnly') {
-        $lifecycleOk = $lifecycleOk -and [bool]$Preflight.postIsoIntegrityVerified
+        $lifecycleOk = (
+            $lifecycleOk -and
+            [bool]$Preflight.postIsoIntegrityVerified -and
+            [bool]$Preflight.cleanupVerified -and
+            [bool]$Preflight.inventoryMetadataVerified -and
+            $null -ne $Preflight.freshInventory -and
+            $Preflight.freshInventory.verificationStatus -eq 'Authoritative'
+        )
     }
     $decision = if (-not $lifecycleOk) {
         'Failed'
@@ -1762,10 +2200,14 @@ function Save-XboxOSDisposableImagePreflightReport {
         lifecycleCompleted              = [bool]$lifecycleOk
         success                         = [bool]$success
         sourceImage                     = $Preflight.sourceImage
+        expectedSourceImage             = $Preflight.expectedSourceImage
         expectedIsoSha256               = Get-XboxOSExpectedSourceIsoSha256
         postIsoSha256                   = $Preflight.postIsoSha256
         postIsoIntegrityVerified        = [bool]$Preflight.postIsoIntegrityVerified
         disposableWimSha256             = $Preflight.disposableWimSha256
+        inventoryMetadataVerified       = [bool]$Preflight.inventoryMetadataVerified
+        cleanupVerified                 = [bool]$Preflight.cleanupVerified
+        finalMountInventory             = @($Preflight.finalMountInventory)
         prerequisites                   = $Preflight.prerequisites
         workspace                       = $(if ($Preflight.workspace) {
                 [pscustomobject]@{
@@ -1795,6 +2237,7 @@ function Save-XboxOSDisposableImagePreflightReport {
                     exitCode   = $_.ExitCode
                     arguments  = @($_.ArgumentList)
                     command    = $(if ($_.PSObject.Properties['Command']) { $_.Command } else { $null })
+                    failed     = $(if ($_.PSObject.Properties['failed']) { [bool]$_.failed } else { $false })
                 }
             })
         mountOwned                      = [bool]$Preflight.mountOwned
@@ -1805,11 +2248,14 @@ function Save-XboxOSDisposableImagePreflightReport {
         liveReadOnlyAuthorized          = [bool]$Preflight.liveReadOnlyAuthorized
         realReadOnlyInspectionOccurred  = [bool]$Preflight.realReadOnlyInspectionOccurred
         disposableExportOccurred        = [bool]$Preflight.disposableExportOccurred
+        disposableExportAttempted       = [bool]$Preflight.disposableExportAttempted
         readOnlyMountOccurred           = [bool]$Preflight.readOnlyMountOccurred
+        readOnlyMountAttempted          = [bool]$Preflight.readOnlyMountAttempted
         sourceIsoProtected              = [bool]$Preflight.sourceIsoProtected
         notes                           = @(
             'Milestone 4 disposable-image preflight report.'
             'Simulation mode uses mocks/fixtures; live read-only uses allowlisted real adapter after explicit operator authorization.'
+            'Observed source metadata is collected independently from the mounted disposable image; expected identity is recorded separately.'
             'Success never authorizes writable DISM servicing (realDismExecutionEnabled/modifyingCommandsInvoked/executionAuthorized remain false).'
             'Test RSA approval keys are development fixtures only and are never production-trusted.'
         )
@@ -1832,7 +2278,9 @@ function Save-XboxOSDisposableImagePreflightReport {
     $null = $md.Add(('- Drift: **{0}**' -f $(if ($report.driftResult) { $report.driftResult.result } else { 'n/a' })))
     $null = $md.Add(('- Dependencies: **{0}**' -f $(if ($report.dependencyResult) { $report.dependencyResult.aggregateOutcome } else { 'n/a' })))
     $null = $md.Add(('- Cleanup: **{0}**' -f $report.cleanupStatus))
+    $null = $md.Add(('- Cleanup verified: **{0}**' -f $report.cleanupVerified))
     $null = $md.Add(('- Mount owned: **{0}**' -f $report.mountOwned))
+    $null = $md.Add(('- Inventory metadata verified: **{0}**' -f $report.inventoryMetadataVerified))
     $null = $md.Add(('- Modifying commands invoked: **{0}**' -f $report.modifyingCommandsInvoked))
     $null = $md.Add(('- Real DISM execution enabled: **{0}**' -f $report.realDismExecutionEnabled))
     $null = $md.Add(('- Execution authorized: **{0}**' -f $report.executionAuthorized))
@@ -1842,6 +2290,12 @@ function Save-XboxOSDisposableImagePreflightReport {
     $null = $md.Add(('- Read-only mount occurred: **{0}**' -f $report.readOnlyMountOccurred))
     $null = $md.Add(('- Source ISO protected: **{0}**' -f $report.sourceIsoProtected))
     $null = $md.Add(('- Post-ISO integrity verified: **{0}**' -f $report.postIsoIntegrityVerified))
+    if ($report.expectedSourceImage) {
+        $null = $md.Add(('- Expected identity: `{0}` / `{1}` / `{2}`' -f $report.expectedSourceImage.editionName, $report.expectedSourceImage.buildNumber, $report.expectedSourceImage.displayVersion))
+    }
+    if ($report.sourceImage -and $report.sourceImage.PSObject.Properties['buildNumber']) {
+        $null = $md.Add(('- Observed identity: `{0}` / `{1}` / `{2}`' -f $report.sourceImage.editionName, $report.sourceImage.buildNumber, $report.sourceImage.displayVersion))
+    }
     $null = $md.Add('')
     $null = $md.Add('## Blockers')
     $null = $md.Add('')
@@ -1852,3 +2306,4 @@ function Save-XboxOSDisposableImagePreflightReport {
 
     return [pscustomobject]@{ Json = $jsonPath; Markdown = $mdPath; Report = [pscustomobject]$report }
 }
+

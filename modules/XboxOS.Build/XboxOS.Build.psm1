@@ -1604,6 +1604,7 @@ function ConvertFrom-XboxOSDismImageInfoOutput {
                 Description  = $null
                 Size         = $null
                 Architecture = $null
+                Version      = $null
             }
             $sawIndex = $true
             continue
@@ -1621,6 +1622,9 @@ function ConvertFrom-XboxOSDismImageInfoOutput {
             }
             elseif ($text -match '^\s*Architecture\s*:\s*(.+)$') {
                 $current.Architecture = $Matches[1].Trim()
+            }
+            elseif ($text -match '^\s*Version\s*:\s*(.+)$') {
+                $current.Version = $Matches[1].Trim()
             }
         }
     }
@@ -1689,9 +1693,11 @@ function Resolve-XboxOSExactImageIndex {
     $description = $null
     $size = $null
     $architecture = $null
+    $version = $null
     if ($null -ne $selected.PSObject.Properties['Description']) { $description = $selected.Description }
     if ($null -ne $selected.PSObject.Properties['Size']) { $size = $selected.Size }
     if ($null -ne $selected.PSObject.Properties['Architecture']) { $architecture = $selected.Architecture }
+    if ($null -ne $selected.PSObject.Properties['Version']) { $version = $selected.Version }
 
     return [pscustomobject]@{
         Index        = [int]$selected.Index
@@ -1699,6 +1705,7 @@ function Resolve-XboxOSExactImageIndex {
         Description  = $description
         Size         = $size
         Architecture = $architecture
+        Version      = $version
         MatchCount   = 1
         Available    = @(
             $list | ForEach-Object {

@@ -17,9 +17,10 @@
 3. **Real adapter** — `New-XboxOSRealReadOnlyDismAdapter` with injectable `NativeRunner` for tests; production path shells `dism.exe` only with allowlisted argument arrays.
 4. **Live read-only gate** — `-Mode LiveReadOnly` requires `-ConfirmLiveReadOnlyPreflight`, `-AllowLiveReadOnlyPreflight`, and `-IUnderstandTemporaryHostState`. CI (`GITHUB_ACTIONS` / `CI` / `TF_BUILD`) always refuses.
 5. **ISO → install.wim/esd → export** — live path mounts the ISO, enumerates indexes, exports the exact Windows 11 Pro index to a disposable WIM, then dismounts the ISO before read-only WIM mount.
-6. **Hard flags stay false** — `realDismExecutionEnabled`, `modifyingCommandsInvoked`, and `executionAuthorized` remain false (writable servicing). Separate activity flags record real inspection / export / read-only mount.
-7. **Cleanup is ownership-scoped** — `/Unmount-Image /Discard` only for the validated owned mount; no global `/Cleanup-Mountpoints`.
-8. **Live reports use a separate namespace** — `m4-live-readonly` so Milestone 1 evidence is never overwritten.
+6. **Observed metadata** — build/UBR/DisplayVersion/edition come from mounted-image hive + DISM image info; expected identity is stored separately and compared fail-closed.
+7. **Verified cleanup** — after `/Unmount-Image /Discard`, `/Get-MountedImageInfo` must confirm the owned mount is absent; Failed cleanup status is sticky.
+8. **Hard flags stay false** — `realDismExecutionEnabled`, `modifyingCommandsInvoked`, and `executionAuthorized` remain false (writable servicing). Separate activity flags record real inspection / export / read-only mount.
+9. **Live reports use a separate namespace** — `m4-live-readonly` so Milestone 1 evidence is never overwritten.
 
 ## Operator live command (do not run from automation)
 

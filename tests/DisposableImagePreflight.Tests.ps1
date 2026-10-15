@@ -47,8 +47,8 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
         }
     }
 
-    It 'reports preflight engine 4.1.0 and readonly-dism-v1' {
-        Get-XboxOSPreflightEngineVersion | Should -Be '4.1.0'
+    It 'reports preflight engine 4.1.1 and readonly-dism-v1' {
+        Get-XboxOSPreflightEngineVersion | Should -Be '4.1.1'
         Get-XboxOSReadOnlyDismAdapterVersion | Should -Be 'readonly-dism-v1'
         Get-XboxOSRealDismExecutionEnabled | Should -BeFalse
     }
@@ -185,6 +185,16 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
         $adapter = New-XboxOSRealReadOnlyDismAdapter -DismPath 'C:\Windows\System32\dism.exe' -NativeRunner $rec.Runner
         $expectedSha = [string]$script:ExpectedSha
         $hashProvider = { param($IsoPath) return $expectedSha }.GetNewClosure()
+        $hiveReader = {
+            param($MountDir)
+            return [pscustomobject]@{
+                buildNumber    = '26300.9457'
+                displayVersion = '26H2'
+                editionId      = 'Professional'
+                productName    = 'Windows 11 Pro'
+                architecture   = 'amd64'
+            }
+        }
         $mountRunner = {
             param($IsoPath)
             return [pscustomobject]@{
@@ -216,10 +226,13 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
             -IsoMountRunner $mountRunner `
             -IsoDismountRunner $dismountRunner `
             -HashProvider $hashProvider `
+            -HiveReader $hiveReader `
             -MinimumFreeBytes 1KB
 
         $pf.transactionState | Should -Be 'Completed'
         $pf.cleanupStatus | Should -Be 'Succeeded'
+        $pf.cleanupVerified | Should -BeTrue
+        $pf.inventoryMetadataVerified | Should -BeTrue
         $pf.mountOwned | Should -BeFalse
         $pf.modifyingCommandsInvoked | Should -BeFalse
         $pf.realDismExecutionEnabled | Should -BeFalse
@@ -230,11 +243,16 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
         $pf.readOnlyMountOccurred | Should -BeTrue
         $pf.postIsoIntegrityVerified | Should -BeTrue
         $pf.sourceIsoProtected | Should -BeTrue
+        $pf.sourceImage.verified | Should -BeTrue
+        $pf.sourceImage.buildNumber | Should -Be '26300.9457'
+        $pf.sourceImage.displayVersion | Should -Be '26H2'
+        $pf.expectedSourceImage.buildNumber | Should -Be '26300.9457'
         ($rec.Calls | Where-Object { ($_.ArgumentList -join ' ') -match '/Commit' }).Count | Should -Be 0
         ($rec.Calls | Where-Object { ($_.ArgumentList -join ' ') -match '/Remove-ProvisionedAppxPackage' }).Count | Should -Be 0
         ($rec.Calls | Where-Object { ($_.ArgumentList -join ' ') -match '/Export-Image' }).Count | Should -Be 1
         ($rec.Calls | Where-Object { ($_.ArgumentList -join ' ') -match '/ReadOnly' }).Count | Should -Be 1
         ($rec.Calls | Where-Object { ($_.ArgumentList -join ' ') -match '/Discard' }).Count | Should -Be 1
+        ($rec.Calls | Where-Object { ($_.ArgumentList -join ' ') -match '/Get-MountedImageInfo' }).Count | Should -BeGreaterThan 2
 
         $paths = Save-XboxOSDisposableImagePreflightReport -Preflight $pf -OutputDirectory $script:LogsRoot -Stem 'm4-live-harness'
         $json = Get-Content -LiteralPath $paths.Json -Raw | ConvertFrom-Json
@@ -243,6 +261,8 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
         $json.realDismExecutionEnabled | Should -BeFalse
         $json.executionAuthorized | Should -BeFalse
         $json.realReadOnlyInspectionOccurred | Should -BeTrue
+        $json.cleanupVerified | Should -BeTrue
+        $json.inventoryMetadataVerified | Should -BeTrue
     }
 
     It 'aborts harnessed live path on unexpected mounts and cleanup failure prevents success' {
@@ -272,6 +292,7 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
             -IUnderstandTemporaryHostState `
             -AllowCiBypassForUnitTests `
             -HashProvider $hashProvider `
+            -HiveReader ({ param($MountDir) [pscustomobject]@{ buildNumber = '26300.9457'; displayVersion = '26H2' } }) `
             -MinimumFreeBytes 1KB `
             -IsoMountRunner { throw 'should not mount' } `
             -IsoDismountRunner { }
@@ -308,6 +329,15 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
                 DiskImage       = $null
             }
         }.GetNewClosure()
+        $hiveReader2 = {
+            param($MountDir)
+            return [pscustomobject]@{
+                buildNumber    = '26300.9457'
+                displayVersion = '26H2'
+                editionId      = 'Professional'
+                productName    = 'Windows 11 Pro'
+            }
+        }
         $pf2 = Invoke-XboxOSDisposableImagePreflightLiveReadOnly `
             -Preflight $pf2 `
             -ConfirmLiveReadOnlyPreflight `
@@ -315,12 +345,183 @@ Describe 'XboxOS11 Milestone 4 disposable-image preflight' {
             -IUnderstandTemporaryHostState `
             -AllowCiBypassForUnitTests `
             -HashProvider $hashProvider2 `
+            -HiveReader $hiveReader2 `
             -MinimumFreeBytes 1KB `
             -IsoMountRunner $mountRunner2 `
             -IsoDismountRunner { param($IsoPath) }
         $pf2.transactionState | Should -Not -Be 'Completed'
         $pf2.cleanupStatus | Should -BeIn @('Failed', 'Recovered')
+        $pf2.cleanupVerified | Should -BeFalse
         $pf2.preflightDecision | Should -Be 'Failed'
+    }
+
+    It 'fails closed on observed edition/build/DisplayVersion mismatches' {
+        $expected = Get-XboxOSExpectedSourceImageIdentity
+        {
+            Assert-XboxOSObservedSourceImageIdentity -Observed ([pscustomobject]@{
+                    editionName    = 'Windows 11 Home'
+                    buildNumber    = $expected.buildNumber
+                    displayVersion = $expected.displayVersion
+                    isoSha256      = $expected.isoSha256
+                    exportedIndex  = 1
+                    sourceIndex    = 1
+                }) -Expected $expected
+        } | Should -Throw -ExpectedMessage '*edition*'
+        {
+            Assert-XboxOSObservedSourceImageIdentity -Observed ([pscustomobject]@{
+                    editionName    = $expected.editionName
+                    buildNumber    = '26100.1'
+                    displayVersion = $expected.displayVersion
+                    isoSha256      = $expected.isoSha256
+                    exportedIndex  = 1
+                    sourceIndex    = 1
+                }) -Expected $expected
+        } | Should -Throw -ExpectedMessage '*buildNumber*'
+        {
+            Assert-XboxOSObservedSourceImageIdentity -Observed ([pscustomobject]@{
+                    editionName    = $expected.editionName
+                    buildNumber    = $expected.buildNumber
+                    displayVersion = '25H2'
+                    isoSha256      = $expected.isoSha256
+                    exportedIndex  = 1
+                    sourceIndex    = 1
+                }) -Expected $expected
+        } | Should -Throw -ExpectedMessage '*displayVersion*'
+
+        ConvertTo-XboxOSNormalizedBuildNumber -VersionText '10.0.26300.9457' | Should -Be '26300.9457'
+    }
+
+    It 'records nonzero DISM exit codes and does not mark export/mount success' {
+        $failRunner = {
+            param($DismPath, $ArgumentList)
+            return @{ ExitCode = 87; Output = @('simulated failure') }
+        }
+        $adapter = New-XboxOSRealReadOnlyDismAdapter -DismPath 'C:\Windows\System32\dism.exe' -NativeRunner $failRunner
+        {
+            $adapter.InvokeOperation('ExportImage', @{
+                    SourceImageFile      = 'C:\XboxOS\Work\src.wim'
+                    SourceIndex          = '6'
+                    DestinationImageFile = 'C:\XboxOS\Work\out.wim'
+                })
+        } | Should -Throw -ExpectedMessage '*exit code 87*'
+        $adapter.Ctx.DisposableExportAttempted | Should -BeTrue
+        $adapter.Ctx.DisposableExportOccurred | Should -BeFalse
+        @($adapter.Ctx.Commands | Where-Object { $_.failed -and $_.exitCode -eq 87 }).Count | Should -Be 1
+    }
+
+    It 'requires cleanup confirmation and sticky Failed cleanup status' {
+        $pf = [pscustomobject]@{
+            cleanupStatus   = 'Failed'
+            cleanupVerified = $false
+        }
+        Set-XboxOSPreflightCleanupStatus -Preflight $pf -Status Succeeded
+        $pf.cleanupStatus | Should -Be 'Failed'
+
+        $pf2 = [pscustomobject]@{
+            cleanupStatus   = 'NotStarted'
+            cleanupVerified = $false
+        }
+        Set-XboxOSPreflightCleanupStatus -Preflight $pf2 -Status Succeeded
+        $pf2.cleanupStatus | Should -Be 'NotStarted'
+        $pf2.cleanupVerified = $true
+        Set-XboxOSPreflightCleanupStatus -Preflight $pf2 -Status Succeeded
+        $pf2.cleanupStatus | Should -Be 'Succeeded'
+    }
+
+    It 'rejects harnessed live metadata mismatches from hive reader' {
+        $isoPath = Join-Path $script:TempRoot 'Windows11_meta_mismatch.iso'
+        Set-Content -LiteralPath $isoPath -Value 'fake' -Encoding ascii
+        $sourceWim = Join-Path $script:TempRoot 'iso-root-meta\sources\install.wim'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $sourceWim) -Force | Out-Null
+        Set-Content -LiteralPath $sourceWim -Value 'wim' -Encoding ascii
+        $rec = New-XboxOSRecordingDismRunner -AutoFixtureResponses -FixtureRoot $script:Fixtures
+        $adapter = New-XboxOSRealReadOnlyDismAdapter -DismPath 'C:\Windows\System32\dism.exe' -NativeRunner $rec.Runner
+        $expectedSha = [string]$script:ExpectedSha
+        $pf = New-XboxOSDisposableImagePreflight `
+            -Plan $script:Plan `
+            -BaselineInventory $script:Inventory `
+            -CompatibilityManifest $script:Compatibility `
+            -Adapter $adapter `
+            -Mode LiveReadOnly `
+            -IsoPath $isoPath `
+            -WorkRoot $script:WorkRoot `
+            -LogsRoot $script:LogsRoot
+        $pf = Invoke-XboxOSDisposableImagePreflightLiveReadOnly `
+            -Preflight $pf `
+            -ConfirmLiveReadOnlyPreflight `
+            -AllowLiveReadOnlyPreflight `
+            -IUnderstandTemporaryHostState `
+            -AllowCiBypassForUnitTests `
+            -HashProvider ({ param($IsoPath) return $expectedSha }.GetNewClosure()) `
+            -HiveReader ({
+                    param($MountDir)
+                    return [pscustomobject]@{
+                        buildNumber    = '26300.9457'
+                        displayVersion = '25H2'
+                        editionId      = 'Professional'
+                        productName    = 'Windows 11 Pro'
+                    }
+                }) `
+            -IsoMountRunner ({
+                    param($IsoPath)
+                    return [pscustomobject]@{
+                        IsoPath = $IsoPath; DriveLetter = 'X'; IsoRoot = 'X:\'
+                        SourceImageFile = $sourceWim; DiskImage = $null
+                    }
+                }.GetNewClosure()) `
+            -IsoDismountRunner { param($IsoPath) } `
+            -MinimumFreeBytes 1KB
+        $pf.transactionState | Should -Not -Be 'Completed'
+        $pf.inventoryMetadataVerified | Should -BeFalse
+        ($pf.blockers -join ' ') | Should -Match 'displayVersion'
+    }
+
+    It 'fails post-run ISO integrity checks and prevents success' {
+        $isoPath = Join-Path $script:TempRoot 'Windows11_posthash.iso'
+        Set-Content -LiteralPath $isoPath -Value 'fake' -Encoding ascii
+        $sourceWim = Join-Path $script:TempRoot 'iso-root-post\sources\install.wim'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $sourceWim) -Force | Out-Null
+        Set-Content -LiteralPath $sourceWim -Value 'wim' -Encoding ascii
+        $rec = New-XboxOSRecordingDismRunner -AutoFixtureResponses -FixtureRoot $script:Fixtures
+        $adapter = New-XboxOSRealReadOnlyDismAdapter -DismPath 'C:\Windows\System32\dism.exe' -NativeRunner $rec.Runner
+        $expectedSha = [string]$script:ExpectedSha
+        $hashCalls = [System.Collections.ArrayList]@()
+        $hashProvider = {
+            param($IsoPath)
+            $null = $hashCalls.Add(1)
+            if ($hashCalls.Count -le 1) { return $expectedSha }
+            return ('F' * 64)
+        }.GetNewClosure()
+        $pf = New-XboxOSDisposableImagePreflight `
+            -Plan $script:Plan `
+            -BaselineInventory $script:Inventory `
+            -CompatibilityManifest $script:Compatibility `
+            -Adapter $adapter `
+            -Mode LiveReadOnly `
+            -IsoPath $isoPath `
+            -WorkRoot $script:WorkRoot `
+            -LogsRoot $script:LogsRoot
+        $pf = Invoke-XboxOSDisposableImagePreflightLiveReadOnly `
+            -Preflight $pf `
+            -ConfirmLiveReadOnlyPreflight `
+            -AllowLiveReadOnlyPreflight `
+            -IUnderstandTemporaryHostState `
+            -AllowCiBypassForUnitTests `
+            -HashProvider $hashProvider `
+            -HiveReader ({
+                    param($MountDir)
+                    [pscustomobject]@{ buildNumber = '26300.9457'; displayVersion = '26H2'; editionId = 'Professional'; productName = 'Windows 11 Pro' }
+                }) `
+            -IsoMountRunner ({
+                    param($IsoPath)
+                    [pscustomobject]@{ IsoPath = $IsoPath; DriveLetter = 'W'; IsoRoot = 'W:\'; SourceImageFile = $sourceWim; DiskImage = $null }
+                }.GetNewClosure()) `
+            -IsoDismountRunner { param($IsoPath) } `
+            -MinimumFreeBytes 1KB
+        $pf.postIsoIntegrityVerified | Should -BeFalse
+        $pf.transactionState | Should -Not -Be 'Completed'
+        $pf.preflightDecision | Should -Be 'Failed'
+        ($pf.blockers -join ' ') | Should -Match 'Post-run ISO SHA256'
     }
 
     It 'detects inventory drift against a mismatched plan fingerprint' {
