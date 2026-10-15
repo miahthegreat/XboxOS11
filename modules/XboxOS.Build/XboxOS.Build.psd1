@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.3.0'
+    ModuleVersion     = '0.4.0'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -103,6 +103,24 @@
         'Save-XboxOSExecutionSafetyReport'
         'New-XboxOSAuditEvent'
         'Assert-XboxOSTransactionTransition'
+        'Get-XboxOSPreflightEngineVersion'
+        'Get-XboxOSReadOnlyDismAdapterVersion'
+        'Get-XboxOSExpectedSourceIsoSha256'
+        'Test-XboxOSDismArgumentListAllowed'
+        'Resolve-XboxOSReadOnlyDismArguments'
+        'Assert-XboxOSReadOnlyDismOperationAllowed'
+        'New-XboxOSMockReadOnlyDismAdapter'
+        'Test-XboxOSSourceImagePrerequisites'
+        'New-XboxOSDisposableWorkspace'
+        'Assert-XboxOSDisposableWorkspaceOwnership'
+        'Get-XboxOSDependencyCategoryEvidence'
+        'New-XboxOSApprovalSigningPayload'
+        'New-XboxOSApprovalSignature'
+        'Test-XboxOSApprovalSignature'
+        'New-XboxOSDisposableImagePreflight'
+        'Invoke-XboxOSDisposableImagePreflightSimulate'
+        'Assert-XboxOSLiveReadOnlyPreflightAuthorization'
+        'Save-XboxOSDisposableImagePreflightReport'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -112,7 +130,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 3: execution safety architecture (simulation only; real DISM disabled).'
+            ReleaseNotes = 'Milestone 4: disposable-image read-only preflight (simulation/mocks; live gated).'
         }
     }
 }
