@@ -20,7 +20,12 @@ Import-Module $modulePath -Force
 
 $adk = Find-XboxOSAdkTools
 if (-not $OscdimgPath) { $OscdimgPath = $adk.Oscdimg }
-if (-not $OscdimgPath -or -not (Test-Path -LiteralPath $OscdimgPath)) {
+if ($DryRun -and (-not $OscdimgPath -or -not (Test-Path -LiteralPath $OscdimgPath))) {
+    # A dry run never invokes oscdimg; report the planned command without requiring ADK.
+    Write-XboxOSLog -Level Warning -Message 'DryRun: oscdimg.exe (Windows ADK Deployment Tools) not found; a real build will require it.'
+    $OscdimgPath = 'oscdimg.exe'
+}
+elseif (-not $OscdimgPath -or -not (Test-Path -LiteralPath $OscdimgPath)) {
     throw @'
 oscdimg.exe was not found. Install Windows ADK Deployment Tools:
 https://learn.microsoft.com/windows-hardware/get-started/adk-install
