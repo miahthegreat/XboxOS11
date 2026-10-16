@@ -178,6 +178,65 @@ Describe 'XboxOS11 Milestone 11 lean image' {
         }
     }
 
+    Context 'offline image version inventory' {
+        BeforeAll {
+            $script:QueryLines = @(
+                '',
+                'HKEY_LOCAL_MACHINE\XboxOSInventory-abc\Microsoft\Windows NT\CurrentVersion',
+                '    CurrentBuild    REG_SZ    26300',
+                '    UBR    REG_DWORD    0x24f1',
+                '    EditionID    REG_SZ    Professional',
+                '    DisplayVersion    REG_SZ    26H2',
+                '    ProductName    REG_SZ    Windows 10 Pro',
+                '    EmptyValue    REG_SZ',
+                ''
+            )
+            $script:NewVersionReg = {
+                param([switch]$FailUnload, [switch]$FailQuery)
+                $calls = New-Object System.Collections.Generic.List[string]
+                $lines = $script:QueryLines
+                $sb = {
+                    param([string[]]$Arguments)
+                    $calls.Add($Arguments[0]) | Out-Null
+                    switch ($Arguments[0]) {
+                        'query' { if ($FailQuery) { @{ ExitCode = 1; Output = @('ERROR') } } else { @{ ExitCode = 0; Output = $lines } } }
+                        'unload' { @{ ExitCode = $(if ($FailUnload) { 1 } else { 0 }); Output = @('x') } }
+                        default { @{ ExitCode = 0; Output = @('ok') } }
+                    }
+                }.GetNewClosure()
+                [pscustomobject]@{ Command = $sb; Calls = $calls }
+            }
+        }
+
+        It 'parses reg.exe query output including DWORD hex values and empty data' {
+            $v = ConvertFrom-XboxOSRegQueryOutput -Lines $script:QueryLines
+            $v['CurrentBuild'] | Should -Be '26300'
+            $v['UBR'] | Should -Be 9457
+            $v['EditionID'] | Should -Be 'Professional'
+            $v.ContainsKey('EmptyValue') | Should -BeTrue
+        }
+
+        It 'reads build metadata with reg.exe only and always unloads the hive' {
+            $fake = & $script:NewVersionReg
+            $r = Read-XboxOSOfflineCurrentVersion -MountDir 'C:\m' -RegCommand $fake.Command
+            $r.build | Should -Be '26300.9457'
+            $r.displayVersion | Should -Be '26H2'
+            $r.editionId | Should -Be 'Professional'
+            @($fake.Calls) | Should -Be @('load', 'query', 'unload')
+        }
+
+        It 'unloads the hive even when the query fails' {
+            $fake = & $script:NewVersionReg -FailQuery
+            { Read-XboxOSOfflineCurrentVersion -MountDir 'C:\m' -RegCommand $fake.Command } | Should -Throw '*CurrentVersion*'
+            @($fake.Calls)[-1] | Should -Be 'unload'
+        }
+
+        It 'fails closed with RecoveryRequired when the hive cannot be unloaded' {
+            $fake = & $script:NewVersionReg -FailUnload
+            { Read-XboxOSOfflineCurrentVersion -MountDir 'C:\m' -RegCommand $fake.Command } | Should -Throw '*RecoveryRequired*'
+        }
+    }
+
     Context 'image size' {
         It 'builds component cleanup arguments with optional ResetBase' {
             (Get-XboxOSComponentCleanupArguments -MountDir 'C:\m') -join ' ' | Should -Be '/Image:C:\m /Cleanup-Image /StartComponentCleanup'

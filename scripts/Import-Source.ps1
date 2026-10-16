@@ -166,14 +166,11 @@ try {
         '/CheckIntegrity'
     ) | Out-Null
 
-    # Prefer install.wim in the source tree for ISO export later.
-    $treeWim = Join-Path $dest 'sources\install.wim'
-    if ($localImage -ne $treeWim) {
-        if (Test-Path -LiteralPath (Join-Path $dest 'sources\install.esd')) {
-            Remove-Item -LiteralPath (Join-Path $dest 'sources\install.esd') -Force
-        }
+    # The serviced image is placed into the tree by Export-ISO. Drop the original install image now
+    # (often 4-6 GB) instead of carrying it, and a second copy, through the whole build.
+    foreach ($removed in @(Clear-XboxOSIsoInstallImages -SourceTree $dest)) {
+        Write-XboxOSLog -Level Information -Message "Removed original install image from working tree: $removed"
     }
-    Copy-Item -LiteralPath $workingWim -Destination $treeWim -Force
 
     $meta = [pscustomobject]@{
         SourceISO     = $isoPath

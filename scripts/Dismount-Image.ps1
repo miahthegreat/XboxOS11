@@ -30,7 +30,7 @@ if (-not $mount) {
 $action = if ($Discard) { 'Discard' } else { 'Commit' }
 Write-XboxOSLog -Level Information -Message "Dismounting image ($action): $mount"
 
-Invoke-XboxOSMountCleanup -MountPath $mount -DismPath $DismPath -Discard:$Discard -DryRun:$DryRun
+Invoke-XboxOSMountCleanup -MountPath $mount -DismPath $DismPath -Discard:$Discard -DryRun:$DryRun -ThrowOnFailure:(-not $Discard)
 $Context.MountedImagePath = $null
 if ($Context.PSObject.Properties.Name -contains 'ImageMounted') {
     $Context.ImageMounted = $false
