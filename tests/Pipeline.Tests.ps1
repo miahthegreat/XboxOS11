@@ -129,6 +129,25 @@ Describe 'XboxOS11 pipeline regression' {
             } | Should -Throw -ExpectedMessage '*exit code 7*'
         }
 
+        It 'fails the build when DISM cannot commit the mounted image' {
+            $dir = Join-Path $env:TEMP ('xboxos-commit-' + [guid]::NewGuid().ToString('N'))
+            $mount = Join-Path $dir 'mount'
+            New-Item -ItemType Directory -Path $mount -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $mount 'placeholder.txt') -Value 'mounted'
+            $fakeDism = Join-Path $dir 'fake-dism.cmd'
+            Set-Content -LiteralPath $fakeDism -Value '@exit /b 5' -Encoding ASCII
+            try {
+                { Invoke-XboxOSMountCleanup -MountPath $mount -DismPath $fakeDism -ThrowOnFailure } | Should -Throw '*failed to commit*'
+                # The emergency discard path after a failure keeps swallowing errors.
+                { Invoke-XboxOSMountCleanup -MountPath $mount -DismPath $fakeDism -Discard } | Should -Not -Throw
+                Remove-Item -LiteralPath (Join-Path $mount 'placeholder.txt')
+                { Invoke-XboxOSMountCleanup -MountPath $mount -DismPath $fakeDism -ThrowOnFailure } | Should -Throw '*no mounted image*'
+            }
+            finally {
+                Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
         It 'tolerates blank lines in DISM output (real DISM prints them)' {
             $cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
             $r = Invoke-XboxOSDism -DismPath $cmd -ArgumentList @('/d', '/c', 'echo Index : 1&echo.&echo Name : Windows 11 Pro&echo.')

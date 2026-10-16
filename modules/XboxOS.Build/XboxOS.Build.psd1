@@ -342,6 +342,8 @@
         'Invoke-XboxOSImageRegistryTweaks'
         'Get-XboxOSComponentCleanupArguments'
         'Get-XboxOSImageExportArguments'
+        'ConvertFrom-XboxOSRegQueryOutput'
+        'Read-XboxOSOfflineCurrentVersion'
         'Clear-XboxOSIsoInstallImages'
         'Get-XboxOSFinalImagePath'
         'Get-XboxOSGamingTweakCatalog'

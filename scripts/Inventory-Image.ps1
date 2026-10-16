@@ -84,22 +84,17 @@ else {
 
     $hive = Join-Path $mount 'Windows\System32\config\SOFTWARE'
     if (Test-Path -LiteralPath $hive) {
-        $tempHive = 'HKLM\XboxOSInventory'
         try {
-            $regLoad = & reg.exe load $tempHive $hive 2>&1
-            if ($LASTEXITCODE -ne 0) { throw "reg load failed ($LASTEXITCODE): $($regLoad -join ' ')" }
-            $cv = Get-ItemProperty -Path 'HKLM:\XboxOSInventory\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop
-            $build = [string]$cv.CurrentBuild
-            if ($cv.UBR) { $build = "$build.$($cv.UBR)" }
-            if (-not $edition -and $cv.EditionID) { $edition = [string]$cv.EditionID }
-            if ($cv.DisplayVersion) { $displayVersion = [string]$cv.DisplayVersion }
-            if ($cv.ProductName) { $productName = [string]$cv.ProductName }
+            $cv = Read-XboxOSOfflineCurrentVersion -MountDir $mount
+            $build = $cv.build
+            if (-not $edition -and $cv.editionId) { $edition = $cv.editionId }
+            $displayVersion = $cv.displayVersion
+            $productName = $cv.productName
         }
         catch {
+            # A hive left loaded would make DISM /Commit fail later; never downgrade that to a warning.
+            if ($_.Exception.Message -match 'RecoveryRequired') { throw }
             Write-XboxOSLog -Level Warning -Message "Registry inventory read failed: $($_.Exception.Message)"
-        }
-        finally {
-            & reg.exe unload $tempHive 2>$null | Out-Null
         }
     }
 

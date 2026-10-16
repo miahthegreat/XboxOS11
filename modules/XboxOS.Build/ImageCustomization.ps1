@@ -175,6 +175,77 @@ function Invoke-XboxOSImageRegistryTweaks {
     return [object[]]$results.ToArray()
 }
 
+function ConvertFrom-XboxOSRegQueryOutput {
+    <#
+    .SYNOPSIS
+      Parses `reg.exe query <key>` output into a name -> value map. REG_DWORD/REG_QWORD hex values become integers.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Lines)
+
+    $values = @{}
+    foreach ($line in $Lines) {
+        if ($line -match '^\s+(\S+)\s+(REG_[A-Z_]+)\s*(.*)$') {
+            $name = $Matches[1]
+            $type = $Matches[2]
+            $data = $Matches[3].Trim()
+            if ($type -in @('REG_DWORD', 'REG_QWORD') -and $data -match '^0x([0-9a-fA-F]+)$') {
+                $data = [Convert]::ToInt64($Matches[1], 16)
+            }
+            $values[$name] = $data
+        }
+    }
+    return $values
+}
+
+function Read-XboxOSOfflineCurrentVersion {
+    <#
+    .SYNOPSIS
+      Reads Windows NT\CurrentVersion from a mounted image's SOFTWARE hive using reg.exe only, so no
+      PowerShell registry handle can keep the hive loaded. The hive is always unloaded; if unloading fails this
+      throws RecoveryRequired, because a loaded hive would make DISM /Commit fail.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$MountDir,
+        [scriptblock]$RegCommand = $null
+    )
+
+    if (-not $RegCommand) {
+        $RegCommand = {
+            param([string[]]$Arguments)
+            $out = & reg.exe @Arguments 2>&1
+            @{ ExitCode = $LASTEXITCODE; Output = @($out | ForEach-Object { "$_" }) }
+        }
+    }
+
+    $hive = Join-Path $MountDir 'Windows\System32\config\SOFTWARE'
+    $root = 'HKLM\XboxOSInventory-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+    $load = & $RegCommand @('load', $root, $hive)
+    if ([int]$load.ExitCode -ne 0) {
+        throw ("Could not load image SOFTWARE hive: {0}" -f (@($load.Output) -join ' '))
+    }
+    try {
+        $q = & $RegCommand @('query', "$root\Microsoft\Windows NT\CurrentVersion")
+        if ([int]$q.ExitCode -ne 0) { throw ("Could not read CurrentVersion: {0}" -f (@($q.Output) -join ' ')) }
+        $v = ConvertFrom-XboxOSRegQueryOutput -Lines @($q.Output)
+        $build = if ($v.ContainsKey('CurrentBuild')) { [string]$v['CurrentBuild'] } else { $null }
+        if ($build -and $v.ContainsKey('UBR')) { $build = '{0}.{1}' -f $build, $v['UBR'] }
+        return [pscustomobject]@{
+            build          = $build
+            editionId      = $(if ($v.ContainsKey('EditionID')) { [string]$v['EditionID'] } else { $null })
+            displayVersion = $(if ($v.ContainsKey('DisplayVersion')) { [string]$v['DisplayVersion'] } else { $null })
+            productName    = $(if ($v.ContainsKey('ProductName')) { [string]$v['ProductName'] } else { $null })
+        }
+    }
+    finally {
+        $unload = & $RegCommand @('unload', $root)
+        if ([int]$unload.ExitCode -ne 0) {
+            throw ("RecoveryRequired: failed to unload image hive at {0}; DISM cannot commit while it is loaded. Run 'reg unload {0}'. Output: {1}" -f $root, (@($unload.Output) -join ' '))
+        }
+    }
+}
+
 #endregion
 
 #region Image size

@@ -2029,15 +2029,19 @@ function Invoke-XboxOSMountCleanup {
         [string]$MountPath,
         [string]$DismPath,
         [switch]$Discard,
-        [switch]$DryRun
+        [switch]$DryRun,
+        # Commit path: a failed /Commit must fail the build instead of being logged and ignored.
+        [switch]$ThrowOnFailure
     )
 
     if (-not $MountPath -or -not (Test-Path -LiteralPath $MountPath)) {
+        if ($ThrowOnFailure -and -not $DryRun) { throw "Cannot commit: mount path not found: $MountPath" }
         return
     }
 
     $hasContent = @(Get-ChildItem -LiteralPath $MountPath -Force -ErrorAction SilentlyContinue).Count -gt 0
     if (-not $hasContent) {
+        if ($ThrowOnFailure -and -not $DryRun) { throw "Cannot commit: no mounted image found at $MountPath" }
         return
     }
 
@@ -2053,6 +2057,9 @@ function Invoke-XboxOSMountCleanup {
         Invoke-XboxOSDism -DismPath $DismPath -ArgumentList $dismArgs -DryRun:$DryRun | Out-Null
     }
     catch {
+        if ($ThrowOnFailure) {
+            throw ("DISM failed to {0} the mounted image; the build stops so an unmodified image is never packaged. {1}" -f $(if ($Discard) { 'discard' } else { 'commit' }), $_.Exception.Message)
+        }
         Write-XboxOSLog -Level Warning -Message "Mount cleanup failed: $($_.Exception.Message)"
         try {
             Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Cleanup-Mountpoints') -DryRun:$DryRun | Out-Null
