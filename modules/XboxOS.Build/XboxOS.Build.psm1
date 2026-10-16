@@ -521,7 +521,13 @@ function Write-XboxOSLog {
 
     $line = ($entry | ConvertTo-Json -Compress -Depth 6)
     if ($script:XboxOSLogFile) {
-        Add-Content -LiteralPath $script:XboxOSLogFile -Value $line -Encoding UTF8
+        try {
+            Add-Content -LiteralPath $script:XboxOSLogFile -Value $line -Encoding UTF8 -ErrorAction Stop
+        }
+        catch {
+            # A log write failure must never abort a build mid-servicing (that could strand a mounted image).
+            Write-Warning ("Could not write to log {0}: {1}" -f $script:XboxOSLogFile, $_.Exception.Message)
+        }
     }
 
     switch ($Level) {

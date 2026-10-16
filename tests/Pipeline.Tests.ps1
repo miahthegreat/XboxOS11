@@ -181,12 +181,35 @@ Describe 'XboxOS11 pipeline regression' {
         }
 
         It 'keeps writing to the build log after phase scripts re-import the module' {
+            $previousLog = $env:XBOXOS11_LOG_FILE
+            $previousLevel = $env:XBOXOS11_LOG_LEVEL
             $dir = Join-Path $env:TEMP ('xboxos-log-' + [guid]::NewGuid().ToString('N'))
-            $log = New-XboxOSLogger -LogDirectory $dir -BuildId 'reimport-test'
-            Import-Module (Join-Path $script:RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1') -Force
-            Write-XboxOSLog -Level Information -Message 'after-reimport-marker'
-            (Get-Content -LiteralPath $log -Raw) | Should -Match 'after-reimport-marker'
-            Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+            try {
+                $log = New-XboxOSLogger -LogDirectory $dir -BuildId 'reimport-test'
+                Import-Module (Join-Path $script:RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1') -Force
+                Write-XboxOSLog -Level Information -Message 'after-reimport-marker'
+                (Get-Content -LiteralPath $log -Raw) | Should -Match 'after-reimport-marker'
+            }
+            finally {
+                # Point later tests back at the previous log before removing this one.
+                $env:XBOXOS11_LOG_FILE = $previousLog
+                $env:XBOXOS11_LOG_LEVEL = $previousLevel
+                Import-Module (Join-Path $script:RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1') -Force
+                Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'never fails a build because the log file cannot be written' {
+            $previousLog = $env:XBOXOS11_LOG_FILE
+            try {
+                $env:XBOXOS11_LOG_FILE = Join-Path $env:TEMP ('missing-' + [guid]::NewGuid().ToString('N') + '\nope\build.log')
+                Import-Module (Join-Path $script:RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1') -Force
+                { Write-XboxOSLog -Level Information -Message 'unwritable' 3>$null } | Should -Not -Throw
+            }
+            finally {
+                $env:XBOXOS11_LOG_FILE = $previousLog
+                Import-Module (Join-Path $script:RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1') -Force
+            }
         }
 
         It 'tolerates blank lines in DISM output (real DISM prints them)' {
