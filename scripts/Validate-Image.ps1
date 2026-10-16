@@ -35,7 +35,7 @@ function Add-ValidationCheck {
     }) | Out-Null
 }
 
-$wim = $Context.Paths.WorkingWim
+$wim = Get-XboxOSFinalImagePath -Context $Context
 $wimExists = $DryRun -or (Test-Path -LiteralPath $wim)
 Add-ValidationCheck -Name 'WimExists' -Passed $wimExists -Message $(if ($wimExists) { "Working WIM present: $wim" } else { "Working WIM missing: $wim" })
 

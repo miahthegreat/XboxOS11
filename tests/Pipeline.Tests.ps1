@@ -129,6 +129,15 @@ Describe 'XboxOS11 pipeline regression' {
             } | Should -Throw -ExpectedMessage '*exit code 7*'
         }
 
+        It 'tolerates blank lines in DISM output (real DISM prints them)' {
+            $cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
+            $r = Invoke-XboxOSDism -DismPath $cmd -ArgumentList @('/d', '/c', 'echo Index : 1&echo.&echo Name : Windows 11 Pro&echo.')
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -Contain 'Index : 1'
+            $r.Output | Should -Contain 'Name : Windows 11 Pro'
+            { Write-XboxOSLog -Level Debug -Message '' } | Should -Not -Throw
+        }
+
         It 'propagates phase failures from Failed result statuses' {
             $failed = [pscustomobject]@{
                 Success = $false

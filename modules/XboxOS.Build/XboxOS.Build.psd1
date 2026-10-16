@@ -1,6 +1,6 @@
 @{
     RootModule        = 'XboxOS.Build.psm1'
-    ModuleVersion     = '0.6.5'
+    ModuleVersion     = '1.0.0'
     GUID              = 'a7c4e2b1-9f3d-4e8a-b2c6-1d5e8f0a9b3c'
     Author            = 'XboxOS11 Contributors'
     CompanyName       = 'XboxOS11'
@@ -328,6 +328,41 @@
         'ConvertTo-XboxOSControlledLiveRedactedResult'
         'Invoke-XboxOSControlledLiveHostDiscovery'
         'Save-XboxOSControlledLiveDiscoveryReport'
+        'Get-XboxOSBuilderEngineVersion'
+        'Get-XboxOSBuildProfileSchemaVersion'
+        'Get-XboxOSBuilderEventPrefix'
+        'Get-XboxOSBuilderLauncherCatalog'
+        'Write-XboxOSBuilderEvent'
+        'ConvertFrom-XboxOSBuilderEventLine'
+        'Get-XboxOSImageCompressionModes'
+        'ConvertFrom-XboxOSDismCapabilityListOutput'
+        'Test-XboxOSCapabilityCandidateProtected'
+        'Get-XboxOSImageTweakCatalog'
+        'New-XboxOSImageHiveLeafName'
+        'Invoke-XboxOSImageRegistryTweaks'
+        'Get-XboxOSComponentCleanupArguments'
+        'Get-XboxOSImageExportArguments'
+        'Clear-XboxOSIsoInstallImages'
+        'Get-XboxOSFinalImagePath'
+        'Get-XboxOSGamingTweakCatalog'
+        'Get-XboxOSToolkitVersion'
+        'Test-XboxOSReleaseVersionConsistency'
+        'New-XboxOSBuildRecord'
+        'Get-XboxOSBuilderPreset'
+        'Copy-XboxOSJsonObject'
+        'New-XboxOSBuildProfile'
+        'ConvertTo-XboxOSOrderedBuildProfile'
+        'Export-XboxOSBuildProfile'
+        'Import-XboxOSBuildProfile'
+        'Get-XboxOSBuildProfileHash'
+        'Get-XboxOSBuilderManifestSet'
+        'Test-XboxOSAppCandidateProtected'
+        'Test-XboxOSBuildProfile'
+        'Get-XboxOSBuildProfileReview'
+        'New-XboxOSUnattendXml'
+        'New-XboxOSPostInstallOptions'
+        'New-XboxOSBuilderEffectiveConfiguration'
+        'Test-XboxOSMediaOverlay'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()
@@ -337,7 +372,7 @@
             Tags         = @('Windows', 'DISM', 'Gaming', 'Xbox', 'ISO', 'Deployment')
             LicenseUri   = 'https://opensource.org/licenses/MIT'
             ProjectUri   = 'https://github.com/miahthegreat/XboxOS11'
-            ReleaseNotes = 'Milestone 6E: controlled live read-only host discovery Gate A (durable replay store, independent approval verifier, read-only invoker AST gate, per-run activation; HostDiscoveryBlocked by default).'
+            ReleaseNotes = 'XboxOS11 1.0.0: native WinUI 3 Builder, profile-driven ISO builds, reversible gaming optimizations, recovery tooling, and release packaging. See CHANGELOG.md.'
         }
     }
 }

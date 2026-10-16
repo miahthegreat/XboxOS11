@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "xboxos-builder-preset-v1",
+  "id": "stock-safe",
+  "order": 5,
+  "displayName": "Stock - Minimal changes",
+  "recommended": false,
+  "description": "No app removal; disables only insecure SMB 1.0. No unattend file. Use to add drivers or updates to otherwise stock media.",
+  "profile": {
+    "source": {
+      "isoPath": "",
+      "editionPattern": "*Pro*",
+      "imageIndex": null
+    },
+    "apps": {
+      "remove": []
+    },
+    "features": {
+      "disable": [
+        "Smb1"
+      ]
+    },
+    "drivers": {
+      "enabled": false,
+      "directory": "C:\\XboxOS\\Drivers"
+    },
+    "updates": {
+      "enabled": false,
+      "directory": "C:\\XboxOS\\Updates"
+    },
+    "setup": {
+      "unattend": false,
+      "uiLanguage": "en-US",
+      "inputLocale": "en-US",
+      "systemLocale": "en-US",
+      "userLocale": "en-US",
+      "timeZone": "Pacific Standard Time",
+      "hideEula": false,
+      "privacy": "Recommended",
+      "startupToGamingHome": false,
+      "postInstall": {
+        "enabled": false,
+        "gameMode": true,
+        "hardwareAcceleratedGpuScheduling": false,
+        "launchers": [],
+        "optimizations": []
+      }
+    },
+    "output": {
+      "directory": "C:\\XboxOS\\Output",
+      "isoLabel": "XboxOS11"
+    }
+  }
+}

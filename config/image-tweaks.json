@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "xboxos-image-tweaks-v1",
+  "description": "Registry settings written into the offline image before it is sealed. DefaultUser settings become the starting values for every new account and can be changed later in Settings. Each entry names the Settings page that controls it.",
+  "tweaks": [
+    {
+      "id": "NoSponsoredApps",
+      "title": "No sponsored or suggested app installs",
+      "description": "Stops Windows from silently installing promoted Store apps and games for new accounts.",
+      "settingsPage": "Settings > Personalization > Start (recommendations), Settings > Privacy & security > General",
+      "defaultEnabled": true,
+      "values": [
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SilentInstalledAppsEnabled", "action": "Set", "type": "DWord", "data": 0 },
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "PreInstalledAppsEnabled", "action": "Set", "type": "DWord", "data": 0 },
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "OemPreInstalledAppsEnabled", "action": "Set", "type": "DWord", "data": 0 }
+      ]
+    },
+    {
+      "id": "NoTipsAndSuggestions",
+      "title": "No tips, suggestions, and ads in Start and Settings",
+      "description": "Turns off suggested content in Start, Settings, and the lock screen for new accounts.",
+      "settingsPage": "Settings > Privacy & security > General; Settings > System > Notifications > Additional settings",
+      "defaultEnabled": true,
+      "values": [
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SystemPaneSuggestionsEnabled", "action": "Set", "type": "DWord", "data": 0 },
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-338388Enabled", "action": "Set", "type": "DWord", "data": 0 },
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-338389Enabled", "action": "Set", "type": "DWord", "data": 0 },
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-353694Enabled", "action": "Set", "type": "DWord", "data": 0 },
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "SubscribedContent-353696Enabled", "action": "Set", "type": "DWord", "data": 0 },
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "name": "RotatingLockScreenOverlayEnabled", "action": "Set", "type": "DWord", "data": 0 }
+      ]
+    },
+    {
+      "id": "CleanTaskbar",
+      "title": "Clean taskbar",
+      "description": "Hides the Widgets and Copilot buttons on the taskbar for new accounts. The apps themselves are unaffected.",
+      "settingsPage": "Settings > Personalization > Taskbar",
+      "defaultEnabled": true,
+      "values": [
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "TaskbarDa", "action": "Set", "type": "DWord", "data": 0 },
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "ShowCopilotButton", "action": "Set", "type": "DWord", "data": 0 }
+      ]
+    },
+    {
+      "id": "NoOneDriveForNewAccounts",
+      "title": "Don't install OneDrive for new accounts",
+      "description": "Removes the default-account OneDrive setup entry so OneDrive isn't installed at first sign-in. Install it any time with: winget install Microsoft.OneDrive",
+      "settingsPage": "Not a Settings toggle; reinstall OneDrive from microsoft.com or winget",
+      "defaultEnabled": true,
+      "values": [
+        { "hive": "DefaultUser", "path": "Software\\Microsoft\\Windows\\CurrentVersion\\Run", "name": "OneDriveSetup", "action": "Delete" }
+      ]
+    },
+    {
+      "id": "EdgeNoFirstRun",
+      "title": "Skip Microsoft Edge first-run pages",
+      "description": "Sets the documented Edge policy HideFirstRunExperience. Edge and WebView2 stay installed.",
+      "settingsPage": "edge://policy (remove the policy value to restore)",
+      "defaultEnabled": true,
+      "values": [
+        { "hive": "Software", "path": "Policies\\Microsoft\\Edge", "name": "HideFirstRunExperience", "action": "Set", "type": "DWord", "data": 1 }
+      ]
+    }
+  ],
+  "neverChange": [
+    "Windows Update, Microsoft Defender, SmartScreen, and firewall settings",
+    "Telemetry below the level Windows Pro supports",
+    "Microsoft Store, Xbox, and Gaming Services configuration",
+    "Windows Recovery Environment (WinRE)"
+  ]
+}

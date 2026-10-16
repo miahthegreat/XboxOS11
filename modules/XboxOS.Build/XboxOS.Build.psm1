@@ -484,7 +484,9 @@ function Write-XboxOSLog {
         [ValidateSet('Trace', 'Debug', 'Information', 'Warning', 'Error')]
         [string]$Level,
 
+        # Native tools (DISM, oscdimg) emit blank lines; logging one must never fail a build.
         [Parameter(Mandatory)]
+        [AllowEmptyString()]
         [string]$Message,
 
         [hashtable]$Data
@@ -993,7 +995,9 @@ function Invoke-XboxOSDism {
     $text = @($output | ForEach-Object { "$_" })
 
     foreach ($line in $text) {
-        Write-XboxOSLog -Level Debug -Message $line
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+            Write-XboxOSLog -Level Debug -Message $line
+        }
     }
 
     if ($null -eq $exitCode) {
@@ -2068,5 +2072,7 @@ function Invoke-XboxOSMountCleanup {
 . (Join-Path $PSScriptRoot 'HostLabDiscovery.ps1')
 . (Join-Path $PSScriptRoot 'AuthorizedHostDiscovery.ps1')
 . (Join-Path $PSScriptRoot 'ControlledLiveDiscovery.ps1')
+. (Join-Path $PSScriptRoot 'ImageCustomization.ps1')
+. (Join-Path $PSScriptRoot 'BuilderProfile.ps1')
 
 Export-ModuleMember -Function *

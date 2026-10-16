@@ -161,9 +161,9 @@ Gate A controls for a real-host read-only adapter: durable cross-process replay 
 
 ## Product target: Native WinUI 3 XboxOS11 Builder
 
-Long-term end-user product (not implemented in M6D/M6E design): a desktop application that imports a supported Windows 11 ISO, discovers editions, applies gaming-focused presets and component selection with dependency/safety warnings, integrates drivers, supports unattended setup options, exports a custom ISO, and persists importable JSON presets with build logs and integrity reports.
+A desktop application that imports a supported Windows 11 ISO, discovers editions, applies gaming presets or custom component selection with dependency/safety warnings, integrates drivers, configures unattended setup, exports a custom ISO, and saves reusable JSON profiles with build logs.
 
-Intended user workflow (separate from lab authorization architecture):
+User workflow (separate from lab authorization architecture):
 
 1. Select a supported Windows 11 ISO
 2. Choose a prebuilt gaming preset or Custom
@@ -173,20 +173,43 @@ Intended user workflow (separate from lab authorization architecture):
 6. Produce a customized bootable ISO
 7. Save and reuse the build configuration
 
-Backend contracts in this repository are intended for later WinUI 3 / .NET frontend consumption. GUI, ISO production, and new servicing are out of scope for M6D/M6E design.
+## M7: Builder backend — complete
 
-## Later: Xbox mode integration
+Presets, reusable build profiles, strict validation, dependency-aware component review, safe unattend generation, profile-driven builds with a media overlay, first-logon post-install, and a JSON API/event protocol for the native frontend.
 
-Supported Xbox FSE configuration, controller-first startup, and launcher integration—only after disposable-lab controls and Microsoft-supported mechanisms are validated on desktop hardware.
+- Contracts: [m7-builder-backend-contracts.md](m7-builder-backend-contracts.md)
+- CLIs: `scripts/Invoke-XboxOSBuild.ps1` (profile-driven build, `-DryRun`, `-EmitEvents`), `scripts/Invoke-XboxOSBuilderApi.ps1` (frontend API)
+- Presets: `config/presets/` (`gaming-balanced`, `gaming-lean`, `handheld-xbox-mode`, `stock-safe`)
+- Post-install entrypoint: `postinstall/Invoke-PostInstall.ps1`
+- Builder engine `7.0.0`; module `0.7.0`
 
-## M7: Gaming performance
+## M8: Native WinUI 3 Builder application — complete
 
-Benchmark-driven service and startup optimization for Ryzen 7 7800X3D and Radeon RX 9070 XT, without disabling security for synthetic gains.
+WinUI 3 / .NET 10 desktop frontend over the M7 API: ISO selection and edition discovery, preset/custom selection, dependency-aware component review, driver and setup options, unattend preview, validation, live build progress with cancellation, and profile save/open/recent.
 
-## M8: Recovery and maintenance
+- Design and verification: [m8-winui-builder.md](m8-winui-builder.md)
+- Projects: `src/XboxOS11.Builder.App` (WinUI 3, unpackaged), `src/XboxOS11.Builder.Core`, `tests/dotnet/XboxOS11.Builder.Core.Tests`
+- CI: `builder` job (xUnit + PowerShell contract tests, WinUI x64 build)
 
-Windows Update validation, recovery options, rollback mechanisms, and compatibility testing.
+## M9: Gaming performance and Xbox mode — complete
 
-## M9: Release engineering
+Supported, documented, reversible post-install gaming optimizations with exact restore, X3D/Radeon-aware verification, and Builder/App integration. Power plan, Game Bar, and security features are explicitly never changed.
 
-Versioned build manifests, release documentation, automated validation, and reproducible local builds.
+- Design and verification: [m9-gaming-performance.md](m9-gaming-performance.md)
+- Catalog: `config/gaming-tweaks.json`; applier/restorer: `postinstall/Set-GamingOptimizations.ps1`
+- Profile: optional `setup.postInstall.optimizations`; API catalog exposes `optimizations` and `neverChange`
+
+## M10: Recovery, maintenance, and release engineering — complete
+
+Single-source versioning (`VERSION` = 1.0.0), a recovery build record and `Restore-XboxOS11Components.ps1` on every image, release packaging with checksums and a manifest, a tag-triggered draft-release workflow, a changelog, and a product-first README.
+
+- Recovery: [recovery.md](recovery.md)
+- Release engineering: [release-engineering.md](release-engineering.md)
+- Readiness and remaining human steps: [v1-release-readiness.md](v1-release-readiness.md)
+- Changelog: [CHANGELOG.md](../CHANGELOG.md)
+
+## M11: Lean image (Tiny11-class, serviceable) — complete
+
+`gaming-tiny` preset; expanded app and capability removal; offline defaults for new accounts; component cleanup, ResetBase, and ESD recompression; optional local account; opt-in unsupported-hardware setting. Store, Xbox, Edge/WebView2, Defender, Windows Update, and WinRE are always kept.
+
+- Design, Tiny11 comparison, and evidence status: [m11-lean-image.md](m11-lean-image.md)

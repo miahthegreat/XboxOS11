@@ -69,6 +69,30 @@ if (-not $webview) {
 Add-SystemCheck -Category 'Runtime' -Name 'WebView2' -Passed ($null -ne $webview) `
     -Message $(if ($webview) { 'WebView2 runtime registry evidence found' } else { 'WebView2 not detected; launchers may install it' })
 
+# Gaming hardware guidance (read-only; this script never changes settings)
+$cpu = Get-CimInstance -ClassName Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($cpu -and [string]$cpu.Name -match 'X3D') {
+    $activeScheme = [string](& powercfg.exe /getactivescheme 2>$null)
+    $balanced = $activeScheme -match '381b4222-f694-41f0-9685-ff5bb260df2e'
+    Add-SystemCheck -Category 'Performance' -Name 'X3DBalancedPowerPlan' -Passed $balanced `
+        -Message $(if ($balanced) { 'Balanced plan active (recommended for Ryzen X3D)' } else { "Active: $activeScheme. AMD recommends Balanced for X3D processors." })
+    $vcache = @(Get-Service -Name 'amd3dvcache*' -ErrorAction SilentlyContinue)
+    Add-SystemCheck -Category 'Performance' -Name 'AMD3DVCacheOptimizer' -Passed ($vcache.Count -gt 0) `
+        -Message $(if ($vcache.Count -gt 0) { 'AMD 3D V-Cache Performance Optimizer present' } else { 'Install the AMD chipset driver from amd.com to add the 3D V-Cache Performance Optimizer' })
+}
+
+foreach ($gpu in @(Get-CimInstance -ClassName Win32_VideoController -ErrorAction SilentlyContinue)) {
+    $name = [string]$gpu.Name
+    $basic = $name -match 'Microsoft Basic Display'
+    Add-SystemCheck -Category 'Graphics' -Name ('GPU: ' + $name) -Passed (-not $basic) `
+        -Message $(if ($basic) { 'No vendor driver installed. Install AMD Software: Adrenalin Edition from amd.com.' } else { "Driver $($gpu.DriverVersion)" })
+}
+
+$gameBar = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\GameBar' -Name 'UseNexusForGameBarEnabled' -ErrorAction SilentlyContinue
+$gameBarOn = ($null -eq $gameBar) -or ([int]$gameBar.UseNexusForGameBarEnabled -ne 0)
+Add-SystemCheck -Category 'Xbox' -Name 'GameBarEnabled' -Passed $gameBarOn `
+    -Message $(if ($gameBarOn) { 'Game Bar enabled (needed for Xbox mode and X3D game detection)' } else { 'Game Bar is turned off in Settings > Gaming > Game Bar' })
+
 Write-Host 'XboxOS11 system verification'
 Write-Host '============================'
 foreach ($check in $checks) {

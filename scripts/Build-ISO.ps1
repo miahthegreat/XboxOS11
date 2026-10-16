@@ -20,7 +20,13 @@ param(
 
     [switch]$SkipPrerequisites,
 
-    [switch]$KeepWorkspaceOnSuccess
+    [switch]$KeepWorkspaceOnSuccess,
+
+    # Builder: files copied onto the ISO tree before export (autounattend.xml and sources\$OEM$ only).
+    [string]$MediaOverlayDirectory,
+
+    # Builder: emit machine-readable XBOXOS-EVENT progress lines for the native frontend.
+    [switch]$EmitEvents
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +45,7 @@ function Invoke-Phase {
     Write-Host ''
     Write-Host "=== Phase: $Name ===" -ForegroundColor Cyan
     Write-XboxOSLog -Level Information -Message "Starting phase: $Name"
+    if ($EmitEvents) { $null = Write-XboxOSBuilderEvent -Type phase -Data @{ name = $Name; status = 'started' } }
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $Error.Clear()
     try {
@@ -61,6 +68,7 @@ function Invoke-Phase {
             Result   = $result
         })
         Write-XboxOSLog -Level Information -Message "Phase succeeded: $Name"
+        if ($EmitEvents) { $null = Write-XboxOSBuilderEvent -Type phase -Data @{ name = $Name; status = 'succeeded'; seconds = [int]$sw.Elapsed.TotalSeconds } }
         return $result
     }
     catch {
@@ -73,6 +81,7 @@ function Invoke-Phase {
             Result   = $null
         })
         Write-XboxOSLog -Level Error -Message "Phase failed: $Name - $($_.Exception.Message)"
+        if ($EmitEvents) { $null = Write-XboxOSBuilderEvent -Type phase -Data @{ name = $Name; status = 'failed'; message = $_.Exception.Message } }
         throw
     }
 }
@@ -88,7 +97,7 @@ try {
         if (-not $pre.Passed) {
             $blocking = @($pre.Failed | Where-Object {
                     -not (
-                        $DryRun -and $_.Name -in @('WindowsADK', 'Oscdimg', 'SourceISO', 'Administrator')
+                        $DryRun -and $_.Name -in @('WindowsADK', 'Oscdimg', 'SourceISO', 'Administrator', 'DiskSpace')
                     )
                 })
             if ($blocking.Count -gt 0) {
@@ -99,8 +108,17 @@ try {
     }
 
     $Context = New-XboxOSBuildContext -ConfigurationPath $Configuration -SourceISO $SourceISO -OutputDirectory $OutputDirectory -DryRun:$DryRun
+    if ($MediaOverlayDirectory) {
+        $overlayCheck = Test-XboxOSMediaOverlay -Directory $MediaOverlayDirectory
+        if (-not $overlayCheck.valid) {
+            throw ("Media overlay rejected:`n - " + ($overlayCheck.errors -join "`n - "))
+        }
+    }
+    $Context | Add-Member -NotePropertyName MediaOverlayDirectory -NotePropertyValue $MediaOverlayDirectory -Force
     $dismPath = Find-XboxOSDism
     $phases = $Context.Configuration.Raw.phases
+    # Lean-image phases (M11) are optional in build.json; absent means off.
+    $phaseOn = { param([string]$Name) [bool]($phases.PSObject.Properties[$Name] -and $phases.$Name) }
 
     Write-Host "XboxOS11 build $($Context.BuildId) (DryRun=$DryRun)" -ForegroundColor Green
     Write-Host "Workspace: $($Context.Paths.Workspace)"
@@ -136,6 +154,12 @@ try {
         } | Out-Null
     }
 
+    if (& $phaseOn 'removeCapabilities') {
+        Invoke-Phase -BuildContext $Context -Name 'RemoveCapabilities' -Script {
+            & (Join-Path $PSScriptRoot 'Remove-Capabilities.ps1') -BuildContext $Context -DismPath $dismPath -DryRun:$DryRun
+        } | Out-Null
+    }
+
     if ($phases.addDrivers) {
         Invoke-Phase -BuildContext $Context -Name 'AddDrivers' -Script {
             & (Join-Path $PSScriptRoot 'Add-Drivers.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
@@ -145,6 +169,18 @@ try {
     if ($phases.addUpdates) {
         Invoke-Phase -BuildContext $Context -Name 'AddUpdates' -Script {
             & (Join-Path $PSScriptRoot 'Add-Updates.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
+        } | Out-Null
+    }
+
+    if (& $phaseOn 'imageTweaks') {
+        Invoke-Phase -BuildContext $Context -Name 'ImageTweaks' -Script {
+            & (Join-Path $PSScriptRoot 'Set-ImageTweaks.ps1') -BuildContext $Context -DryRun:$DryRun
+        } | Out-Null
+    }
+
+    if (& $phaseOn 'componentCleanup') {
+        Invoke-Phase -BuildContext $Context -Name 'ComponentCleanup' -Script {
+            & (Join-Path $PSScriptRoot 'Optimize-ImageSize.ps1') -BuildContext $Context -DismPath $dismPath -DryRun:$DryRun
         } | Out-Null
     }
 
@@ -161,6 +197,12 @@ try {
         $imageCommitted = $true
         $Context.ImageMounted = $false
         $Context.MountedImagePath = $null
+    }
+
+    if (& $phaseOn 'recompress') {
+        Invoke-Phase -BuildContext $Context -Name 'Recompress' -Script {
+            & (Join-Path $PSScriptRoot 'Compress-Image.ps1') -Context $Context -DismPath $dismPath -DryRun:$DryRun
+        } | Out-Null
     }
 
     if ($phases.validate) {

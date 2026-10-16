@@ -130,6 +130,41 @@ jobs:
             'scripts/New-ControlledLiveDiscoverySigningKey.ps1',
             'tests/ControlledLiveDiscovery.Tests.ps1',
             'docs/m6e-controlled-live-discovery-contracts.md',
+            'modules/XboxOS.Build/BuilderProfile.ps1',
+            'scripts/Invoke-XboxOSBuild.ps1',
+            'scripts/Invoke-XboxOSBuilderApi.ps1',
+            'postinstall/Invoke-PostInstall.ps1',
+            'config/presets/gaming-balanced.json',
+            'tests/BuilderProfile.Tests.ps1',
+            'docs/m7-builder-backend-contracts.md',
+            'XboxOS11.slnx',
+            'src/XboxOS11.Builder.Core/XboxOS11.Builder.Core.csproj',
+            'src/XboxOS11.Builder.App/XboxOS11.Builder.App.csproj',
+            'tests/dotnet/XboxOS11.Builder.Core.Tests/XboxOS11.Builder.Core.Tests.csproj',
+            'docs/m8-winui-builder.md',
+            'config/gaming-tweaks.json',
+            'postinstall/Set-GamingOptimizations.ps1',
+            'tests/GamingOptimizations.Tests.ps1',
+            'docs/m9-gaming-performance.md',
+            'VERSION',
+            'CHANGELOG.md',
+            'postinstall/Restore-XboxOS11Components.ps1',
+            'scripts/New-XboxOSRelease.ps1',
+            'tests/Release.Tests.ps1',
+            'docs/recovery.md',
+            'docs/release-engineering.md',
+            'docs/v1-release-readiness.md',
+            'config/remove-capabilities.json',
+            'config/image-tweaks.json',
+            'config/presets/gaming-tiny.json',
+            'modules/XboxOS.Build/ImageCustomization.ps1',
+            'scripts/Remove-Capabilities.ps1',
+            'scripts/Set-ImageTweaks.ps1',
+            'scripts/Optimize-ImageSize.ps1',
+            'scripts/Compress-Image.ps1',
+            'tests/ImageCustomization.Tests.ps1',
+            'docs/m11-lean-image.md',
+            '.github/workflows/release.yml',
             'README.md',
             'LICENSE'
           )
@@ -233,3 +268,23 @@ jobs:
             throw "Windows media/update binaries must not be committed:`n$($forbidden.FullName -join "`n")"
           }
           Write-Host 'No proprietary Windows image artifacts detected in the repository tree.'
+
+  builder:
+    name: Builder app (.NET tests + WinUI build)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test Builder.Core (includes PowerShell backend contract tests)
+        shell: pwsh
+        run: dotnet test tests/dotnet/XboxOS11.Builder.Core.Tests/XboxOS11.Builder.Core.Tests.csproj -c Release --logger "console;verbosity=normal"
+
+      - name: Build WinUI 3 app (x64)
+        shell: pwsh
+        run: dotnet build src/XboxOS11.Builder.App/XboxOS11.Builder.App.csproj -c Release -p:Platform=x64

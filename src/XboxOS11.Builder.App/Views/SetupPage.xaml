@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="XboxOS11.Builder.App.Views.SetupPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:XboxOS11.Builder.App.ViewModels">
+
+    <StackPanel Spacing="12">
+        <TextBlock Text="Drivers and setup" Style="{StaticResource PageTitleStyle}" />
+        <TextBlock Style="{StaticResource PageSubtitleStyle}"
+                   Text="Add extracted INF drivers and Microsoft update packages, and choose how Windows Setup behaves. Install AMD Adrenalin and other driver suites after Windows Setup; installers (.exe/.msi) are never injected." />
+
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel Spacing="12">
+                <ToggleSwitch Header="Integrate drivers (INF packages)" IsOn="{x:Bind ViewModel.DriversEnabled, Mode=TwoWay}" />
+                <Grid ColumnSpacing="8" Visibility="{x:Bind ViewModel.DriversEnabled, Mode=OneWay}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Text="{x:Bind ViewModel.DriversDirectory, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" PlaceholderText="Folder with extracted .inf drivers" />
+                    <Button Grid.Column="1" Content="Browse…" Click="BrowseDrivers_Click" />
+                </Grid>
+                <ToggleSwitch Header="Integrate Microsoft updates (.msu/.cab)" IsOn="{x:Bind ViewModel.UpdatesEnabled, Mode=TwoWay}" />
+                <Grid ColumnSpacing="8" Visibility="{x:Bind ViewModel.UpdatesEnabled, Mode=OneWay}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Text="{x:Bind ViewModel.UpdatesDirectory, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" PlaceholderText="Folder with update packages" />
+                    <Button Grid.Column="1" Content="Browse…" Click="BrowseUpdates_Click" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel Spacing="12">
+                <ToggleSwitch Header="Unattended setup answers (autounattend.xml)" IsOn="{x:Bind ViewModel.Unattend, Mode=TwoWay}" />
+                <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="Answers language, time zone, license, and privacy questions. You still choose the disk and create your account; requirement checks (TPM, Secure Boot) are never bypassed." />
+                <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.Unattend, Mode=OneWay}">
+                    <ComboBox Header="Windows display language" MinWidth="360" ItemsSource="{x:Bind ViewModel.Languages}"
+                              SelectedItem="{x:Bind ViewModel.SelectedLanguage, Mode=TwoWay}" />
+                    <ComboBox Header="Region and keyboard" MinWidth="360" ItemsSource="{x:Bind ViewModel.Languages}"
+                              SelectedItem="{x:Bind ViewModel.SelectedLocale, Mode=TwoWay}" />
+                    <ComboBox Header="Time zone" MinWidth="360" ItemsSource="{x:Bind ViewModel.TimeZones}"
+                              SelectedItem="{x:Bind ViewModel.SelectedTimeZone, Mode=TwoWay}" />
+                    <RadioButtons Header="Privacy settings during setup" SelectedIndex="{x:Bind ViewModel.PrivacyIndex, Mode=TwoWay}">
+                        <x:String>Minimal: turn off optional diagnostics and tailored experiences</x:String>
+                        <x:String>Recommended: Microsoft's default privacy choices</x:String>
+                    </RadioButtons>
+                    <ToggleSwitch Header="Accept the license terms automatically" IsOn="{x:Bind ViewModel.HideEula, Mode=TwoWay}" />
+                    <ToggleSwitch Header="Create a local account during Setup (skip the Microsoft account screens)" IsOn="{x:Bind ViewModel.LocalAccount, Mode=TwoWay}" />
+                    <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Uses the documented HideOnlineAccountScreens setting. You type the account name and password during Setup; nothing is stored in the ISO. You can link a Microsoft account later for the Store and Game Pass." />
+                    <ToggleSwitch Header="Allow unsupported hardware (skip TPM 2.0, Secure Boot, CPU, and RAM checks)" IsOn="{x:Bind ViewModel.AllowUnsupportedHardware, Mode=TwoWay}" />
+                    <InfoBar IsOpen="{x:Bind ViewModel.AllowUnsupportedHardware, Mode=OneWay}" IsClosable="False" Severity="Error" Title="Unsupported configuration"
+                             Message="Only for PCs that don't meet Windows 11 requirements. Microsoft doesn't support these installs; they may stop getting updates, and games whose anti-cheat requires TPM or Secure Boot won't run. Leave this off on supported PCs such as a Ryzen 7000-series system." />
+                    <ToggleSwitch Header="Open Xbox mode at sign-in (StartupToGamingHome)" IsOn="{x:Bind ViewModel.StartupToGamingHome, Mode=TwoWay}" />
+                    <InfoBar IsOpen="{x:Bind ViewModel.StartupToGamingHome, Mode=OneWay}" IsClosable="False" Severity="Warning"
+                             Message="Microsoft documents this OEM setting for gaming handhelds. On desktop PCs, confirm Xbox mode in Settings › Gaming › Xbox mode after installation." />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel Spacing="12">
+                <ToggleSwitch Header="First sign-in gaming setup" IsOn="{x:Bind ViewModel.PostInstallEnabled, Mode=TwoWay}" />
+                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.PostInstallEnabled, Mode=OneWay}">
+                    <CheckBox Content="Turn on Game Mode" IsChecked="{x:Bind ViewModel.GameMode, Mode=TwoWay}" />
+                    <CheckBox Content="Hardware-accelerated GPU scheduling (takes effect after the GPU driver is installed)"
+                              IsChecked="{x:Bind ViewModel.HardwareAcceleratedGpuScheduling, Mode=TwoWay}" />
+                    <TextBlock Text="Gaming optimizations (reversible)" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Optimizations}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:OptimizationItem">
+                                <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="{x:Bind Title}">
+                                    <StackPanel>
+                                        <TextBlock Text="{x:Bind Title}" />
+                                        <TextBlock Text="{x:Bind Description}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Text="{x:Bind Detail}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                    </StackPanel>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Original values are recorded; undo any time with Set-GamingOptimizations.ps1 -Restore." />
+                    <Expander Header="Never changed by XboxOS11" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.NeverChanged}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{x:Bind}" TextWrapping="Wrap" Margin="0,0,0,6" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Expander>
+                    <TextBlock Text="Install game launchers with winget" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.Launchers}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout MinItemWidth="200" MinColumnSpacing="8" ItemsStretch="Fill" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LauncherItem">
+                                <CheckBox Content="{x:Bind DisplayName}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" />
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="Image size and defaults" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <ToggleSwitch Header="Clean up the component store (smaller image)" IsOn="{x:Bind ViewModel.ComponentCleanup, Mode=TwoWay}" />
+                <CheckBox Content="Make integrated updates permanent (ResetBase: smallest, but those updates can't be uninstalled)" IsChecked="{x:Bind ViewModel.ResetBase, Mode=TwoWay}" />
+                <RadioButtons Header="Compression" SelectedIndex="{x:Bind ViewModel.CompressionIndex, Mode=TwoWay}">
+                    <x:String>Default: keep the standard install.wim compression</x:String>
+                    <x:String>Maximum: smaller install.wim</x:String>
+                    <x:String>Recovery: smallest install.esd (slow to build)</x:String>
+                </RadioButtons>
+                <TextBlock Text="Defaults for new accounts" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                <ItemsControl ItemsSource="{x:Bind ViewModel.ImageTweaks}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:OptimizationItem">
+                            <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="{x:Bind Title}">
+                                <StackPanel>
+                                    <TextBlock Text="{x:Bind Title}" />
+                                    <TextBlock Text="{x:Bind Description}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="{x:Bind Detail}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
+                            </CheckBox>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Expander Header="Preview autounattend.xml" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Expanding="Preview_Expanding">
+            <TextBox Text="{x:Bind ViewModel.UnattendXml, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                     FontFamily="Cascadia Mono, Consolas" FontSize="12" MaxHeight="420" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+        </Expander>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="Back" Click="Back_Click" />
+            <Button Style="{StaticResource AccentButtonStyle}" Content="Next: validate &amp; build" Click="Next_Click" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

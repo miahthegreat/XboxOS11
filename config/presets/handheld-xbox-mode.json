@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "xboxos-builder-preset-v1",
+  "id": "handheld-xbox-mode",
+  "order": 4,
+  "displayName": "Handheld - Xbox mode at startup",
+  "recommended": false,
+  "description": "Balanced plus the documented StartupToGamingHome OEM setting so Xbox mode opens at sign-in. Intended for gaming handhelds; verify on desktops.",
+  "profile": {
+    "source": {
+      "isoPath": "",
+      "editionPattern": "*Pro*",
+      "imageIndex": null
+    },
+    "apps": {
+      "remove": [
+        "Clipchamp",
+        "Copilot",
+        "TeamsConsumer",
+        "News",
+        "Weather",
+        "Solitaire",
+        "OutlookConsumer"
+      ]
+    },
+    "features": {
+      "disable": [
+        "XpsViewer",
+        "PrintingXPS",
+        "Smb1",
+        "WorkFolders"
+      ]
+    },
+    "drivers": {
+      "enabled": false,
+      "directory": "C:\\XboxOS\\Drivers"
+    },
+    "updates": {
+      "enabled": false,
+      "directory": "C:\\XboxOS\\Updates"
+    },
+    "setup": {
+      "unattend": true,
+      "uiLanguage": "en-US",
+      "inputLocale": "en-US",
+      "systemLocale": "en-US",
+      "userLocale": "en-US",
+      "timeZone": "Pacific Standard Time",
+      "hideEula": true,
+      "privacy": "Minimal",
+      "startupToGamingHome": true,
+      "postInstall": {
+        "enabled": true,
+        "gameMode": true,
+        "hardwareAcceleratedGpuScheduling": false,
+        "launchers": [
+          "Xbox"
+        ],
+        "optimizations": [
+          "WindowedGameOptimizations",
+          "VariableRefreshRate",
+          "BackgroundRecordingOff"
+        ]
+      }
+    },
+    "output": {
+      "directory": "C:\\XboxOS\\Output",
+      "isoLabel": "XboxOS11"
+    }
+  }
+}
