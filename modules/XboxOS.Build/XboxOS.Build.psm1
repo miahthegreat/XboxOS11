@@ -472,6 +472,10 @@ function New-XboxOSLogger {
     $logFile = Join-Path $dir "XboxOS11-$BuildId.log"
     $script:XboxOSLogFile = $logFile
     $script:XboxOSLogLevel = $Level
+    # Phase scripts re-import this module with -Force, which resets module state. Keep the active log in the
+    # process environment so every phase keeps writing to the same build log.
+    $env:XBOXOS11_LOG_FILE = $logFile
+    $env:XBOXOS11_LOG_LEVEL = $Level
 
     Write-XboxOSLog -Level Information -Message "Logging initialized: $logFile"
     return $logFile
@@ -491,6 +495,13 @@ function Write-XboxOSLog {
 
         [hashtable]$Data
     )
+
+    if (-not $script:XboxOSLogFile -and $env:XBOXOS11_LOG_FILE) {
+        $script:XboxOSLogFile = $env:XBOXOS11_LOG_FILE
+        if ($env:XBOXOS11_LOG_LEVEL -and $script:LogLevels.ContainsKey($env:XBOXOS11_LOG_LEVEL)) {
+            $script:XboxOSLogLevel = $env:XBOXOS11_LOG_LEVEL
+        }
+    }
 
     $current = $script:LogLevels[$script:XboxOSLogLevel]
     $incoming = $script:LogLevels[$Level]
