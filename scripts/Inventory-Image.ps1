@@ -56,13 +56,13 @@ else {
 
     Write-XboxOSLog -Level Information -Message "Inventorying mounted image ($Stage)"
 
-    $appxOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Image:' + $mount, '/Get-ProvisionedAppxPackages')
-    $featOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Image:' + $mount, '/Get-Features')
-    $pkgOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Image:' + $mount, '/Get-Packages')
-    $drvOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Image:' + $mount, '/Get-Drivers')
+    $appxOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @("/Image:$mount", '/Get-ProvisionedAppxPackages')
+    $featOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @("/Image:$mount", '/Get-Features')
+    $pkgOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @("/Image:$mount", '/Get-Packages')
+    $drvOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @("/Image:$mount", '/Get-Drivers')
     $capOut = $null
     try {
-        $capOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Image:' + $mount, '/Get-Capabilities')
+        $capOut = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @("/Image:$mount", '/Get-Capabilities')
     }
     catch {
         Write-XboxOSLog -Level Warning -Message "Get-Capabilities unavailable: $($_.Exception.Message)"
@@ -73,7 +73,7 @@ else {
     $displayVersion = $null
     $productName = $null
     try {
-        $info = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @('/Image:' + $mount, '/Get-CurrentEdition')
+        $info = Invoke-XboxOSDism -DismPath $DismPath -ArgumentList @("/Image:$mount", '/Get-CurrentEdition')
         foreach ($line in $info.Output) {
             if ($line -match 'Current Edition\s*:\s*(.+)$') { $edition = $Matches[1].Trim() }
         }

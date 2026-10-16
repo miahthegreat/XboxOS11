@@ -148,6 +148,70 @@ Describe 'XboxOS11 pipeline regression' {
             }
         }
 
+        It 'never builds native arguments as string + array (comma binds tighter than +)' {
+            $root = Resolve-Path (Join-Path $PSScriptRoot '..')
+            $offenders = foreach ($file in Get-ChildItem -Path (Join-Path $root 'scripts'), (Join-Path $root 'modules'), (Join-Path $root 'postinstall') -Recurse -Include *.ps1, *.psm1 -File) {
+                $tokens = $null; $errors = $null
+                $ast = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors)
+                $ast.FindAll({
+                        param($n)
+                        $n -is [System.Management.Automation.Language.BinaryExpressionAst] -and
+                        $n.Operator -eq [System.Management.Automation.Language.TokenKind]::Plus -and
+                        $n.Right -is [System.Management.Automation.Language.ArrayLiteralAst]
+                    }, $true) | ForEach-Object { '{0}:{1} {2}' -f $file.Name, $_.Extent.StartLineNumber, $_.Extent.Text }
+            }
+            @($offenders) | Should -BeNullOrEmpty
+        }
+
+        It 'passes /Image and the servicing command to DISM as separate arguments during inventory' {
+            $ctx = New-XboxOSBuildContext -ConfigurationPath $script:ConfigPath -SourceISO (Join-Path $env:TEMP 'x.iso') -DryRun
+            $ctx.ImageMounted = $true
+            $argLog = Join-Path $env:TEMP ('xboxos-dism-args-' + [guid]::NewGuid().ToString('N') + '.txt')
+            $fakeDism = Join-Path $env:TEMP ('fake-dism-' + [guid]::NewGuid().ToString('N') + '.cmd')
+            Set-Content -LiteralPath $fakeDism -Value ('@echo [%1][%2]>>"{0}"' -f $argLog) -Encoding ASCII
+            try {
+                $null = & (Join-Path $script:RepoRoot 'scripts\Inventory-Image.ps1') -BuildContext $ctx -Stage Before -DismPath $fakeDism
+                $calls = @(Get-Content -LiteralPath $argLog)
+                $calls[0] | Should -Be ('[/Image:{0}][/Get-ProvisionedAppxPackages]' -f $ctx.Paths.Mount)
+                @($calls | Where-Object { $_ -notmatch '^\[/Image:[^ \]]+\]\[/Get-[A-Za-z]+\]$' }) | Should -BeNullOrEmpty
+            }
+            finally {
+                Remove-Item -LiteralPath $argLog, $fakeDism -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'keeps writing to the build log after phase scripts re-import the module' {
+            $previousLog = $env:XBOXOS11_LOG_FILE
+            $previousLevel = $env:XBOXOS11_LOG_LEVEL
+            $dir = Join-Path $env:TEMP ('xboxos-log-' + [guid]::NewGuid().ToString('N'))
+            try {
+                $log = New-XboxOSLogger -LogDirectory $dir -BuildId 'reimport-test'
+                Import-Module (Join-Path $script:RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1') -Force
+                Write-XboxOSLog -Level Information -Message 'after-reimport-marker'
+                (Get-Content -LiteralPath $log -Raw) | Should -Match 'after-reimport-marker'
+            }
+            finally {
+                # Point later tests back at the previous log before removing this one.
+                $env:XBOXOS11_LOG_FILE = $previousLog
+                $env:XBOXOS11_LOG_LEVEL = $previousLevel
+                Import-Module (Join-Path $script:RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1') -Force
+                Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'never fails a build because the log file cannot be written' {
+            $previousLog = $env:XBOXOS11_LOG_FILE
+            try {
+                $env:XBOXOS11_LOG_FILE = Join-Path $env:TEMP ('missing-' + [guid]::NewGuid().ToString('N') + '\nope\build.log')
+                Import-Module (Join-Path $script:RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1') -Force
+                { Write-XboxOSLog -Level Information -Message 'unwritable' 3>$null } | Should -Not -Throw
+            }
+            finally {
+                $env:XBOXOS11_LOG_FILE = $previousLog
+                Import-Module (Join-Path $script:RepoRoot 'modules\XboxOS.Build\XboxOS.Build.psd1') -Force
+            }
+        }
+
         It 'tolerates blank lines in DISM output (real DISM prints them)' {
             $cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
             $r = Invoke-XboxOSDism -DismPath $cmd -ArgumentList @('/d', '/c', 'echo Index : 1&echo.&echo Name : Windows 11 Pro&echo.')
